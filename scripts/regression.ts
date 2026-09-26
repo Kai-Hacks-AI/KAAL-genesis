@@ -182,7 +182,8 @@ export function classify(trusted: string, candidate: string, base: string): Clas
  * and its test data, entry by entry: each directory as one, each regular file
  * by its bytes, each link by its target, anything else by its kind. Text
  * outside `test-data` directories reads the same whichever line endings a
- * checkout gave it; test data is taken byte for byte, as its cases read it.
+ * checkout gave it; test data, in a `test-data` directory or beside the cases,
+ * is taken byte for byte, as the replay copies it.
  * Any change to what the regression consists of changes it; nothing outside
  * the files, such as where they are kept or how they are versioned, does. A
  * candidate names the regression it derives from by this identity.
@@ -205,7 +206,8 @@ export function regressionIdentity(repo: string): string {
     else if (!entry.isFile()) entries.set(rel, [entry.isFIFO() ? "fifo" : "special", Buffer.alloc(0)]);
     else {
       const bytes = fs.readFileSync(at);
-      const data = rel.split("/").includes("test-data");
+      // Test data as the replay copies it; only code and other text read the same whatever its line endings.
+      const data = isData(rel, false) && !/\.(ts|js|mjs|cjs|mts|cts)$/.test(rel);
       entries.set(rel, ["file", data ? bytes : Buffer.from(bytes.toString("latin1").replace(/\r\n/g, "\n"), "latin1")]);
     }
   };

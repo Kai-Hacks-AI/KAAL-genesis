@@ -389,6 +389,11 @@ test("a regression's identity changes with what it consists of, a link as a link
   fs.writeFileSync(path.join(lf, "test-data", "lines.txt"), "a\nb\n");
   fs.writeFileSync(path.join(crlf, "test-data", "lines.txt"), "a\r\nb\r\n");
   assert.notEqual(regressionIdentity(lf), regressionIdentity(crlf));
+  // So is a fixture kept beside the cases.
+  const [beside, besideCrlf] = [copy(), copy()];
+  fs.writeFileSync(path.join(beside, "scripts", "fixtures", "sum.txt"), "3\n");
+  fs.writeFileSync(path.join(besideCrlf, "scripts", "fixtures", "sum.txt"), "3\r\n");
+  assert.notEqual(regressionIdentity(beside), regressionIdentity(besideCrlf));
   // Text a checkout may give either line ending reads the same.
   const [unix, windows] = [copy(), copy()];
   const plan = (repo: string) => path.join(repo, PLAN);

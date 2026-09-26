@@ -110,7 +110,7 @@ export type Change = { status: "A" | "M" | "D"; file: string };
 
 /**
  * Every entry of `dir` but directories, by posix path relative to it, with
- * what it holds: a regular file its bytes, a symbolic link its target, and
+ * what it holds: a regular file whether it may be executed and its bytes, a symbolic link its target, and
  * anything else, such as a named pipe, only its kind, so nothing but a
  * regular file is ever opened. A directory that does not exist has none. Git's
  * own `.git` and installed `node_modules` at the top of the state are not part
@@ -123,7 +123,12 @@ function stateFiles(dir: string, rel = "", files = new Map<string, Buffer>()): M
     const file = rel ? `${rel}/${e.name}` : e.name;
     const at = path.join(dir, file);
     if (e.isDirectory()) stateFiles(dir, file, files);
-    else if (e.isFile()) files.set(file, Buffer.concat([Buffer.from("file:"), fs.readFileSync(at)]));
+    // A regular file by whether it may be executed, as Git records it, and its bytes.
+    else if (e.isFile())
+      files.set(
+        file,
+        Buffer.concat([Buffer.from(fs.statSync(at).mode & 0o111 ? "exec:" : "file:"), fs.readFileSync(at)]),
+      );
     else if (e.isSymbolicLink()) files.set(file, Buffer.from(`link:${fs.readlinkSync(at)}`));
     else files.set(file, Buffer.from(`special:${e.isFIFO() ? "fifo" : e.isSocket() ? "socket" : "device"}`));
   }

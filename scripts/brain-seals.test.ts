@@ -272,3 +272,12 @@ test("a named pipe in a state is recorded as one, never opened", { skip: process
   assert.equal(made.status, 0, String(made.stderr));
   assert.deepEqual(stateChanges(before, after), [{ status: "A", file: "pipe" }]);
 });
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+test("a file that only becomes executable has changed", { skip: process.platform === "win32" }, () => {
+  const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
+  const [before, after] = [state(), state()];
+  for (const dir of [before, after]) fs.writeFileSync(path.join(dir, "run.sh"), "echo\n");
+  fs.chmodSync(path.join(after, "run.sh"), 0o755);
+  assert.deepEqual(stateChanges(before, after), [{ status: "M", file: "run.sh" }]);
+});
