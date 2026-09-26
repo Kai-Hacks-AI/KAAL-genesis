@@ -39,18 +39,22 @@ jobs:
           ref: main
           # Nothing that runs before the push needs a credential.
           persist-credentials: false
+      # The state before sealing, as a plain copy taken straight from the
+      # checkout, before anything is installed, so what sealing wrote, and
+      # anything else that writes into the checkout after this, such as an
+      # install script, can be checked from the files alone.
+      - run: |
+          mkdir "$RUNNER_TEMP/before"
+          tar --exclude=./.git -cf - . | tar -xf - -C "$RUNNER_TEMP/before"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      # The state before sealing, as a plain copy, so what sealing wrote can be
-      # checked from the files alone. The list of sealed learnings is kept
-      # outside the checkout, so it is never staged. A redirect, not a pipe:
-      # the default shell has no pipefail, so a pipe would hide a failed sealing.
+      # The list of sealed learnings is kept outside the checkout, so it is
+      # never staged. A redirect, not a pipe: the default shell has no
+      # pipefail, so a pipe would hide a failed sealing.
       - run: |
-          mkdir "$RUNNER_TEMP/before"
-          tar --exclude=./.git --exclude=./node_modules -cf - . | tar -xf - -C "$RUNNER_TEMP/before"
           npm run -s seal > "$RUNNER_TEMP/sealed.txt"
           cat "$RUNNER_TEMP/sealed.txt"
       # Minted only now, and only to write contents: the one credential that
