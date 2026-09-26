@@ -97,17 +97,11 @@ export function unreplayable(repo: string): string | undefined {
   const scripts = (JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as { scripts?: object })
     .scripts;
   // Every script npm ci or npm test would run besides the test itself; the replay runs none of them.
+  // Each of those events runs its pre and post script too, so the whole family is refused, not each name.
   const lifecycle = [
-    "preinstall",
-    "install",
-    "postinstall",
     "prepublish",
-    "preprepare",
-    "prepare",
-    "postprepare",
-    "pretest",
-    "posttest",
-  ];
+    ...["install", "prepare", "dependencies", "test"].flatMap((event) => [`pre${event}`, event, `post${event}`]),
+  ].filter((hook) => hook !== "test");
   const hooks = lifecycle.filter((hook) => scripts && hook in scripts);
   if (hooks.length) return `main's npm ci or npm test runs ${hooks.join(", ")}, which its cases' replay would not`;
   const [runner, flag, ...rest] = testArgs(repo);

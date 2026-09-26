@@ -290,6 +290,9 @@ test("a candidate that could not judge the next change once merged is refused be
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("prepared"), BASE).slice(0, 1), [
     "as the next main, npm ci or npm test runs prepare, which its cases' replay would not",
   ]);
+  assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("dependent"), BASE).slice(0, 1), [
+    "as the next main, npm ci or npm test runs dependencies, which its cases' replay would not",
+  ]);
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("fails-own"), BASE), [
     'as the next main, scripts/cases.test.ts: "fails" fails when main replays it',
   ]);
