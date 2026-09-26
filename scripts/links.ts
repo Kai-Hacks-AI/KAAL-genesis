@@ -14,7 +14,12 @@ import path from "node:path";
 export const PLAN = "test/regression-plan.md";
 /** Where each skill's cases are kept; they prove its SKILL.md, commitment 7's place. */
 export const SKILL_CASES = "skills/*/SKILL.md";
-/** What a plan may say shows a commitment: its cases, found by their links, or the seal checks. */
+/**
+ * What a plan may say shows a commitment: its cases, found by their links, and
+ * the seal checks besides. Only cases say in the files which commitment they
+ * show, so every commitment is shown by its cases; another check may add to
+ * them, and may stand in for them only once it can say the same.
+ */
 const SHOWN_BY = ["its cases", "the seal checks"];
 
 /** The section of a plan under `heading`, up to the next `## ` heading. */
@@ -188,6 +193,11 @@ export function linkErrors(repo: string): string[] {
     if (!shownBy) errors.push(`${place}: the plan does not say what shows it`);
     for (const by of (shownBy ?? []).filter((by) => !SHOWN_BY.includes(by)))
       errors.push(`${place}: the plan says ${by} show it, which is not a check KAAL knows`);
+    // Only cases say, in the files, which commitments they show; another check can add to them, not stand in for them.
+    if (shownBy && !shownBy.includes("its cases"))
+      errors.push(
+        `${place}: the plan says only ${shownBy.join(" and ")} show it, but only cases say which commitment they show`,
+      );
   }
   const stated = new Set(entries.flatMap((e) => (e.place ? [e.place] : [])));
   for (const file of caseFiles(repo)) {
@@ -210,9 +220,9 @@ export function linkErrors(repo: string): string[] {
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
   const ownProof = new Set(
-    caseFiles(repo)
-      .filter(ownedBySkill)
-      .map((file) => file.split("/").slice(0, 2).join("/")),
+    repoCases(repo)
+      .filter((c) => ownedBySkill(c.file))
+      .map((c) => c.file.split("/").slice(0, 2).join("/")),
   );
   for (const { place, shownBy } of entries) {
     if (!place || unplaced.has(place) || !shownBy?.includes("its cases")) continue;

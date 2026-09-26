@@ -123,21 +123,24 @@ test("a commitment whose place is outside the repository is refused, even where 
 });
 
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
-test("a plan says what shows each commitment; only one its cases show must have a case", () => {
+test("a plan says what shows each commitment, and cases always do: another check can only add to them", () => {
   const silent = changed(PLAN, (text) => text.replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`."));
   assert.deepEqual(linkErrors(silent), ["src/add.ts: the plan does not say what shows it"]);
   const unknown = changed(PLAN, (text) =>
-    text.replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`. Shown by hope."),
+    text.replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`. Shown by its cases and hope."),
   );
   assert.deepEqual(linkErrors(unknown), ["src/add.ts: the plan says hope show it, which is not a check KAAL knows"]);
-  const sealed = changed(CASES, (text) => text.replace(`// Why: ${GREETING}\n`, `// Why: src/add.ts\n`));
-  fs.writeFileSync(
-    path.join(sealed, PLAN),
-    fs
-      .readFileSync(path.join(sealed, PLAN), "utf8")
-      .replace(`\`${GREETING}\`. Shown by its cases.`, `\`${GREETING}\`. Shown by the seal checks.`),
+  const both = changed(PLAN, (text) =>
+    text.replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`. Shown by its cases and the seal checks."),
   );
-  assert.deepEqual(linkErrors(sealed), []);
+  assert.deepEqual(linkErrors(both), []);
+  // The seal checks do not say which commitments they show, so they cannot stand in for cases, even for a new commitment.
+  const sealed = changed(PLAN, (text) =>
+    text.replace(/^2\. .*$/m, "$&\n3. Sealed. Stated in `src/greet.ts`. Shown by the seal checks."),
+  );
+  assert.deepEqual(linkErrors(sealed), [
+    "src/greet.ts: the plan says only the seal checks show it, but only cases say which commitment they show",
+  ]);
 });
 
 /** A copy of the trusted fixture that also keeps a skill, whose cases prove its SKILL.md. */
@@ -180,6 +183,12 @@ test("each skill's SKILL.md needs a case of its own: another skill's cases do no
     path.join(repo, "skills", "silent", "SKILL.md"),
     "---\nname: silent\n---\n\nIts script says nothing.\n",
   );
+  assert.deepEqual(linkErrors(repo), [
+    "skills/silent/SKILL.md: the plan says its cases show it, but the skill has none",
+  ]);
+  // A file of cases that holds none is no case of its own.
+  fs.mkdirSync(path.join(repo, "skills", "silent", "scripts"));
+  fs.writeFileSync(path.join(repo, "skills", "silent", "scripts", "silent.test.ts"), "export {};\n");
   assert.deepEqual(linkErrors(repo), [
     "skills/silent/SKILL.md: the plan says its cases show it, but the skill has none",
   ]);
