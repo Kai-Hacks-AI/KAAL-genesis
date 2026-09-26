@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -247,4 +248,27 @@ test("compares two states of a directory file by file, from the files alone", ()
     { status: "D", file: "gone.txt" },
     { status: "D", file: "kept/same.txt" },
   ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+test("compares what each entry is without opening anything but a regular file, and keeps what lies below the top", () => {
+  const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
+  const [before, after] = [state(), state()];
+  // A directory named node_modules or .git below the top of a state is part of it, and may hide nothing.
+  fs.mkdirSync(path.join(after, "brain", "learning", "genesis", "node_modules"), { recursive: true });
+  fs.writeFileSync(path.join(after, "brain", "learning", "genesis", "node_modules", "seal.json"), "{}\n");
+  const changes = stateChanges(before, after);
+  assert.deepEqual(changes, [{ status: "A", file: "brain/learning/genesis/node_modules/seal.json" }]);
+  assert.deepEqual(sealStateChanges(changes), [
+    "brain/learning/genesis/node_modules/seal.json: seal state may only be written by sealing on main (A)",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+test("a named pipe in a state is recorded as one, never opened", { skip: process.platform === "win32" }, () => {
+  const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
+  const [before, after] = [state(), state()];
+  const made = spawnSync("mkfifo", [path.join(after, "pipe")]);
+  assert.equal(made.status, 0, String(made.stderr));
+  assert.deepEqual(stateChanges(before, after), [{ status: "A", file: "pipe" }]);
 });

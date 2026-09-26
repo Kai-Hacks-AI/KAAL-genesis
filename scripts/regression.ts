@@ -185,12 +185,21 @@ export function classify(trusted: string, candidate: string, base: string): Clas
  * candidate names the regression it derives from by this identity.
  */
 export function regressionIdentity(repo: string): string {
-  const files = new Set<string>();
+  const entries = new Map<string, string>();
   const add = (rel: string) => {
     const at = path.join(repo, rel);
-    if (!fs.existsSync(at)) return;
-    if (fs.statSync(at).isDirectory()) for (const e of fs.readdirSync(at)) add(`${rel}/${e}`);
-    else files.add(rel);
+    let entry: fs.Stats;
+    try {
+      entry = fs.lstatSync(at);
+    } catch {
+      return;
+    }
+    // Each entry as what it is, never what it points at: a link is its target, and nothing but a regular file is read.
+    if (entry.isDirectory()) for (const e of fs.readdirSync(at)) add(`${rel}/${e}`);
+    else if (entry.isSymbolicLink()) entries.set(rel, `link:${fs.readlinkSync(at)}`);
+    else if (!entry.isFile()) entries.set(rel, `special:${entry.isFIFO() ? "fifo" : "other"}`);
+    // Text as it reads, whichever line endings a checkout gave it.
+    else entries.set(rel, `file:${fs.readFileSync(at).toString("latin1").replace(/\r\n/g, "\n")}`);
   };
   if (fs.existsSync(path.join(repo, PLAN))) {
     add(PLAN);
@@ -200,11 +209,8 @@ export function regressionIdentity(repo: string): string {
   }
   for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
   const hash = createHash("sha256");
-  for (const file of [...files].sort()) {
-    // Text as it reads, whichever line endings a checkout gave it.
-    const content = fs.readFileSync(path.join(repo, file)).toString("latin1").replace(/\r\n/g, "\n");
+  for (const [file, content] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
     hash.update(`${file}\0${content.length}\0`).update(content, "latin1");
-  }
   return hash.digest("hex");
 }
 

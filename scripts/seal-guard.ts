@@ -1,4 +1,3 @@
-import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { sealStateChanges, stateChanges } from "./brain-seals.js";
@@ -14,11 +13,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error("usage: seal-guard.ts <accepted> [candidate]");
     process.exitCode = 2;
   } else {
-    const changes = stateChanges(path.join(accepted, ROOT), path.join(candidate, ROOT)).map((c) => ({
-      ...c,
-      file: `${ROOT}/${c.file}`,
-    }));
-    const errors = sealStateChanges(changes);
+    // The whole states are compared, so every path is seen as the repository names it, and seal state is picked out.
+    const errors = sealStateChanges(stateChanges(accepted, candidate), ROOT);
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;

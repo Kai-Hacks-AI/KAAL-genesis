@@ -109,19 +109,23 @@ export function sealState(file: string, root = ROOT): SealState | undefined {
 export type Change = { status: "A" | "M" | "D"; file: string };
 
 /**
- * Every file of `dir` by posix path relative to it, with its bytes: a
- * symbolic link by its target. A directory that does not exist has none.
- * Git's own `.git` and installed `node_modules` are not part of a state.
+ * Every entry of `dir` but directories, by posix path relative to it, with
+ * what it holds: a regular file its bytes, a symbolic link its target, and
+ * anything else, such as a named pipe, only its kind, so nothing but a
+ * regular file is ever opened. A directory that does not exist has none. Git's
+ * own `.git` and installed `node_modules` at the top of the state are not part
+ * of it; a directory of either name anywhere below is.
  */
 function stateFiles(dir: string, rel = "", files = new Map<string, Buffer>()): Map<string, Buffer> {
   if (!fs.existsSync(path.join(dir, rel))) return files;
   for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
-    if (e.name === ".git" || e.name === "node_modules") continue;
+    if (!rel && (e.name === ".git" || e.name === "node_modules")) continue;
     const file = rel ? `${rel}/${e.name}` : e.name;
     const at = path.join(dir, file);
-    if (e.isSymbolicLink()) files.set(file, Buffer.from(`link:${fs.readlinkSync(at)}`));
-    else if (e.isDirectory()) stateFiles(dir, file, files);
-    else files.set(file, fs.readFileSync(at));
+    if (e.isDirectory()) stateFiles(dir, file, files);
+    else if (e.isFile()) files.set(file, Buffer.concat([Buffer.from("file:"), fs.readFileSync(at)]));
+    else if (e.isSymbolicLink()) files.set(file, Buffer.from(`link:${fs.readlinkSync(at)}`));
+    else files.set(file, Buffer.from(`special:${e.isFIFO() ? "fifo" : e.isSocket() ? "socket" : "device"}`));
   }
   return files;
 }

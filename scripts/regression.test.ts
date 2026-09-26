@@ -5,7 +5,15 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { type Case, caseFiles, fileCases, PLAN, planCommitments, unnamedCases } from "./links.js";
-import { classify, judge, planLedger, regressionErrors, unreplayable, type Result } from "./regression.js";
+import {
+  classify,
+  judge,
+  planLedger,
+  regressionErrors,
+  regressionIdentity,
+  unreplayable,
+  type Result,
+} from "./regression.js";
 import { regressionCandidate, regressionTrusted } from "./test-data.js";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
@@ -349,6 +357,25 @@ test("a candidate named by a relative path runs with its own dependencies", () =
   } finally {
     process.chdir(cwd);
   }
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("a regression's identity changes with what it consists of, a link as a link, and with nothing else", () => {
+  const copy = () => regressionCandidate("kept");
+  const [plain, linked, other] = [copy(), copy(), copy()];
+  assert.equal(regressionIdentity(plain), regressionIdentity(linked));
+  // The same bytes as test data, once as files and once through a link, are different test data.
+  const target = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-target-"));
+  fs.writeFileSync(path.join(target, "value.txt"), "3\n");
+  fs.mkdirSync(path.join(plain, "test-data", "shared"), { recursive: true });
+  fs.writeFileSync(path.join(plain, "test-data", "shared", "value.txt"), "3\n");
+  fs.mkdirSync(path.join(linked, "test-data"), { recursive: true });
+  fs.symlinkSync(target, path.join(linked, "test-data", "shared"), "junction");
+  assert.notEqual(regressionIdentity(plain), regressionIdentity(linked));
+  // Code that is not part of the regression does not change it.
+  const before = regressionIdentity(other);
+  fs.writeFileSync(path.join(other, "src", "unrelated.ts"), "export {};\n");
+  assert.equal(regressionIdentity(other), before);
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
