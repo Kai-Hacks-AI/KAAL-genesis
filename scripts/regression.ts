@@ -177,22 +177,32 @@ export function classify(trusted: string, candidate: string, base: string): Clas
   return { retained, replaced, withdrawn, errors };
 }
 
-/** What fixes how a regression judges: the manifest and lockfile that select its runner, and the checker's own files. */
-const JUDGE = [
-  "package.json",
-  "package-lock.json",
-  "scripts/check-regression.ts",
-  "scripts/regression.ts",
-  "scripts/regression-reporter.ts",
-  "scripts/links.ts",
-  "scripts/state.ts",
-];
+/**
+ * What fixes how a regression judges: the manifest and lockfile that select
+ * its runner and packages, and all of the checker's own code, found from its
+ * entry points by following their relative imports, so nothing it runs is
+ * left out.
+ */
+export function judgeFiles(repo: string): string[] {
+  const found = new Set<string>();
+  const visit = (rel: string) => {
+    if (found.has(rel) || !fs.existsSync(path.join(repo, rel))) return;
+    found.add(rel);
+    const source = fs.readFileSync(path.join(repo, rel), "utf8");
+    for (const m of source.matchAll(/(?:from\s+|import\s*\(?\s*|new URL\(\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[1]!));
+      visit(fs.existsSync(path.join(repo, target)) ? target : target.replace(/\.js$/, ".ts"));
+    }
+  };
+  for (const entry of ["scripts/check-regression.ts", "scripts/regression-reporter.ts"]) visit(entry);
+  return ["package.json", "package-lock.json", ...[...found].sort()];
+}
 
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
  * content: its plan, the places its commitments are stated, its case files,
  * its test data, and what fixes how it judges (the manifest and lockfile that
- * select its runner, and the checker's own files), entry by entry: each
+ * select its runner, and all of the checker's own code), entry by entry: each
  * directory as one, each regular file by its bytes and whether it may be
  * executed, each link by its target, anything else by its kind. Test data, in
  * a `test-data` directory or beside the cases, whatever its name, is taken
@@ -224,7 +234,7 @@ export function regressionIdentity(repo: string): string {
   }
   for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
   // How it judges is part of the regression too: the runner its install selects, and the checker's own files.
-  for (const file of JUDGE) add(file);
+  for (const file of judgeFiles(repo)) add(file);
   // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
   const hash = createHash("sha256");
   for (const [file, bytes] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {

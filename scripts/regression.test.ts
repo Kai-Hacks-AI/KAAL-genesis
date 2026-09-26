@@ -8,6 +8,7 @@ import { type Case, caseFiles, fileCases, PLAN, planCommitments, unnamedCases } 
 import {
   classify,
   judge,
+  judgeFiles,
   planLedger,
   regressionErrors,
   regressionIdentity,
@@ -406,6 +407,14 @@ test("a regression's identity changes with what it consists of, a link as a link
   const beforeLock = regressionIdentity(relocked);
   fs.writeFileSync(path.join(relocked, "package-lock.json"), '{ "lockfileVersion": 3 }\n');
   assert.notEqual(regressionIdentity(relocked), beforeLock);
+  // And the checker's own code, down to what it imports.
+  const rejudged = copy();
+  fs.mkdirSync(path.join(rejudged, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(rejudged, "scripts", "check-regression.ts"), 'import "./helper.js";\n');
+  fs.writeFileSync(path.join(rejudged, "scripts", "helper.ts"), "export const rule = 1;\n");
+  const beforeHelper = regressionIdentity(rejudged);
+  fs.writeFileSync(path.join(rejudged, "scripts", "helper.ts"), "export const rule = 2;\n");
+  assert.notEqual(regressionIdentity(rejudged), beforeHelper);
   // And whether test data may be executed, which the replay keeps.
   if (process.platform !== "win32") {
     const runnable = copy();
@@ -430,6 +439,8 @@ test("KAAL's own plan states a place for every commitment and the accepted regre
   assert.equal(planCommitments(plan).length, [...plan.matchAll(/^\d+\. /gm)].length);
   assert.match(planLedger(plan).base ?? "", /^[0-9a-f]{64}$/);
   assert.equal(unreplayable(REPO), undefined);
+  // What judges includes everything the checker imports, such as how BRAIN is read.
+  assert.ok(judgeFiles(REPO).includes("skills/using-brain/scripts/brain.ts"));
   assert.deepEqual(unnamedCases(REPO), []);
 });
 
