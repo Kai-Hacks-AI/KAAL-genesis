@@ -438,6 +438,19 @@ test("a regression's identity changes with what it consists of, a link as a link
     fs.symlinkSync(Buffer.from([0x61, 0x80]), path.join(raw, "test-data", "to"));
     fs.symlinkSync(Buffer.from([0x61, 0x81]), path.join(rawer, "test-data", "to"));
     assert.notEqual(regressionIdentity(raw), regressionIdentity(rawer));
+    // So is test data whose name is not UTF-8: it is known by its own name, and what it holds is part of it.
+    const odd = copy();
+    fs.mkdirSync(path.join(odd, "test-data"), { recursive: true });
+    const oddFile = Buffer.concat([Buffer.from(path.join(odd, "test-data", "x")), Buffer.from([0x80])]);
+    fs.writeFileSync(oddFile, "1\n");
+    const beforeOdd = regressionIdentity(odd);
+    fs.writeFileSync(oddFile, "2\n");
+    assert.notEqual(regressionIdentity(odd), beforeOdd);
+    // The replay copies it by name, which it has none of, so such a regression is refused.
+    assert.equal(
+      unreplayable(odd),
+      "the accepted regression's inputs have names that are not UTF-8 (test-data/x\ufffd)",
+    );
   }
   // And the checker's own code, down to what it imports.
   const rejudged = copy();

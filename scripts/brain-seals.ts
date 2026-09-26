@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
-import { entryAt, entryBytes } from "./state.js";
+import { entriesIn, entryAt, entryBytes } from "./state.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
 import {
   checkChain,
@@ -111,18 +111,18 @@ export type Change = { status: "A" | "M" | "D"; file: string };
 
 /**
  * Every entry of `dir` but directories, by posix path relative to it, as bytes
- * (see state.ts). A directory that does not exist has none. Git's own `.git`
+ * (see state.ts), each name known as state.ts knows it, even one not UTF-8. A directory that does not exist has none. Git's own `.git`
  * and installed `node_modules` at the top of the state are not part of it; a
  * directory of either name anywhere below is.
  */
-function stateFiles(dir: string, rel = "", files = new Map<string, Buffer>()): Map<string, Buffer> {
-  if (!fs.existsSync(path.join(dir, rel))) return files;
-  for (const name of fs.readdirSync(path.join(dir, rel))) {
+function stateFiles(dir: string | Buffer, rel = "", files = new Map<string, Buffer>()): Map<string, Buffer> {
+  if (!fs.existsSync(dir)) return files;
+  for (const { name, at } of entriesIn(dir)) {
     if (!rel && (name === ".git" || name === "node_modules")) continue;
     const file = rel ? `${rel}/${name}` : name;
-    const entry = entryAt(path.join(dir, file));
+    const entry = entryAt(at);
     if (!entry) continue;
-    if (entry.kind === "directory") stateFiles(dir, file, files);
+    if (entry.kind === "directory") stateFiles(at, file, files);
     else files.set(file, entryBytes(entry));
   }
   return files;

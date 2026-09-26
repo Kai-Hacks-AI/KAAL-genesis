@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 
 /**
  * What one entry of a state of KAAL's files is, read from the entry itself:
@@ -11,7 +12,7 @@ import fs from "node:fs";
 export type Entry = { kind: "directory" | "file" | "executable" | "link" | "fifo" | "special"; content: Buffer };
 
 /** The entry at `at`, or undefined if there is none. */
-export function entryAt(at: string): Entry | undefined {
+export function entryAt(at: string | Buffer): Entry | undefined {
   let stat: fs.Stats;
   try {
     stat = fs.lstatSync(at);
@@ -20,11 +21,27 @@ export function entryAt(at: string): Entry | undefined {
   }
   if (stat.isDirectory()) return { kind: "directory", content: Buffer.alloc(0) };
   if (stat.isSymbolicLink()) return { kind: "link", content: fs.readlinkSync(at, { encoding: "buffer" }) };
-  if (stat.isFile()) return { kind: stat.mode & 0o111 ? "executable" : "file", content: fs.readFileSync(at) };
+  // Whether its owner may execute it, as Git and a checkout record it.
+  if (stat.isFile()) return { kind: stat.mode & 0o100 ? "executable" : "file", content: fs.readFileSync(at) };
   return { kind: stat.isFIFO() ? "fifo" : "special", content: Buffer.alloc(0) };
 }
 
 /** An entry as bytes: its kind and content, framed so no two different entries read alike. */
 export function entryBytes(entry: Entry): Buffer {
   return Buffer.concat([Buffer.from(`${entry.kind}:${entry.content.length}:`), entry.content]);
+}
+
+/**
+ * The entries of the directory at `dir`, each by the path to read it at, its
+ * name read as bytes so no name is lost, and the name to know it by: the name
+ * itself, or, for one that is not UTF-8, its readable part, a NUL, which no
+ * name can hold, and its bytes in hex, so no two names are known alike.
+ */
+export function entriesIn(dir: string | Buffer): { name: string; at: Buffer }[] {
+  const base = Buffer.isBuffer(dir) ? dir : Buffer.from(dir, "utf8");
+  return fs.readdirSync(base, { encoding: "buffer" }).map((raw) => {
+    const text = raw.toString("utf8");
+    const name = Buffer.from(text, "utf8").equals(raw) ? text : `${text}\0${raw.toString("hex")}`;
+    return { name, at: Buffer.concat([base, Buffer.from(path.sep), raw]) };
+  });
 }

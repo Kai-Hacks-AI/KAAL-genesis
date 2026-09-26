@@ -280,4 +280,20 @@ test("a file that only becomes executable has changed", { skip: process.platform
   for (const dir of [before, after]) fs.writeFileSync(path.join(dir, "run.sh"), "echo\n");
   fs.chmodSync(path.join(after, "run.sh"), 0o755);
   assert.deepEqual(stateChanges(before, after), [{ status: "M", file: "run.sh" }]);
+  // Whether it is executable is whether its owner may execute it, as a checkout records it.
+  fs.chmodSync(path.join(before, "run.sh"), 0o755);
+  fs.chmodSync(path.join(after, "run.sh"), 0o655);
+  assert.deepEqual(stateChanges(before, after), [{ status: "M", file: "run.sh" }]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+test("an entry whose name is not UTF-8 is compared by its own name", { skip: process.platform === "win32" }, () => {
+  const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
+  const [before, after] = [state(), state()];
+  const named = (dir: string, byte: number) => Buffer.concat([Buffer.from(`${dir}/x`), Buffer.from([byte])]);
+  fs.writeFileSync(named(before, 0x80), "same\n");
+  fs.writeFileSync(named(after, 0x80), "same\n");
+  assert.deepEqual(stateChanges(before, after), []);
+  fs.writeFileSync(named(after, 0x81), "new\n");
+  assert.deepEqual(stateChanges(before, after), [{ status: "A", file: "x\ufffd\u00007881" }]);
 });

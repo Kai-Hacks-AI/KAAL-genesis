@@ -16,7 +16,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
-import { type Entry, entryAt, entryBytes } from "./state.js";
+import { type Entry, entriesIn, entryAt, entryBytes } from "./state.js";
 
 /**
  * KAAL's trusted regression: the accepted regression, a state of KAAL's
@@ -85,6 +85,10 @@ export function unreplayable(repo: string): string | undefined {
     return `the accepted regression's install takes packages other than from the registry as its lockfile pins them (${unpinned.join(", ")}), which its identity does not cover`;
   const escaping = outsideLinks(repo);
   if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
+  // The replay copies its inputs by name, and a name that is not UTF-8 has none it could be copied by.
+  const unnamed = [...regressionInputs(repo).keys()].filter((file) => file.includes("\0"));
+  if (unnamed.length)
+    return `the accepted regression's inputs have names that are not UTF-8 (${unnamed.map((f) => f.split("\0")[0]).join(", ")})`;
   const imported = checkerCode(repo).escaping;
   if (imported.length)
     return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;
@@ -251,11 +255,12 @@ export function regressionIdentity(repo: string): string {
 function regressionInputs(repo: string): Map<string, Entry> {
   const root = path.resolve(repo);
   const entries = new Map<string, Entry>();
-  const add = (rel: string) => {
-    const entry = entryAt(path.join(repo, rel));
+  // Each entry is read at its path as bytes, so a name that is not UTF-8 is read, and known, as it is.
+  const add = (rel: string, at: string | Buffer = path.join(repo, rel)) => {
+    const entry = entryAt(at);
     if (!entry || entries.has(rel)) return;
     entries.set(rel, entry);
-    if (entry.kind === "directory") for (const name of fs.readdirSync(path.join(repo, rel))) add(`${rel}/${name}`);
+    if (entry.kind === "directory") for (const { name, at: below } of entriesIn(at)) add(`${rel}/${name}`, below);
     // What a link inside the state points at is read through it, so it is part of the regression too.
     if (entry.kind === "link") {
       const target = path.relative(
@@ -272,7 +277,8 @@ function regressionInputs(repo: string): Map<string, Entry> {
     for (const place of planCommitments(plan))
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
-  for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
+  for (const file of caseFiles(repo)) add(file);
+  for (const [file, at] of dataOf(repo)) add(file, at);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
   for (const file of judgeFiles(repo)) add(file);
   return entries;
@@ -373,12 +379,13 @@ function isData(file: string, directory: boolean): boolean {
 }
 
 /** The test data and test-data loaders of a repository, outside its dependencies and Git's own files. */
-function dataOf(repo: string, dir = ""): string[] {
-  return fs.readdirSync(path.join(repo, dir), { withFileTypes: true }).flatMap((e) => {
-    const rel = dir ? `${dir}/${e.name}` : e.name;
+function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
+  return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
+    const rel = dir ? `${dir}/${name}` : name;
     if (rel === "node_modules" || rel === ".git") return [];
-    if (isData(rel, e.isDirectory())) return [rel];
-    return e.isDirectory() ? dataOf(repo, rel) : [];
+    const directory = fs.lstatSync(at).isDirectory();
+    if (isData(rel, directory)) return [[rel, at]];
+    return directory ? dataOf(at, rel) : [];
   });
 }
 
@@ -434,7 +441,7 @@ function runFiles(code: string, files: string[]): Result[] {
 export function runTrusted(trusted: string, candidate: string): Result[] {
   const code = scratchCopy(candidate, false);
   const files = caseFiles(trusted);
-  for (const rel of [...files, ...dataOf(trusted)]) {
+  for (const rel of [...files, ...dataOf(trusted).map(([rel]) => rel)]) {
     fs.rmSync(path.join(code, rel), { recursive: true, force: true });
     fs.mkdirSync(path.dirname(path.join(code, rel)), { recursive: true });
     fs.cpSync(path.join(trusted, rel), path.join(code, rel), { recursive: true, verbatimSymlinks: true });
