@@ -3,8 +3,8 @@ import fs from "node:fs";
 /**
  * What one entry of a state of KAAL's files is, read from the entry itself:
  * its kind, and what it holds. A regular file holds its bytes, and whether it
- * may be executed is part of its kind; a symbolic link holds its target, never
- * what it points at; a directory, a named pipe or anything else holds nothing
+ * may be executed is part of its kind; a symbolic link holds its target, byte for
+ * byte, never what it points at; a directory, a named pipe or anything else holds nothing
  * but its kind, so nothing but a regular file is ever opened. Every comparison
  * of states, and every identity taken from one, reads entries this one way.
  */
@@ -19,7 +19,7 @@ export function entryAt(at: string): Entry | undefined {
     return undefined;
   }
   if (stat.isDirectory()) return { kind: "directory", content: Buffer.alloc(0) };
-  if (stat.isSymbolicLink()) return { kind: "link", content: Buffer.from(fs.readlinkSync(at), "utf8") };
+  if (stat.isSymbolicLink()) return { kind: "link", content: fs.readlinkSync(at, { encoding: "buffer" }) };
   if (stat.isFile()) return { kind: stat.mode & 0o111 ? "executable" : "file", content: fs.readFileSync(at) };
   return { kind: stat.isFIFO() ? "fifo" : "special", content: Buffer.alloc(0) };
 }

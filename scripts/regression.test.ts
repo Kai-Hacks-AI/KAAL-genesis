@@ -431,6 +431,13 @@ test("a regression's identity changes with what it consists of, a link as a link
     const beforeDotted = regressionIdentity(dotted);
     fs.appendFileSync(path.join(dotted, "..package.json"), "\n");
     assert.notEqual(regressionIdentity(dotted), beforeDotted);
+    // A link's target is taken as its bytes, even ones that are not UTF-8, as the replay copies it.
+    const [raw, rawer] = [copy(), copy()];
+    fs.mkdirSync(path.join(raw, "test-data"), { recursive: true });
+    fs.mkdirSync(path.join(rawer, "test-data"), { recursive: true });
+    fs.symlinkSync(Buffer.from([0x61, 0x80]), path.join(raw, "test-data", "to"));
+    fs.symlinkSync(Buffer.from([0x61, 0x81]), path.join(rawer, "test-data", "to"));
+    assert.notEqual(regressionIdentity(raw), regressionIdentity(rawer));
   }
   // And the checker's own code, down to what it imports.
   const rejudged = copy();
@@ -459,7 +466,7 @@ test("a regression's identity changes with what it consists of, a link as a link
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
-test("a state whose judging depends on files outside it cannot be replayed: local packages, and links out of it", () => {
+test("a state whose judging depends on files outside it cannot be replayed: local packages, links out of it, and checker code imported from outside it", () => {
   const local = regressionCandidate("kept");
   const pkg = path.join(local, "package.json");
   fs.writeFileSync(
@@ -494,6 +501,17 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   // As a candidate, either would leave the next accepted regression unable to judge from its own files.
   assert.deepEqual(regressionErrors(regressionTrusted(), linked, BASE).slice(0, 1), [
     "as the next accepted regression, inputs link outside its state (test-data/shared)",
+  ]);
+  // So would a checker that imports code from outside its state, such as from the next candidate beside it.
+  const reaching = regressionCandidate("kept");
+  fs.mkdirSync(path.join(reaching, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(reaching, "scripts", "check-regression.ts"), 'import "../../change/evil.js";\n');
+  assert.equal(
+    unreplayable(reaching),
+    "the accepted regression's checker imports code outside its state (scripts/check-regression.ts: ../../change/evil.js)",
+  );
+  assert.deepEqual(regressionErrors(regressionTrusted(), reaching, BASE).slice(0, 1), [
+    "as the next accepted regression, checker imports code outside its state (scripts/check-regression.ts: ../../change/evil.js)",
   ]);
 });
 

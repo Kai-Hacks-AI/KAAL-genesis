@@ -78,12 +78,16 @@ export function unreplayable(repo: string): string | undefined {
   const empty = rest.filter((arg) => !fs.globSync(arg, { cwd: repo }).length);
   if (empty.length)
     return `the accepted regression's npm test names case files that do not exist (${empty.join(", ")})`;
-  // What judges must be in the state's files: an install from local packages, or a link out of the state, is not.
+  // What judges must be in the state's files: an install from local packages, a link out of the state, or checker code
+  // imported from outside it, is not.
   const unpinned = unpinnedPackages(repo);
   if (unpinned.length)
     return `the accepted regression's install takes packages other than from the registry as its lockfile pins them (${unpinned.join(", ")}), which its identity does not cover`;
   const escaping = outsideLinks(repo);
   if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
+  const imported = checkerCode(repo).escaping;
+  if (imported.length)
+    return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;
   return undefined;
 }
 
@@ -190,19 +194,31 @@ export function classify(trusted: string, candidate: string, base: string): Clas
  * relative imports. Code the checker loads any other way is not found here.
  */
 export function judgeFiles(repo: string): string[] {
+  // Everything that decides what the install puts in place: the manifest, either lockfile, and npm's own settings.
+  return ["package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc", ...checkerCode(repo).found];
+}
+
+/**
+ * The checker's own code, found from its entry points through their relative
+ * imports, and every such import that leads out of the state, as
+ * `file: specifier`: code there would run as part of the checker, but is no
+ * part of the state it judges with.
+ */
+function checkerCode(repo: string): { found: string[]; escaping: string[] } {
   const found = new Set<string>();
+  const escaping: string[] = [];
   const visit = (rel: string) => {
     if (found.has(rel) || !fs.existsSync(path.join(repo, rel))) return;
     found.add(rel);
     const source = fs.readFileSync(path.join(repo, rel), "utf8");
     for (const m of source.matchAll(/(?:from\s+|import\s*\(?\s*|new URL\(\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[1]!));
-      visit(fs.existsSync(path.join(repo, target)) ? target : target.replace(/\.js$/, ".ts"));
+      if (target === ".." || target.startsWith("../")) escaping.push(`${rel}: ${m[1]}`);
+      else visit(fs.existsSync(path.join(repo, target)) ? target : target.replace(/\.js$/, ".ts"));
     }
   };
   for (const entry of ["scripts/check-regression.ts", "scripts/regression-reporter.ts"]) visit(entry);
-  // Everything that decides what the install puts in place: the manifest, either lockfile, and npm's own settings.
-  return ["package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc", ...[...found].sort()];
+  return { found: [...found].sort(), escaping };
 }
 
 /**
