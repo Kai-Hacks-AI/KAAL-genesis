@@ -405,7 +405,7 @@ test("a regression's identity changes with what it consists of, a link as a link
   // And what selects the runner that judges: another lockfile is another regression.
   const relocked = copy();
   const beforeLock = regressionIdentity(relocked);
-  fs.writeFileSync(path.join(relocked, "package-lock.json"), '{ "lockfileVersion": 3 }\n');
+  fs.writeFileSync(path.join(relocked, "package-lock.json"), '{ "lockfileVersion": 3, "packages": { "": {} } }\n');
   assert.notEqual(regressionIdentity(relocked), beforeLock);
   // Including a lockfile that takes precedence over it, and npm's own settings.
   for (const file of ["npm-shrinkwrap.json", ".npmrc"]) {
@@ -520,6 +520,24 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   assert.deepEqual(regressionErrors(regressionTrusted(), linked, BASE).slice(0, 1), [
     "as the next accepted regression, inputs link outside its state (test-data/shared)",
   ]);
+  // A link that climbs out of the state and back in by the name its directory has today points elsewhere
+  // once the state is kept under another name, such as the accepted state beside the next candidate.
+  if (process.platform !== "win32") {
+    const reentering = regressionCandidate("kept");
+    fs.mkdirSync(path.join(reentering, "config"));
+    fs.writeFileSync(
+      path.join(reentering, "config", "package-lock.json"),
+      '{ "lockfileVersion": 3, "packages": { "": {} } }\n',
+    );
+    fs.symlinkSync(
+      `../${path.basename(reentering)}/config/package-lock.json`,
+      path.join(reentering, "package-lock.json"),
+    );
+    assert.equal(
+      unreplayable(reentering),
+      "the accepted regression's inputs link outside its state (package-lock.json)",
+    );
+  }
   // So would a checker that imports code from outside its state, such as from the next candidate beside it.
   const reaching = regressionCandidate("kept");
   fs.mkdirSync(path.join(reaching, "scripts"), { recursive: true });

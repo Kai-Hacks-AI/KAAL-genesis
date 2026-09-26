@@ -293,14 +293,24 @@ function regressionInputs(repo: string): Map<string, Entry> {
 /**
  * The links among a regression's inputs that point outside its state: the
  * replay keeps them, so what they point at could change how it judges while
- * nothing in the state, and so nothing in its identity, changes.
+ * nothing in the state, and so nothing in its identity, changes. Whether a
+ * link stays inside is read from its target alone, never from where the state
+ * is kept now: an absolute target, or one that climbs above the state's top
+ * even to come back into it by the name its directory has today, points
+ * elsewhere once the state is kept under another name.
  */
 function outsideLinks(repo: string): string[] {
-  const root = path.resolve(repo);
   return [...regressionInputs(repo)].flatMap(([file, entry]) => {
     if (entry.kind !== "link") return [];
-    const target = path.resolve(path.dirname(path.join(root, file)), entry.content.toString("utf8"));
-    return target === root || target.startsWith(root + path.sep) ? [] : [file];
+    const target = entry.content.toString("utf8");
+    if (path.posix.isAbsolute(target) || path.win32.isAbsolute(target)) return [file];
+    let depth = file.split("/").length - 1;
+    for (const segment of target.split(/[\\/]/)) {
+      if (segment === "..") depth--;
+      else if (segment && segment !== ".") depth++;
+      if (depth < 0) return [file];
+    }
+    return [];
   });
 }
 
