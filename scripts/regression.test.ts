@@ -424,6 +424,13 @@ test("a regression's identity changes with what it consists of, a link as a link
     const beforeTarget = regressionIdentity(through);
     fs.appendFileSync(path.join(through, "config", "package.json"), "\n");
     assert.notEqual(regressionIdentity(through), beforeTarget);
+    // Including a target whose name only begins with two dots, which is still inside the state.
+    const dotted = copy();
+    fs.renameSync(path.join(dotted, "package.json"), path.join(dotted, "..package.json"));
+    fs.symlinkSync("..package.json", path.join(dotted, "package.json"));
+    const beforeDotted = regressionIdentity(dotted);
+    fs.appendFileSync(path.join(dotted, "..package.json"), "\n");
+    assert.notEqual(regressionIdentity(dotted), beforeDotted);
   }
   // And the checker's own code, down to what it imports.
   const rejudged = copy();

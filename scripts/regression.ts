@@ -185,9 +185,9 @@ export function classify(trusted: string, candidate: string, base: string): Clas
 
 /**
  * What fixes how a regression judges: everything that decides what its
- * install puts in place, which selects its runner and packages, and all of
- * the checker's own code, found from its entry points by following their
- * relative imports, so nothing it runs is left out.
+ * install puts in place, which selects its runner and packages, and the
+ * checker's own code, found from its entry points by following their
+ * relative imports. Code the checker loads any other way is not found here.
  */
 export function judgeFiles(repo: string): string[] {
   const found = new Set<string>();
@@ -209,10 +209,10 @@ export function judgeFiles(repo: string): string[] {
  * The identity of the regression a state of KAAL's files holds, from its own
  * content: its plan, the places its commitments are stated, its case files,
  * its test data, and what fixes how it judges (everything that decides what
- * its install puts in place, and the checker's code, found through its static
- * imports), entry by entry: each directory as one, each regular file by its
- * bytes and whether it may be executed, each link by its target and what it
- * points at inside the state, anything else by its kind. Every entry is taken
+ * its install puts in place, and the checker's code, found through its
+ * relative imports), entry by entry: each directory as one, each regular file
+ * by its bytes and whether it may be executed, each link by its target and
+ * what it points at inside the state, anything else by its kind. Every entry is taken
  * byte for byte, as the replay copies it, so a checkout that rewrites line
  * endings has another identity. Any change to what the regression consists of
  * changes it; nothing outside the files, such as where they are kept or how
@@ -246,7 +246,8 @@ function regressionInputs(repo: string): Map<string, Entry> {
         root,
         path.resolve(path.dirname(path.join(root, rel)), entry.content.toString("utf8")),
       );
-      if (target && !target.startsWith("..") && !path.isAbsolute(target)) add(target.split(path.sep).join("/"));
+      const up = target === ".." || target.startsWith(`..${path.sep}`);
+      if (target && !up && !path.isAbsolute(target)) add(target.split(path.sep).join("/"));
     }
   };
   if (fs.existsSync(path.join(repo, PLAN))) {
