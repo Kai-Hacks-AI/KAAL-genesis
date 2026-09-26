@@ -9,5 +9,5 @@ skills/testing/test-data/** -text
 test-data/** -text
 # Why: brain/learning/genesis/26/09/25/01/nodes/using-skills.md
 skills/*/SKILL.md -text
-# Why: scripts/genesis.test.ts
+# Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
 AGENTS.md -text

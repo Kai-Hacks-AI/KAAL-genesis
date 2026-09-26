@@ -31,7 +31,7 @@ function born(): string {
   return repo;
 }
 
-// Why: scripts/genesis.test.ts
+// Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
 test("Genesis produces exactly the root AGENTS.md, brain/AGENTS.md and the Genesis learning, nothing else", () => {
   assert.deepEqual(Object.keys(files(born())), [
     "AGENTS.md",
@@ -40,7 +40,7 @@ test("Genesis produces exactly the root AGENTS.md, brain/AGENTS.md and the Genes
   ]);
 });
 
-// Why: scripts/genesis.test.ts
+// Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
 test("everything Genesis produces is byte-identical to what is committed", () => {
   const produced = files(born());
   const committed = Object.fromEntries(
@@ -49,7 +49,7 @@ test("everything Genesis produces is byte-identical to what is committed", () =>
   assert.deepEqual(produced, committed);
 });
 
-// Why: scripts/genesis.test.ts
+// Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
 test("the committed Genesis learning holds exactly the nodes Genesis births", () => {
   const repo = born();
   assert.deepEqual(files(repo, path.join(repo, GENESIS)), files(REPO, path.join(REPO, GENESIS)));
