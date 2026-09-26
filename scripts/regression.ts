@@ -208,28 +208,24 @@ export function judgeFiles(repo: string): string[] {
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
  * content: its plan, the places its commitments are stated, its case files,
- * its test data, and what fixes how it judges (the manifest and lockfile that
- * select its runner, and all of the checker's own code), entry by entry: each
- * directory as one, each regular file by its bytes and whether it may be
- * executed, each link by its target, anything else by its kind. Test data, in
- * a `test-data` directory or beside the cases, whatever its name, is taken
- * byte for byte, as the replay copies it; any other text reads the same
- * whichever line endings a checkout gave it. Any change to what the
- * regression consists of changes it; nothing outside the files, such as where
- * they are kept or how they are versioned, does. A candidate names the
- * regression it derives from by this identity.
+ * its test data, and what fixes how it judges (everything that decides what
+ * its install puts in place, and the checker's code, found through its static
+ * imports), entry by entry: each directory as one, each regular file by its
+ * bytes and whether it may be executed, each link by its target and what it
+ * points at inside the state, anything else by its kind. Every entry is taken
+ * byte for byte, as the replay copies it, so a checkout that rewrites line
+ * endings has another identity. Any change to what the regression consists of
+ * changes it; nothing outside the files, such as where they are kept or how
+ * they are versioned, does. A candidate names the regression it derives from
+ * by this identity. The identity does not protect the judgement: what does is
+ * that the checker judging is always the accepted state's own.
  */
 export function regressionIdentity(repo: string): string {
   const hash = createHash("sha256");
   // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
   for (const [file, entry] of [...regressionInputs(repo)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    // Test data exactly as the replay copies it; everything else is text that reads the same whatever its line endings.
-    const text = (entry.kind === "file" || entry.kind === "executable") && !isData(file, false);
-    const content = text
-      ? Buffer.from(entry.content.toString("latin1").replace(/\r\n/g, "\n"), "latin1")
-      : entry.content;
     const name = Buffer.from(file, "utf8");
-    const bytes = entryBytes({ ...entry, content });
+    const bytes = entryBytes(entry);
     hash.update(`${name.length}:`).update(name).update(`${bytes.length}:`).update(bytes);
   }
   return hash.digest("hex");

@@ -440,11 +440,11 @@ test("a regression's identity changes with what it consists of, a link as a link
     fs.chmodSync(path.join(runnable, "scripts", "fixtures", "sum.txt"), 0o755);
     assert.notEqual(regressionIdentity(runnable), plainMode);
   }
-  // Text a checkout may give either line ending reads the same.
+  // Every entry is taken byte for byte, so a case whose line endings differ is another regression.
   const [unix, windows] = [copy(), copy()];
-  const plan = (repo: string) => path.join(repo, PLAN);
-  fs.writeFileSync(plan(windows), fs.readFileSync(plan(windows), "utf8").replace(/\n/g, "\r\n"));
-  assert.equal(regressionIdentity(unix), regressionIdentity(windows));
+  const cases = (repo: string) => path.join(repo, "scripts", "cases.test.ts");
+  fs.writeFileSync(cases(windows), fs.readFileSync(cases(windows), "utf8").replace(/\n/g, "\r\n"));
+  assert.notEqual(regressionIdentity(unix), regressionIdentity(windows));
   // Code that is not part of the regression does not change it.
   const before = regressionIdentity(other);
   fs.writeFileSync(path.join(other, "src", "unrelated.ts"), "export {};\n");
