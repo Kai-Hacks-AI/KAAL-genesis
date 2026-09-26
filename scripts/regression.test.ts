@@ -438,6 +438,11 @@ test("a regression's identity changes with what it consists of, a link as a link
     fs.symlinkSync(Buffer.from([0x61, 0x80]), path.join(raw, "test-data", "to"));
     fs.symlinkSync(Buffer.from([0x61, 0x81]), path.join(rawer, "test-data", "to"));
     assert.notEqual(regressionIdentity(raw), regressionIdentity(rawer));
+    // But such a target cannot be followed by name, so what it points at could change unseen: it is refused.
+    assert.equal(
+      unreplayable(raw),
+      "the accepted regression's inputs have names or link targets that are not UTF-8 (test-data/to)",
+    );
     // So is test data whose name is not UTF-8: it is known by its own name, and what it holds is part of it.
     const odd = copy();
     fs.mkdirSync(path.join(odd, "test-data"), { recursive: true });
@@ -449,7 +454,7 @@ test("a regression's identity changes with what it consists of, a link as a link
     // The replay copies it by name, which it has none of, so such a regression is refused.
     assert.equal(
       unreplayable(odd),
-      "the accepted regression's inputs have names that are not UTF-8 (test-data/x\ufffd)",
+      "the accepted regression's inputs have names or link targets that are not UTF-8 (test-data/x\ufffd)",
     );
   }
   // And the checker's own code, down to what it imports.

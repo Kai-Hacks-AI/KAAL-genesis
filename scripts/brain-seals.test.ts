@@ -246,7 +246,20 @@ test("compares two states of a directory file by file, from the files alone", ()
   assert.deepEqual(stateChanges(before, path.join(before, "missing")), [
     { status: "D", file: "changed.txt" },
     { status: "D", file: "gone.txt" },
+    { status: "D", file: "kept" },
     { status: "D", file: "kept/same.txt" },
+  ]);
+  // A directory is an entry too: one added where seal state belongs is seal state written, even empty.
+  fs.mkdirSync(path.join(after, "brain", "learning", "misc", "seal.json"), { recursive: true });
+  const sealDir = stateChanges(before, after).filter((c) => c.file.startsWith("brain"));
+  assert.deepEqual(sealDir, [
+    { status: "A", file: "brain" },
+    { status: "A", file: "brain/learning" },
+    { status: "A", file: "brain/learning/misc" },
+    { status: "A", file: "brain/learning/misc/seal.json" },
+  ]);
+  assert.deepEqual(sealStateChanges(sealDir), [
+    "brain/learning/misc/seal.json: seal state may only be written by sealing on main (A)",
   ]);
 });
 
@@ -258,7 +271,13 @@ test("compares what each entry is without opening anything but a regular file, a
   fs.mkdirSync(path.join(after, "brain", "learning", "genesis", "node_modules"), { recursive: true });
   fs.writeFileSync(path.join(after, "brain", "learning", "genesis", "node_modules", "seal.json"), "{}\n");
   const changes = stateChanges(before, after);
-  assert.deepEqual(changes, [{ status: "A", file: "brain/learning/genesis/node_modules/seal.json" }]);
+  assert.deepEqual(changes, [
+    { status: "A", file: "brain" },
+    { status: "A", file: "brain/learning" },
+    { status: "A", file: "brain/learning/genesis" },
+    { status: "A", file: "brain/learning/genesis/node_modules" },
+    { status: "A", file: "brain/learning/genesis/node_modules/seal.json" },
+  ]);
   assert.deepEqual(sealStateChanges(changes), [
     "brain/learning/genesis/node_modules/seal.json: seal state may only be written by sealing on main (A)",
   ]);

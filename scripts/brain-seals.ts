@@ -106,12 +106,14 @@ export function sealState(file: string, root = ROOT): SealState | undefined {
   return unit.length === 5 && unit.slice(1).every((part) => LEARNING.test(part)) ? "unit-seal" : "misplaced-seal";
 }
 
-/** A file that differs between two states of a directory: added, modified or deleted in the second. */
+/** An entry, a file or a directory, that differs between two states of a directory: added, modified or deleted in the second. */
 export type Change = { status: "A" | "M" | "D"; file: string };
 
 /**
- * Every entry of `dir` but directories, by posix path relative to it, as bytes
- * (see state.ts), each name known as state.ts knows it, even one not UTF-8. A directory that does not exist has none. Git's own `.git`
+ * Every entry of `dir`, by posix path relative to it, as bytes (see
+ * state.ts), each name known as state.ts knows it, even one not UTF-8. A
+ * directory is an entry too, so one added where seal state belongs, or left
+ * empty, is seen. A directory that does not exist has none. Git's own `.git`
  * and installed `node_modules` at the top of the state are not part of it; a
  * directory of either name anywhere below is.
  */
@@ -122,8 +124,8 @@ function stateFiles(dir: string | Buffer, rel = "", files = new Map<string, Buff
     const file = rel ? `${rel}/${name}` : name;
     const entry = entryAt(at);
     if (!entry) continue;
+    files.set(file, entryBytes(entry));
     if (entry.kind === "directory") stateFiles(at, file, files);
-    else files.set(file, entryBytes(entry));
   }
   return files;
 }
@@ -144,8 +146,8 @@ function changesOf(changes: Change[] | string): Change[] {
 }
 
 /**
- * How `after` differs from `before`, two states of the same directory, file
- * by file and byte for byte, by posix path relative to them. Nothing but the
+ * How `after` differs from `before`, two states of the same directory, entry
+ * by entry and byte for byte, by posix path relative to them. Nothing but the
  * two directories is consulted: no history, no index, no version control.
  */
 export function stateChanges(before: string, after: string): Change[] {

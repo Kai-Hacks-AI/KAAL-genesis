@@ -86,9 +86,12 @@ export function unreplayable(repo: string): string | undefined {
   const escaping = outsideLinks(repo);
   if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
   // The replay copies its inputs by name, and a name that is not UTF-8 has none it could be copied by.
-  const unnamed = [...regressionInputs(repo).keys()].filter((file) => file.includes("\0"));
+  // Nor has a link whose target is not UTF-8 a target that could be followed by name.
+  const unnamed = [...regressionInputs(repo)]
+    .filter(([file, entry]) => file.includes("\0") || (entry.kind === "link" && !utf8(entry.content)))
+    .map(([file]) => file);
   if (unnamed.length)
-    return `the accepted regression's inputs have names that are not UTF-8 (${unnamed.map((f) => f.split("\0")[0]).join(", ")})`;
+    return `the accepted regression's inputs have names or link targets that are not UTF-8 (${unnamed.map((f) => f.split("\0")[0]).join(", ")})`;
   const imported = checkerCode(repo).escaping;
   if (imported.length)
     return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;
@@ -250,6 +253,9 @@ export function regressionIdentity(repo: string): string {
   }
   return hash.digest("hex");
 }
+
+/** Whether `bytes` are UTF-8, read back exactly as they are. */
+const utf8 = (bytes: Buffer) => Buffer.from(bytes.toString("utf8"), "utf8").equals(bytes);
 
 /** Every entry a regression consists of, by posix path: what its identity is taken from. */
 function regressionInputs(repo: string): Map<string, Entry> {
