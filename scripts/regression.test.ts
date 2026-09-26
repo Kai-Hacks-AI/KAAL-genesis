@@ -92,6 +92,13 @@ test("a commitment the candidate adds is refused if BRAIN already supersedes it"
 });
 
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+test("a commitment whose place states nothing is refused", () => {
+  assert.deepEqual(classified("misplaced").errors, [
+    "brain/learning/k/26/01/01/01/nodes/parting.md: the plan names it, but nothing is stated there",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
 test("the plan's own account of what it replaces and withdraws is checked against BRAIN, never trusted", () => {
   assert.deepEqual(classified("unledgered").errors, [
     `${PLAN}: says it withdraws [], but BRAIN shows [${JSON.stringify([GREETING, GREETING_LATER])}]`,

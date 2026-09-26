@@ -222,6 +222,9 @@ export function classify(trusted: string, candidate: string, base: string): Clas
   // Whatever the plan names, retained or new, must be what KAAL means now: the next main's
   // plan must not name a commitment BRAIN has already superseded.
   for (const place of kept) {
+    // A place is where the commitment is stated, so it must exist; a glob, such as each skill's SKILL.md, must match.
+    if (!fs.globSync(place, { cwd: candidate }).length)
+      errors.push(`${place}: the plan names it, but nothing is stated there`);
     const node = nodes.find((n) => n.place === place);
     const successor = node && current(node);
     if (successor) errors.push(`${place}: the plan names it, but ${successor.place} supersedes it`);
