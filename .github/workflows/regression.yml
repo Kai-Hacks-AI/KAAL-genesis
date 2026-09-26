@@ -114,8 +114,12 @@ jobs:
         working-directory: trusted
       - run: npm ci --ignore-scripts
         working-directory: change
-      - run: npm run regression:check -- ../change
+      # Run directly, not through npm, so no npm configuration (such as an
+      # .npmrc's node-options) can reach the checker.
+      - run: ./node_modules/.bin/tsx scripts/check-regression.ts ../change
         working-directory: trusted
+        env:
+          NODE_OPTIONS: ""
 
   report:
     name: regression-report-linux

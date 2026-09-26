@@ -317,10 +317,12 @@ function runFiles(code: string, files: string[]): Result[] {
   spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...files], {
     cwd: code,
     // A run started from within another test run would report to that run instead.
-    // No npm_* variable either: they describe whichever package's script started this run, not the one replayed.
+    // No npm_* variable either: they describe whichever package's script started this run, not the one
+    // replayed. No NODE_OPTIONS: it could preload anything into the cases.
     env: {
       ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toLowerCase().startsWith("npm_"))),
       NODE_TEST_CONTEXT: undefined,
+      NODE_OPTIONS: undefined,
       KAAL_REGRESSION_RESULTS: out,
     },
     stdio: "ignore",
