@@ -292,6 +292,12 @@ test("a candidate that could not judge the next change once merged is refused be
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("shell-expanded"), BASE).slice(0, 1), [
     'as the next main, npm test is not "tsx --test" with case files only ("tsx --test $npm_package_name.test.ts scripts/*.test.ts"), so its cases cannot be run as main runs them',
   ]);
+  assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("escaping"), BASE).slice(0, 1), [
+    "as the next main, npm test names case files outside its checkout (../repo/extra/*.test.ts)",
+  ]);
+  assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("nameless"), BASE).slice(0, 1), [
+    "as the next main, npm test names case files that do not exist (extra/*.test.ts)",
+  ]);
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("hooked"), BASE).slice(0, 1), [
     "as the next main, npm ci or npm test runs pretest, which its cases' replay would not",
   ]);

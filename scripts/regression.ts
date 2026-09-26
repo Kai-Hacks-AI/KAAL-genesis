@@ -107,8 +107,15 @@ export function unreplayable(repo: string): string | undefined {
   const [runner, flag, ...rest] = testArgs(repo);
   // Only plain paths and globs: anything a shell could expand ($, `, ~, braces) might name other files on another platform.
   const extra = rest.filter((arg) => !/^[\w.*][\w./*-]*\.test\.ts$/.test(arg));
-  if (runner === "tsx" && flag === "--test" && !extra.length) return undefined;
-  return `main's npm test is not "tsx --test" with case files only ("${testArgs(repo).join(" ")}"), so its cases cannot be run as main runs them`;
+  if (runner !== "tsx" || flag !== "--test" || extra.length)
+    return `main's npm test is not "tsx --test" with case files only ("${testArgs(repo).join(" ")}"), so its cases cannot be run as main runs them`;
+  // Inside the checkout, by any name it is checked out under: no . or .. segment.
+  const outside = rest.filter((arg) => arg.split("/").some((segment) => segment === "." || segment === ".."));
+  if (outside.length) return `main's npm test names case files outside its checkout (${outside.join(", ")})`;
+  // A path or glob that names nothing would be dropped without a trace.
+  const empty = rest.filter((arg) => !fs.globSync(arg, { cwd: repo }).length);
+  if (empty.length) return `main's npm test names case files that do not exist (${empty.join(", ")})`;
+  return undefined;
 }
 
 /**

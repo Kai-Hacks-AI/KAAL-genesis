@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "scripts": { "test": "tsx --test ../repo/extra/*.test.ts scripts/*.test.ts" }
+}
