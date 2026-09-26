@@ -92,6 +92,22 @@ test("a commitment the candidate adds is refused if BRAIN already supersedes it"
 });
 
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+test("a commitment whose place links out of the repository is refused", () => {
+  const candidate = regressionCandidate("kept");
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-"));
+  fs.writeFileSync(path.join(outside, "linked.ts"), "export {};\n");
+  fs.symlinkSync(outside, path.join(candidate, "src", "out"), "junction");
+  const plan = path.join(candidate, PLAN);
+  fs.writeFileSync(
+    plan,
+    fs.readFileSync(plan, "utf8").replace(/^2\. .*$/m, "$&\n3. Linked. Stated in `src/out/linked.ts`."),
+  );
+  assert.deepEqual(classify(regressionTrusted(), candidate, BASE).errors, [
+    "src/out/linked.ts: the plan names it, but it is not a place inside the repository",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
 test("a commitment whose place states nothing is refused", () => {
   assert.deepEqual(classified("misplaced").errors, [
     "brain/learning/k/26/01/01/01/nodes/parting.md: the plan names it, but nothing is stated there",
@@ -103,6 +119,7 @@ test("a commitment whose place is outside the repository is refused, even where 
   assert.deepEqual(classified("outside").errors, [
     "/etc/passwd: the plan names it, but it is not a place inside the repository",
     "../trusted/src/add.ts: the plan names it, but it is not a place inside the repository",
+    "{/etc/passwd,missing}: the plan names it, but it is not a place inside the repository",
   ]);
 });
 

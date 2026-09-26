@@ -222,12 +222,23 @@ export function classify(trusted: string, candidate: string, base: string): Clas
   // Whatever the plan names, retained or new, must be what KAAL means now: the next main's
   // plan must not name a commitment BRAIN has already superseded.
   for (const place of kept) {
-    // A place is where the commitment is stated, inside the repository, so it must exist there; a glob, such as
-    // each skill's SKILL.md, must match.
-    if (path.isAbsolute(place) || /\\|^[a-z]:/i.test(place) || place.split("/").some((s) => s === "." || s === ".."))
+    // A place is where the commitment is stated, inside the repository, so it must exist there. Only plain path
+    // segments are accepted, with * the one wildcard (as in each skill's SKILL.md), and every file it names must
+    // really be a file inside the repository, not a link out of it.
+    const root = fs.realpathSync(candidate);
+    const inside = (file: string) => {
+      try {
+        const real = fs.realpathSync(path.join(candidate, file));
+        return real.startsWith(root + path.sep) && fs.statSync(real).isFile();
+      } catch {
+        return false; // A link to nothing states nothing.
+      }
+    };
+    const plain = /^[\w*-][\w.*-]*(\/[\w*-][\w.*-]*)*$/.test(place) && !place.split("/").includes("..");
+    const files = plain ? fs.globSync(place, { cwd: candidate }) : [];
+    if (!plain || !files.every(inside))
       errors.push(`${place}: the plan names it, but it is not a place inside the repository`);
-    else if (!fs.globSync(place, { cwd: candidate }).length)
-      errors.push(`${place}: the plan names it, but nothing is stated there`);
+    else if (!files.length) errors.push(`${place}: the plan names it, but nothing is stated there`);
     const node = nodes.find((n) => n.place === place);
     const successor = node && current(node);
     if (successor) errors.push(`${place}: the plan names it, but ${successor.place} supersedes it`);
