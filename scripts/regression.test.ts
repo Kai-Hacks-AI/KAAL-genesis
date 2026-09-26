@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -79,7 +80,14 @@ test("a replacement no case of the candidate points at is refused", () => {
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
 test("a plan that still names a commitment BRAIN has superseded is refused", () => {
   assert.deepEqual(classified("superseded-kept").errors, [
-    `${GREETING}: the plan still names it, but ${GREETING_LATER} supersedes it`,
+    `${GREETING}: the plan names it, but ${GREETING_LATER} supersedes it`,
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+test("a commitment the candidate adds is refused if BRAIN already supersedes it", () => {
+  assert.deepEqual(classified("added-superseded").errors, [
+    "brain/learning/k/26/01/03/01/nodes/farewell.md: the plan names it, but brain/learning/k/26/01/04/01/nodes/farewell.md supersedes it",
   ]);
 });
 
@@ -299,6 +307,29 @@ test("a candidate that could not judge the next change once merged is refused be
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("aliased"), BASE), [
     'as the next main, scripts/cases.test.ts: "adds zero" runs but is not named',
   ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+test("a candidate named by a relative path runs with its own dependencies", () => {
+  const candidate = regressionCandidate("kept");
+  const word = path.join(candidate, "node_modules", "kaal-word");
+  fs.mkdirSync(word, { recursive: true });
+  fs.writeFileSync(path.join(word, "package.json"), '{ "name": "kaal-word", "type": "module", "main": "index.js" }');
+  fs.writeFileSync(path.join(word, "index.js"), 'export const word = "hello";\n');
+  fs.writeFileSync(
+    path.join(candidate, "scripts", "word.test.ts"),
+    'import assert from "node:assert/strict";\nimport test from "node:test";\nimport { word } from "kaal-word";\n\ntest("says a word", () => {\n  assert.equal(word, "hello");\n});\n',
+  );
+  // Named from a directory of another depth than the scratch copies', as main's checkout is in CI.
+  const from = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-cwd-")), "a", "b");
+  fs.mkdirSync(from, { recursive: true });
+  const cwd = process.cwd();
+  process.chdir(from);
+  try {
+    assert.deepEqual(regressionErrors(regressionTrusted(), path.relative(from, candidate), BASE), []);
+  } finally {
+    process.chdir(cwd);
+  }
 });
 
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md

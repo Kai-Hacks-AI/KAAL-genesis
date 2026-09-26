@@ -176,7 +176,8 @@ export type Classification = {
  * name, in the same lineage, is what KAAL means now. If the candidate's plan
  * names that node, the commitment is replaced by it; if not, it is withdrawn
  * by it. A commitment stated outside BRAIN has no succession, so it can only
- * be retained. Anything else is a silent escape. The plan's own account of
+ * be retained. Anything else is a silent escape. Every place the candidate's
+ * plan names, retained or added, must not be superseded already. The plan's own account of
  * what it replaces and withdraws is only checked against this, never trusted.
  */
 export function classify(trusted: string, candidate: string, base: string): Classification {
@@ -200,7 +201,6 @@ export function classify(trusted: string, candidate: string, base: string): Clas
     const node = nodes.find((n) => n.place === place);
     const successor = node && current(node);
     if (kept.has(place)) {
-      if (successor) errors.push(`${place}: the plan still names it, but ${successor.place} supersedes it`);
       retained.push(place);
     } else if (!successor) {
       errors.push(`${place}: silent escape: the plan no longer names it, and nothing in BRAIN supersedes it`);
@@ -211,6 +211,13 @@ export function classify(trusted: string, candidate: string, base: string): Clas
     } else {
       withdrawn.set(place, successor.place);
     }
+  }
+  // Whatever the plan names, retained or new, must be what KAAL means now: the next main's
+  // plan must not name a commitment BRAIN has already superseded.
+  for (const place of kept) {
+    const node = nodes.find((n) => n.place === place);
+    const successor = node && current(node);
+    if (successor) errors.push(`${place}: the plan names it, but ${successor.place} supersedes it`);
   }
   const ledger = planLedger(candidatePlan);
   if (ledger.base !== base) errors.push(`${PLAN}: derived from ${ledger.base ?? "nothing"}, not from main at ${base}`);
@@ -300,7 +307,8 @@ function scratchCopy(repo: string, data: boolean): string {
     },
   });
   if (fs.existsSync(path.join(repo, "node_modules")))
-    fs.symlinkSync(path.join(repo, "node_modules"), path.join(code, "node_modules"), "junction");
+    // Absolute: a relative target would resolve against the copy, not the checkout.
+    fs.symlinkSync(path.resolve(repo, "node_modules"), path.join(code, "node_modules"), "junction");
   return code;
 }
 
