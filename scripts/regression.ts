@@ -178,10 +178,10 @@ export function classify(trusted: string, candidate: string, base: string): Clas
 }
 
 /**
- * What fixes how a regression judges: the manifest and lockfile that select
- * its runner and packages, and all of the checker's own code, found from its
- * entry points by following their relative imports, so nothing it runs is
- * left out.
+ * What fixes how a regression judges: everything that decides what its
+ * install puts in place, which selects its runner and packages, and all of
+ * the checker's own code, found from its entry points by following their
+ * relative imports, so nothing it runs is left out.
  */
 export function judgeFiles(repo: string): string[] {
   const found = new Set<string>();
@@ -195,7 +195,8 @@ export function judgeFiles(repo: string): string[] {
     }
   };
   for (const entry of ["scripts/check-regression.ts", "scripts/regression-reporter.ts"]) visit(entry);
-  return ["package.json", "package-lock.json", ...[...found].sort()];
+  // Everything that decides what the install puts in place: the manifest, either lockfile, and npm's own settings.
+  return ["package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc", ...[...found].sort()];
 }
 
 /**

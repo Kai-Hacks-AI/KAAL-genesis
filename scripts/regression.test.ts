@@ -407,6 +407,13 @@ test("a regression's identity changes with what it consists of, a link as a link
   const beforeLock = regressionIdentity(relocked);
   fs.writeFileSync(path.join(relocked, "package-lock.json"), '{ "lockfileVersion": 3 }\n');
   assert.notEqual(regressionIdentity(relocked), beforeLock);
+  // Including a lockfile that takes precedence over it, and npm's own settings.
+  for (const file of ["npm-shrinkwrap.json", ".npmrc"]) {
+    const installed = copy();
+    const before = regressionIdentity(installed);
+    fs.writeFileSync(path.join(installed, file), "{}\n");
+    assert.notEqual(regressionIdentity(installed), before, file);
+  }
   // And the checker's own code, down to what it imports.
   const rejudged = copy();
   fs.mkdirSync(path.join(rejudged, "scripts"), { recursive: true });
