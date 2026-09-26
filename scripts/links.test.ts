@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -202,6 +203,25 @@ test("a candidate that would leave the next accepted regression with links it ca
     `as the next accepted regression, ${CASES}: "greets" says no commitment it helps prove`,
     `as the next accepted regression, ${GREETING}: the plan says its cases show it, but no case points at it`,
   ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("npm run links:check checks a checkout's links by its command line, and fails when they do not hold", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")) as {
+    scripts: Record<string, string>;
+  };
+  assert.equal(pkg.scripts["links:check"], "tsx scripts/check-links.ts");
+  const tsx = fileURLToPath(import.meta.resolve("tsx/cli"));
+  const run = (repo: string) =>
+    spawnSync(process.execPath, [tsx, path.join(REPO, "scripts", "check-links.ts"), repo], {
+      encoding: "utf8",
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined },
+    });
+  const holds = run(regressionTrusted());
+  assert.equal(holds.status, 0, holds.stderr);
+  const broken = run(changed(CASES, (text) => text.replace(`// Why: ${GREETING}\n`, "")));
+  assert.equal(broken.status, 1);
+  assert.match(broken.stderr, /"greets" says no commitment it helps prove/);
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
