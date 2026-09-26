@@ -99,6 +99,14 @@ test("a commitment whose place states nothing is refused", () => {
 });
 
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+test("a commitment whose place is outside the repository is refused, even where a file exists", () => {
+  assert.deepEqual(classified("outside").errors, [
+    "/etc/passwd: the plan names it, but it is not a place inside the repository",
+    "../trusted/src/add.ts: the plan names it, but it is not a place inside the repository",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
 test("the plan's own account of what it replaces and withdraws is checked against BRAIN, never trusted", () => {
   assert.deepEqual(classified("unledgered").errors, [
     `${PLAN}: says it withdraws [], but BRAIN shows [${JSON.stringify([GREETING, GREETING_LATER])}]`,

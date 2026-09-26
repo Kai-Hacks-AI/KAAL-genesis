@@ -61,9 +61,11 @@ jobs:
           heads=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha')
           for head in $heads; do
             # A later push to main has its own invalidation, which judges against the newer main.
-            [ "$(gh api "repos/$REPO/commits/main" --jq .sha)" = "$MAIN" ] || exit 0
-            # A result already judged against this main is not stale.
-            current=$(gh api "repos/$REPO/commits/$head/status" --jq '.statuses[] | select(.context == "regression-linux") | .description')
+            # If main cannot be read, invalidating goes on: a failure written needlessly is judged again, a success left is not.
+            current_main=$(gh api "repos/$REPO/commits/main" --jq .sha) || current_main=$MAIN
+            [ "$current_main" = "$MAIN" ] || exit 0
+            # A result already judged against this main is not stale; one that cannot be read is.
+            current=$(gh api "repos/$REPO/commits/$head/status" --jq '.statuses[] | select(.context == "regression-linux") | .description') || current=""
             case "$current" in *"main ${MAIN:0:12}"*) continue ;; esac
             gh api "repos/$REPO/statuses/$head" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main moved to ${MAIN:0:12}: derive the change from it"
           done
@@ -152,19 +154,24 @@ jobs:
             gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression does not hold for the change"
             exit 0
           fi
-          gh api "$STATUS_URL" -f state=success -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression holds (main ${JUDGED_BY:0:12})"
           # One commit status per head: if several open pull requests share this head, their
-          # judgements could differ, so none of them keeps a success. Checked after publishing:
-          # a pull request opened on this head later is caught by its own run's report.
+          # judgements could differ, so none of them is given a success. Checked before publishing,
+          # so a head already shared never shows one, and again after: a pull request opened on
+          # this head later is caught by its own run's report.
           HEAD_SHA="${STATUS_URL##*/}"
-          if ! sharing=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | wc -l); then
-            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="open pull requests could not be listed: run it again"
-            exit 1
-          fi
-          if [ "$sharing" != 1 ]; then
-            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="$sharing open pull requests share this head: give each its own"
-            exit 0
-          fi
+          unshared() {
+            if ! sharing=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | wc -l); then
+              gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="open pull requests could not be listed: run it again"
+              exit 1
+            fi
+            if [ "$sharing" != 1 ]; then
+              gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="$sharing open pull requests share this head: give each its own"
+              exit 0
+            fi
+          }
+          unshared
+          gh api "$STATUS_URL" -f state=success -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression holds (main ${JUDGED_BY:0:12})"
+          unshared
           if [ "$(gh api "repos/$REPO/commits/main" --jq .sha)" != "$JUDGED_BY" ]; then
             gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main moved while the change was judged: derive it from main again"
           fi
