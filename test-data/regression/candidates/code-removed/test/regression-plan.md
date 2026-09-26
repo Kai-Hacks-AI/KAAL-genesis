@@ -2,7 +2,7 @@
 
 ## Commitments
 
-2. Greeting. Stated in `brain/learning/k/26/01/01/01/nodes/greeting.md`.
+2. Greeting. Stated in `brain/learning/k/26/01/01/01/nodes/greeting.md`. Shown by its cases.
 
 ## How this regression differs from the one it was derived from
 

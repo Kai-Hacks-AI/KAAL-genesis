@@ -20,6 +20,7 @@ test("adds as its fixture says", () => {
   assert.equal(add(1, 2), sum);
 });
 
+// Why: src/add.ts
 test("fails", () => {
   assert.fail("on purpose");
 });

@@ -4,6 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { learningOf, nodeFiles, parseNode, relativeIdentity } from "../skills/using-brain/scripts/brain.js";
+import {
+  type Case,
+  caseFiles,
+  linkErrors,
+  PLAN,
+  planCommitments,
+  planEntries,
+  repoCases,
+  section,
+  testArgs,
+} from "./links.js";
 
 /**
  * KAAL's trusted regression: `main`, the authoritative regression, judges a
@@ -14,24 +25,7 @@ import { learningOf, nodeFiles, parseNode, relativeIdentity } from "../skills/us
  * brain/learning/genesis/26/09/26/02/nodes/testing.md; this applies it.
  */
 
-export const PLAN = "test/regression-plan.md";
-export const BRAIN = "brain/learning";
-/** Where each skill's cases are kept; they prove its SKILL.md, commitment 7's place. */
-export const SKILL_CASES = "skills/*/SKILL.md";
-
-/** The section of a plan under `heading`, up to the next `## ` heading. */
-function section(plan: string, heading: string): string {
-  const start = plan.indexOf(`\n## ${heading}`);
-  if (start < 0) return "";
-  const rest = plan.slice(start + 1);
-  const end = rest.indexOf("\n## ", 1);
-  return end < 0 ? rest : rest.slice(0, end);
-}
-
-/** The place each commitment of a plan is stated in, in the plan's order. */
-export function planCommitments(plan: string): string[] {
-  return [...section(plan, "Commitments").matchAll(/^\d+\. .*?[Ss]tated in (?:each )?`([^`]+)`/gm)].map((m) => m[1]!);
-}
+const BRAIN = "brain/learning";
 
 export type Ledger = { base?: string; replaces: [string, string][]; withdraws: [string, string][] };
 
@@ -47,44 +41,6 @@ export function planLedger(plan: string): Ledger {
     replaces: pairs("Replaces"),
     withdraws: pairs("Withdraws"),
   };
-}
-
-export type Case = { file: string; title: string; places: string[] };
-
-/**
- * The cases a test file states, each with the places of the commitments it
- * points at through `// Why:` lines directly above it. Only cases whose title
- * is a plain string literal are found.
- */
-export function fileCases(file: string, source: string): Case[] {
-  const cases: Case[] = [];
-  const lines = source.split(/\r?\n/);
-  const text = lines.join("\n");
-  for (const m of text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)) {
-    let title: string;
-    try {
-      title = JSON.parse(`"${m[1]}"`) as string;
-    } catch {
-      continue; // an escape JSON does not know: a title that cannot be read, like one built at run time
-    }
-    const places: string[] = [];
-    let line = text.slice(0, m.index).split("\n").length - 2;
-    for (; line >= 0; line--) {
-      const why = /^\/\/ Why: (\S+)$/.exec(lines[line]!);
-      if (!why) break;
-      places.unshift(why[1]!);
-    }
-    cases.push({ file, title, places });
-  }
-  return cases;
-}
-
-/** The arguments of a repository's own `npm test` script, unquoted. */
-function testArgs(repo: string): string[] {
-  const script = (
-    JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as { scripts?: { test?: string } }
-  ).scripts?.test;
-  return (script?.split(/\s+/) ?? []).filter(Boolean).map((arg) => arg.replace(/^(["'])(.*)\1$/, "$2"));
 }
 
 /**
@@ -118,47 +74,6 @@ export function unreplayable(repo: string): string | undefined {
   return undefined;
 }
 
-/**
- * Every case a repository runs whose title cannot be read, so a later run
- * could not tell that it went missing: a case not at the top of its file, or
- * whose title is not a plain double-quoted string, as `file:line`.
- */
-export function unnamedCases(repo: string): string[] {
-  return caseFiles(repo).flatMap((file) => {
-    const text = fs.readFileSync(path.join(repo, file), "utf8").replace(/\r\n/g, "\n");
-    return [...text.matchAll(/^([ \t]*)test\(\s*/gm)].flatMap((m) => {
-      const literal = /^"((?:[^"\\]|\\.)*)"/.exec(text.slice(m.index + m[0].length));
-      let readable = !m[1] && !!literal;
-      try {
-        if (literal) JSON.parse(`"${literal[1]}"`);
-      } catch {
-        readable = false;
-      }
-      return readable ? [] : [`${file}:${text.slice(0, m.index).split("\n").length}`];
-    });
-  });
-}
-
-/**
- * The case files a repository's own `npm test` runs, by posix path relative to
- * it. KAAL names every case file `*.test.ts`, so only such arguments count:
- * anything else the script names, such as a module it preloads, is not a case.
- */
-export function caseFiles(repo: string): string[] {
-  const globs = testArgs(repo).filter((arg) => arg.endsWith(".test.ts"));
-  return [...new Set(globs.flatMap((glob) => fs.globSync(glob, { cwd: repo })))]
-    .map((file) => file.split(path.sep).join("/"))
-    .sort();
-}
-
-/** Every case a repository keeps, with the commitments it helps prove: a skill's cases prove its SKILL.md. */
-export function repoCases(repo: string): Case[] {
-  return caseFiles(repo).flatMap((file) => {
-    const cases = fileCases(file, fs.readFileSync(path.join(repo, file), "utf8"));
-    return file.startsWith("skills/") ? cases.map((c) => ({ ...c, places: [SKILL_CASES] })) : cases;
-  });
-}
-
 type Node = { place: string; name: string; lineage: string; key: string };
 
 function brainNodes(repo: string): Node[] {
@@ -167,6 +82,11 @@ function brainNodes(repo: string): Node[] {
     const { lineage, key } = learningOf(root, file);
     return { place: `${BRAIN}/${relativeIdentity(root, file)}`, name: parseNode(file).name, lineage, key };
   });
+}
+
+/** What `plan` says shows the commitment stated at `place`. */
+function shownBy(plan: string, place: string): string[] {
+  return planEntries(plan).find((e) => e.place === place)?.shownBy ?? [];
 }
 
 export type Classification = {
@@ -183,8 +103,10 @@ export type Classification = {
  * name, in the same lineage, is what KAAL means now. If the candidate's plan
  * names that node, the commitment is replaced by it; if not, it is withdrawn
  * by it. A commitment stated outside BRAIN has no succession, so it can only
- * be retained. Anything else is a silent escape. Every place the candidate's
- * plan names, retained or added, must not be superseded already. The plan's own account of
+ * be retained, and a retained commitment keeps everything that showed it, such
+ * as its cases. Anything else is a silent escape. Every place the candidate's
+ * plan names, retained or added, must not be superseded already; whether it is
+ * a place at all is a question of links (see links.ts). The plan's own account of
  * what it replaces and withdraws is only checked against this, never trusted.
  */
 export function classify(trusted: string, candidate: string, base: string): Classification {
@@ -209,6 +131,12 @@ export function classify(trusted: string, candidate: string, base: string): Clas
     const successor = node && current(node);
     if (kept.has(place)) {
       retained.push(place);
+      // A retained commitment is shown at least as it was: dropping what showed it weakens it, which only
+      // superseding it in BRAIN may do. Cases in particular are what protect it in the next generation.
+      const was = shownBy(trustedPlan!, place);
+      const is = shownBy(candidatePlan, place);
+      for (const by of was.filter((by) => !is.includes(by)))
+        errors.push(`${place}: the accepted regression shows it by ${by}, but the plan no longer does`);
     } else if (!successor) {
       errors.push(`${place}: silent escape: the plan no longer names it, and nothing in BRAIN supersedes it`);
     } else if (kept.has(successor.place)) {
@@ -222,23 +150,6 @@ export function classify(trusted: string, candidate: string, base: string): Clas
   // Whatever the plan names, retained or new, must be what KAAL means now: the next main's
   // plan must not name a commitment BRAIN has already superseded.
   for (const place of kept) {
-    // A place is where the commitment is stated, inside the repository, so it must exist there. Only plain path
-    // segments are accepted, with * the one wildcard (as in each skill's SKILL.md), and every file it names must
-    // really be a file inside the repository, not a link out of it.
-    const root = fs.realpathSync(candidate);
-    const inside = (file: string) => {
-      try {
-        const real = fs.realpathSync(path.join(candidate, file));
-        return real.startsWith(root + path.sep) && fs.statSync(real).isFile();
-      } catch {
-        return false; // A link to nothing states nothing.
-      }
-    };
-    const plain = /^[\w*-][\w.*-]*(\/[\w*-][\w.*-]*)*$/.test(place) && !place.split("/").includes("..");
-    const files = plain ? fs.globSync(place, { cwd: candidate }) : [];
-    if (!plain || !files.every(inside))
-      errors.push(`${place}: the plan names it, but it is not a place inside the repository`);
-    else if (!files.length) errors.push(`${place}: the plan names it, but nothing is stated there`);
     const node = nodes.find((n) => n.place === place);
     const successor = node && current(node);
     if (successor) errors.push(`${place}: the plan names it, but ${successor.place} supersedes it`);
@@ -436,7 +347,8 @@ export function regressionErrors(trusted: string, candidate: string, base: strin
       .filter((e) => e !== undefined)
       .map((e) => `as the next main, ${e.slice("main's ".length)}`),
     ...(repoCases(candidate).length ? [] : ["as the next main, its npm test would run no case it can name"]),
-    ...unnamedCases(candidate).map((at) => `as the next main, it would run a case it cannot name, at ${at}`),
+    // Its links are what choose which of its cases protect which commitment, so they must hold from its files.
+    ...linkErrors(candidate).map((error) => `as the next main, ${error}`),
   ];
   const candidateCases = repoCases(candidate);
   const candidateResults = runCandidate(candidate);
