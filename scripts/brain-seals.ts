@@ -114,16 +114,19 @@ export type Change = { status: "A" | "M" | "D"; file: string };
  * state.ts), each name known as state.ts knows it, even one not UTF-8. A
  * directory is an entry too, so one added where seal state belongs, or left
  * empty, is seen. A directory that does not exist has none. Git's own `.git`
- * and installed `node_modules` at the top of the state are not part of it; a
- * directory of either name anywhere below is.
+ * and the directory of installed dependencies, `node_modules`, at the top of
+ * the state are not part of it; anything else named `node_modules` there, and
+ * an entry of either name anywhere below, is.
  */
 function stateFiles(dir: string | Buffer, rel = "", files = new Map<string, Buffer>()): Map<string, Buffer> {
   if (!fs.existsSync(dir)) return files;
   for (const { name, at } of entriesIn(dir)) {
-    if (!rel && (name === ".git" || name === "node_modules")) continue;
+    if (!rel && name === ".git") continue;
     const file = rel ? `${rel}/${name}` : name;
     const entry = entryAt(at);
     if (!entry) continue;
+    // Only an installed tree is left out: anything else by that name, such as a link, is part of the state.
+    if (!rel && name === "node_modules" && entry.kind === "directory") continue;
     files.set(file, entryBytes(entry));
     if (entry.kind === "directory") stateFiles(at, file, files);
   }

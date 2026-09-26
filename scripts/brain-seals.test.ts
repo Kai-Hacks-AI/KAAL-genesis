@@ -284,6 +284,15 @@ test("compares what each entry is without opening anything but a regular file, a
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+test("only a directory of installed dependencies at the top of a state is left out of it", () => {
+  const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
+  const [before, after] = [state(), state()];
+  // A link in its place would be committed like any other entry, so it is a change.
+  fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-moved-")), path.join(after, "node_modules"), "junction");
+  assert.deepEqual(stateChanges(before, after), [{ status: "A", file: "node_modules" }]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("a named pipe in a state is recorded as one, never opened", { skip: process.platform === "win32" }, () => {
   const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
   const [before, after] = [state(), state()];
