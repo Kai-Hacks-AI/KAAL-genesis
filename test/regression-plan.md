@@ -4,7 +4,7 @@ This is KAAL's regression plan, as the `testing` skill defines one (`skills/test
 
 ## Commitments
 
-Each commitment is owned by one capability of KAAL and stated in one place, where its meaning lives. That place is also its identity: its cases point to it. This plan names each commitment by that place and does not restate it, and says what shows it: its cases, the seal checks, or both. A commitment this plan says its cases show must have at least one; one shown only by another check needs none, and the plan says which check that is. A commitment the candidate retains keeps everything the accepted regression's plan said shows it: showing it by less weakens it, which only superseding it in BRAIN may do.
+Each commitment is owned by one capability of KAAL and stated in one place, where its meaning lives. That place is also its identity: its cases point to it. This plan names each commitment by that place and does not restate it, and says what shows it: its cases, the seal checks, or both. Only cases say, in the files, which commitment they show, through their links, so every commitment here is shown by its cases and has at least one; another check, such as the seal checks, can add to them, but cannot stand in for them until it can say the same. A commitment the candidate retains keeps everything the accepted regression's plan said shows it: showing it by less weakens it, which only superseding it in BRAIN may do.
 
 1. Genesis's atomicity. Owned by Genesis; stated in `scripts/genesis.ts`. Shown by its cases.
 2. Genesis's output. Owned by Genesis; stated in `brain/learning/genesis/26/09/26/03/nodes/genesis.md`. Shown by its cases.
