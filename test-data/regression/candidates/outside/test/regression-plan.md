@@ -2,11 +2,11 @@
 
 ## Commitments
 
-1. Adding. Stated in `src/add.ts`.
-2. Greeting. Stated in `brain/learning/k/26/01/01/01/nodes/greeting.md`.
-3. Accounts. Stated in `/etc/passwd`.
-4. Siblings. Stated in `../trusted/src/add.ts`.
-5. Braces. Stated in `{/etc/passwd,missing}`.
+1. Adding. Stated in `src/add.ts`. Shown by its cases.
+2. Greeting. Stated in `brain/learning/k/26/01/01/01/nodes/greeting.md`. Shown by its cases.
+3. Accounts. Stated in `/etc/passwd`. Shown by its cases.
+4. Siblings. Stated in `../trusted/src/add.ts`. Shown by its cases.
+5. Braces. Stated in `{/etc/passwd,missing}`. Shown by its cases.
 
 ## How this regression differs from the one it was derived from
 

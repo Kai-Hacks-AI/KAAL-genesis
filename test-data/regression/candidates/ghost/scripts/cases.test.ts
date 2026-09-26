@@ -21,5 +21,6 @@ test("adds as its fixture says", () => {
 });
 
 /*
+// Why: src/add.ts
 test("ghost", () => {});
 */

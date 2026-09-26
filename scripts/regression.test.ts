@@ -4,20 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  type Case,
-  caseFiles,
-  classify,
-  fileCases,
-  judge,
-  PLAN,
-  planCommitments,
-  planLedger,
-  regressionErrors,
-  unnamedCases,
-  unreplayable,
-  type Result,
-} from "./regression.js";
+import { type Case, caseFiles, fileCases, PLAN, planCommitments, unnamedCases } from "./links.js";
+import { classify, judge, planLedger, regressionErrors, unreplayable, type Result } from "./regression.js";
 import { regressionCandidate, regressionTrusted } from "./test-data.js";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
@@ -88,38 +76,6 @@ test("a plan that still names a commitment BRAIN has superseded is refused", () 
 test("a commitment the candidate adds is refused if BRAIN already supersedes it", () => {
   assert.deepEqual(classified("added-superseded").errors, [
     "brain/learning/k/26/01/03/01/nodes/farewell.md: the plan names it, but brain/learning/k/26/01/04/01/nodes/farewell.md supersedes it",
-  ]);
-});
-
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
-test("a commitment whose place links out of the repository is refused", () => {
-  const candidate = regressionCandidate("kept");
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-"));
-  fs.writeFileSync(path.join(outside, "linked.ts"), "export {};\n");
-  fs.symlinkSync(outside, path.join(candidate, "src", "out"), "junction");
-  const plan = path.join(candidate, PLAN);
-  fs.writeFileSync(
-    plan,
-    fs.readFileSync(plan, "utf8").replace(/^2\. .*$/m, "$&\n3. Linked. Stated in `src/out/linked.ts`."),
-  );
-  assert.deepEqual(classify(regressionTrusted(), candidate, BASE).errors, [
-    "src/out/linked.ts: the plan names it, but it is not a place inside the repository",
-  ]);
-});
-
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
-test("a commitment whose place states nothing is refused", () => {
-  assert.deepEqual(classified("misplaced").errors, [
-    "brain/learning/k/26/01/01/01/nodes/parting.md: the plan names it, but nothing is stated there",
-  ]);
-});
-
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
-test("a commitment whose place is outside the repository is refused, even where a file exists", () => {
-  assert.deepEqual(classified("outside").errors, [
-    "/etc/passwd: the plan names it, but it is not a place inside the repository",
-    "../trusted/src/add.ts: the plan names it, but it is not a place inside the repository",
-    "{/etc/passwd,missing}: the plan names it, but it is not a place inside the repository",
   ]);
 });
 
@@ -233,6 +189,9 @@ test("a candidate cannot change the data main's cases read, even beside them: ma
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
 test("a candidate cannot relabel a retained commitment's case away: main's links choose what judges it", () => {
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("relabeled"), BASE), [
+    // Its own links no longer hold either: the case points at a commitment its plan no longer states.
+    'as the next main, scripts/cases.test.ts: "adds" points at brain/learning/k/26/01/01/01/nodes/greeting.md, which the plan does not state',
+    "as the next main, src/add.ts: the plan says its cases show it, but no case points at it",
     'as the next main, scripts/cases.test.ts: "adds" fails when main replays it',
     'scripts/cases.test.ts: "adds" failed',
     'scripts/cases.test.ts: "adds as its fixture says" failed',
@@ -308,10 +267,10 @@ test("a candidate that could not judge the next change once merged is refused be
   ]);
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("no-cases"), BASE).slice(0, 2), [
     "as the next main, its npm test would run no case it can name",
-    "as the next main, it would run a case it cannot name, at scripts/unnamed.test.ts:3",
+    "as the next main, scripts/unnamed.test.ts:3: a case whose title cannot be read, so no link can follow it",
   ]);
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("unnamed"), BASE), [
-    "as the next main, it would run a case it cannot name, at scripts/cases.test.ts:24",
+    "as the next main, scripts/cases.test.ts:24: a case whose title cannot be read, so no link can follow it",
     'as the next main, scripts/cases.test.ts: "adds 1 to nothing" runs but is not named',
     'as the next main, scripts/cases.test.ts: "adds 2 to nothing" runs but is not named',
   ]);
@@ -356,7 +315,7 @@ test("a candidate named by a relative path runs with its own dependencies", () =
   fs.writeFileSync(path.join(word, "index.js"), 'export const word = "hello";\n');
   fs.writeFileSync(
     path.join(candidate, "scripts", "word.test.ts"),
-    'import assert from "node:assert/strict";\nimport test from "node:test";\nimport { word } from "kaal-word";\n\ntest("says a word", () => {\n  assert.equal(word, "hello");\n});\n',
+    'import assert from "node:assert/strict";\nimport test from "node:test";\nimport { word } from "kaal-word";\n\n// Why: src/add.ts\ntest("says a word", () => {\n  assert.equal(word, "hello");\n});\n',
   );
   // Named from a directory of another depth than the scratch copies', as main's checkout is in CI.
   const from = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-cwd-")), "a", "b");

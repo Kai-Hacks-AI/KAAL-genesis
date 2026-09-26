@@ -4,16 +4,16 @@ This is KAAL's regression plan, as the `testing` skill defines one (`skills/test
 
 ## Commitments
 
-Each commitment is owned by one capability of KAAL and stated in one place, where its meaning lives. That place is also its identity: its cases point to it. This plan names each commitment by that place and does not restate it.
+Each commitment is owned by one capability of KAAL and stated in one place, where its meaning lives. That place is also its identity: its cases point to it. This plan names each commitment by that place and does not restate it, and says what shows it: its cases, the seal checks, or both. A commitment this plan says its cases show must have at least one; one shown only by another check needs none, and the plan says which check that is.
 
-1. Genesis's atomicity. Owned by Genesis; stated in `scripts/genesis.ts`.
-2. Genesis's output. Owned by Genesis; stated in `scripts/genesis.test.ts`.
-3. Closed learnings. Owned by KAAL's use of `using-seals`; stated in `brain/learning/genesis/26/09/25/01/nodes/using-seals.md`.
-4. The skills' standard and birth. Owned by KAAL's use of `using-skills`; stated in `brain/learning/genesis/26/09/25/01/nodes/using-skills.md`.
-5. The skills' independence. Owned by KAAL, for every skill it keeps; stated in `brain/learning/genesis/26/09/25/01/nodes/skill.md`.
-6. KAAL's testing: its anchor and its regression. Owned by KAAL's use of `testing`; stated in `brain/learning/genesis/26/09/26/02/nodes/testing.md`.
-7. The skills' scripts. Owned by each skill; stated in each `skills/*/SKILL.md`, as far as it says what the skill's scripts do; the guidance a `SKILL.md` gives agents is not a commitment here.
-8. BRAIN's validity. Owned by KAAL's sealing policy; stated in `scripts/brain-seals.ts`.
+1. Genesis's atomicity. Owned by Genesis; stated in `scripts/genesis.ts`. Shown by its cases.
+2. Genesis's output. Owned by Genesis; stated in `scripts/genesis.test.ts`. Shown by its cases.
+3. Closed learnings. Owned by KAAL's use of `using-seals`; stated in `brain/learning/genesis/26/09/25/01/nodes/using-seals.md`. Shown by its cases and the seal checks.
+4. The skills' standard and birth. Owned by KAAL's use of `using-skills`; stated in `brain/learning/genesis/26/09/25/01/nodes/using-skills.md`. Shown by its cases.
+5. The skills' independence. Owned by KAAL, for every skill it keeps; stated in `brain/learning/genesis/26/09/25/01/nodes/skill.md`. Shown by its cases.
+6. KAAL's testing: its anchor and its regression. Owned by KAAL's use of `testing`; stated in `brain/learning/genesis/26/09/26/02/nodes/testing.md`. Shown by its cases.
+7. The skills' scripts. Owned by each skill; stated in each `skills/*/SKILL.md`, as far as it says what the skill's scripts do; the guidance a `SKILL.md` gives agents is not a commitment here. Shown by its cases.
+8. BRAIN's validity. Owned by KAAL's sealing policy; stated in `scripts/brain-seals.ts`. Shown by its cases and the seal checks.
 
 ## How this regression differs from the one it was derived from
 
@@ -32,11 +32,13 @@ This plan names commitments, never cases. A case says which commitments it helps
 - A case KAAL keeps outside its skills has a `// Why: <place>` line directly above it for each commitment it helps prove, naming the place where that commitment is stated.
 - A case a skill keeps helps prove that skill's `SKILL.md`, commitment 7, and never points at KAAL, so the skill stays independent of it.
 
+The case owns the link; a commitment never lists its cases. A case may point at several commitments, and several cases may point at one. The links hold from the repository's files alone, and `npm run links:check` checks them in any checkout, as one of KAAL's cases also does: every case KAAL keeps outside its skills points at least at one commitment, and only at places this plan states; every place this plan states exists inside the repository; every commitment this plan says its cases show has a case pointing at it; and no link is left belonging to no case, nor a case whose title cannot be read, since a link lost that way would go unnoticed when its case changes or moves. A change that would leave the next `main` with links that do not hold is refused before it is accepted.
+
 Some commitments rest on others: Genesis (1, 2) composes skills whose own creation is all or nothing (7), and KAAL's sealing (3) uses the `using-seals` skill's mechanism (7). Such a commitment's own cases prove only what KAAL adds.
 
 ## What must be shown
 
-- Every commitment above holds, shown by the cases that prove it; commitments 3 and 8 also by the seal checks.
+- Every commitment above holds, shown as its entry says: by the cases that point at it, by the seal checks, or both.
 - Every commitment of `main` holds against the change, shown by `main`'s cases, unless BRAIN shows it replaced or withdrawn.
 
 ## Conditions
@@ -59,7 +61,10 @@ Some commitments rest on others: Genesis (1, 2) composes skills whose own creati
 - `main`'s cases are the `*.test.ts` files its `npm test` names, run with `main`'s test data: everything under a `test-data/` directory, every `test-data.ts`, and every file but code beside the cases. Data a case takes from any other module, such as a `.ts` file that is not a `test-data.ts`, is the change's own.
 - `main`'s cases are run on Linux only, with Node 22, and so are the change's cases that prove a replacement: a case that skips itself on Windows, or under `npm test`'s own environment, proves the replacement there without anything noticing, since `test-linux` and `test-windows` count a skip as a pass. What a replacement is proven under is `main`'s replay: Linux, Node 22, and no npm environment.
 - A case whose title is not a plain double-quoted string at the top of its file, such as one built in a loop, cannot be expected by its title. A change that would bring one into `main` is refused, but `main` today still has two such cases until this candidate is merged: if they fail they are held, but if they never run, nothing notices.
-- Nothing checks that each `Why:` line names a commitment the plan states, or that every commitment has a case. A case of `main` that points at nothing is always held.
+- `main` itself has no links yet: until this regression is merged, every case of `main` points at nothing, so each is always held.
+- The links check knows the seal checks only by name: that they run, and hold, is shown by `seal-linux`, not by the links.
+- A link redirected from one commitment to another that this plan states is seen only when it leaves the first without a case: which commitment a case's claim is about is judged by review, not read from the files. `main`'s own links keep choosing which of `main`'s cases judge a change, so a redirect in the change cannot weaken that.
+- A link says which commitment a case helps prove, not how much of it: a commitment with one case pointing at it passes the links check however little of it that case proves.
 - Validity is not all that sealing requires: a learning holding a symlink or a special file is valid, and no check sees it before sealing on `main` refuses it.
 - Commitment 7 is known to be proven only in part: the skills' command-line entry points, such as `create-node.ts`'s `--edge` parsing, have no cases. Their cases call the scripts' exported functions, not the command lines their `SKILL.md` promises.
 - Some proofs are weaker than their claims. Commitment 5's case sees only `from "…"` imports, so a side-effect or dynamic import of another skill passes it. Some cases still hold data inline.
