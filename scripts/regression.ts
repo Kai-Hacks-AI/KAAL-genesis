@@ -79,9 +79,9 @@ export function unreplayable(repo: string): string | undefined {
   if (empty.length)
     return `the accepted regression's npm test names case files that do not exist (${empty.join(", ")})`;
   // What judges must be in the state's files: an install from local packages, or a link out of the state, is not.
-  const local = localPackages(repo);
-  if (local.length)
-    return `the accepted regression's install takes packages from local files (${local.join(", ")}), which its identity does not cover`;
+  const unpinned = unpinnedPackages(repo);
+  if (unpinned.length)
+    return `the accepted regression's install takes packages other than from the registry as its lockfile pins them (${unpinned.join(", ")}), which its identity does not cover`;
   const escaping = outsideLinks(repo);
   if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
   return undefined;
@@ -237,12 +237,21 @@ export function regressionIdentity(repo: string): string {
 
 /** Every entry a regression consists of, by posix path: what its identity is taken from. */
 function regressionInputs(repo: string): Map<string, Entry> {
+  const root = path.resolve(repo);
   const entries = new Map<string, Entry>();
   const add = (rel: string) => {
     const entry = entryAt(path.join(repo, rel));
     if (!entry || entries.has(rel)) return;
     entries.set(rel, entry);
     if (entry.kind === "directory") for (const name of fs.readdirSync(path.join(repo, rel))) add(`${rel}/${name}`);
+    // What a link inside the state points at is read through it, so it is part of the regression too.
+    if (entry.kind === "link") {
+      const target = path.relative(
+        root,
+        path.resolve(path.dirname(path.join(root, rel)), entry.content.toString("utf8")),
+      );
+      if (target && !target.startsWith("..") && !path.isAbsolute(target)) add(target.split(path.sep).join("/"));
+    }
   };
   if (fs.existsSync(path.join(repo, PLAN))) {
     add(PLAN);
@@ -270,8 +279,14 @@ function outsideLinks(repo: string): string[] {
   });
 }
 
-/** The packages a repository's install would take from local files, rather than as its lockfile pins them. */
-function localPackages(repo: string): string[] {
+/**
+ * The packages a repository's install would not take, as its lockfile pins
+ * them, from the registry: anything named by a local spec in its manifest, a
+ * workspace, or any lockfile entry that is a link or lacks a registry source
+ * and integrity. Only the allowed form passes, so what the install puts in
+ * place is fixed by files the identity covers.
+ */
+function unpinnedPackages(repo: string): string[] {
   const manifest = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as Record<string, unknown>;
   const local = /^(file:|link:|workspace:|portal:|\.{0,2}\/)/;
   const named = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].flatMap((field) =>
@@ -279,7 +294,18 @@ function localPackages(repo: string): string[] {
       local.test(spec) ? [name] : [],
     ),
   );
-  return manifest.workspaces ? ["workspaces", ...named] : named;
+  // npm ci installs from npm-shrinkwrap.json when there is one, from package-lock.json otherwise.
+  const lockfile = ["npm-shrinkwrap.json", "package-lock.json"].find((f) => fs.existsSync(path.join(repo, f)));
+  const locked: string[] = [];
+  if (lockfile) {
+    const lock = JSON.parse(fs.readFileSync(path.join(repo, lockfile), "utf8")) as {
+      packages?: Record<string, { link?: boolean; resolved?: string; integrity?: string }>;
+    };
+    if (!lock.packages) locked.push(`${lockfile} without package entries`);
+    for (const [at, entry] of Object.entries(lock.packages ?? {}))
+      if (at && (entry.link || !/^https:\/\//.test(entry.resolved ?? "") || !entry.integrity)) locked.push(at);
+  }
+  return [...(manifest.workspaces ? ["workspaces"] : []), ...named, ...locked];
 }
 
 export type Result = { file: string; name: string; outcome: "pass" | "fail" | "skip" };

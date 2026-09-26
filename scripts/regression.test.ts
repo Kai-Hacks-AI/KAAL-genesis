@@ -414,6 +414,17 @@ test("a regression's identity changes with what it consists of, a link as a link
     fs.writeFileSync(path.join(installed, file), "{}\n");
     assert.notEqual(regressionIdentity(installed), before, file);
   }
+  // What a link inside the state points at is read through it, so its bytes are part of it too.
+  // A file link needs privileges on Windows, so this is shown where one can be made.
+  if (process.platform !== "win32") {
+    const through = copy();
+    fs.mkdirSync(path.join(through, "config"), { recursive: true });
+    fs.renameSync(path.join(through, "package.json"), path.join(through, "config", "package.json"));
+    fs.symlinkSync(path.join("config", "package.json"), path.join(through, "package.json"));
+    const beforeTarget = regressionIdentity(through);
+    fs.appendFileSync(path.join(through, "config", "package.json"), "\n");
+    assert.notEqual(regressionIdentity(through), beforeTarget);
+  }
   // And the checker's own code, down to what it imports.
   const rejudged = copy();
   fs.mkdirSync(path.join(rejudged, "scripts"), { recursive: true });
@@ -450,7 +461,20 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   );
   assert.equal(
     unreplayable(local),
-    "the accepted regression's install takes packages from local files (tsx), which its identity does not cover",
+    "the accepted regression's install takes packages other than from the registry as its lockfile pins them (tsx), which its identity does not cover",
+  );
+  // A lockfile can resolve a registry range to a local link on its own, so the lockfile is checked too.
+  const relinked = regressionCandidate("kept");
+  fs.writeFileSync(
+    path.join(relinked, "package-lock.json"),
+    JSON.stringify({
+      lockfileVersion: 3,
+      packages: { "": {}, "node_modules/tsx": { resolved: "../tsx", link: true } },
+    }),
+  );
+  assert.equal(
+    unreplayable(relinked),
+    "the accepted regression's install takes packages other than from the registry as its lockfile pins them (node_modules/tsx), which its identity does not cover",
   );
   const linked = regressionCandidate("kept");
   fs.mkdirSync(path.join(linked, "test-data"), { recursive: true });
