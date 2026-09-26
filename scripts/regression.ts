@@ -177,17 +177,30 @@ export function classify(trusted: string, candidate: string, base: string): Clas
   return { retained, replaced, withdrawn, errors };
 }
 
+/** What fixes how a regression judges: the manifest and lockfile that select its runner, and the checker's own files. */
+const JUDGE = [
+  "package.json",
+  "package-lock.json",
+  "scripts/check-regression.ts",
+  "scripts/regression.ts",
+  "scripts/regression-reporter.ts",
+  "scripts/links.ts",
+  "scripts/state.ts",
+];
+
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
- * content: its plan, the places its commitments are stated, its case files
- * and its test data, entry by entry: each directory as one, each regular file
- * by its bytes, each link by its target, anything else by its kind. Text
- * outside `test-data` directories reads the same whichever line endings a
- * checkout gave it; test data, in a `test-data` directory or beside the cases,
- * is taken byte for byte, as the replay copies it.
- * Any change to what the regression consists of changes it; nothing outside
- * the files, such as where they are kept or how they are versioned, does. A
- * candidate names the regression it derives from by this identity.
+ * content: its plan, the places its commitments are stated, its case files,
+ * its test data, and what fixes how it judges (the manifest and lockfile that
+ * select its runner, and the checker's own files), entry by entry: each
+ * directory as one, each regular file by its bytes and whether it may be
+ * executed, each link by its target, anything else by its kind. Test data, in
+ * a `test-data` directory or beside the cases, whatever its name, is taken
+ * byte for byte, as the replay copies it; any other text reads the same
+ * whichever line endings a checkout gave it. Any change to what the
+ * regression consists of changes it; nothing outside the files, such as where
+ * they are kept or how they are versioned, does. A candidate names the
+ * regression it derives from by this identity.
  */
 export function regressionIdentity(repo: string): string {
   const entries = new Map<string, Buffer>();
@@ -195,9 +208,9 @@ export function regressionIdentity(repo: string): string {
     const entry = entryAt(path.join(repo, rel));
     if (!entry) return;
     if (entry.kind === "directory") for (const name of fs.readdirSync(path.join(repo, rel))) add(`${rel}/${name}`);
-    // Test data as the replay copies it; only code and other text read the same whatever its line endings.
+    // Test data exactly as the replay copies it; everything else is text that reads the same whatever its line endings.
     const regular = entry.kind === "file" || entry.kind === "executable";
-    const text = regular && (!isData(rel, false) || /\.(ts|js|mjs|cjs|mts|cts)$/.test(rel));
+    const text = regular && !isData(rel, false);
     const content = text
       ? Buffer.from(entry.content.toString("latin1").replace(/\r\n/g, "\n"), "latin1")
       : entry.content;
@@ -210,6 +223,8 @@ export function regressionIdentity(repo: string): string {
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
   for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
+  // How it judges is part of the regression too: the runner its install selects, and the checker's own files.
+  for (const file of JUDGE) add(file);
   // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
   const hash = createHash("sha256");
   for (const [file, bytes] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {

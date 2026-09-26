@@ -394,6 +394,18 @@ test("a regression's identity changes with what it consists of, a link as a link
   fs.writeFileSync(path.join(beside, "scripts", "fixtures", "sum.txt"), "3\n");
   fs.writeFileSync(path.join(besideCrlf, "scripts", "fixtures", "sum.txt"), "3\r\n");
   assert.notEqual(regressionIdentity(beside), regressionIdentity(besideCrlf));
+  // So is test data named like code.
+  const [tsLf, tsCrlf] = [copy(), copy()];
+  fs.mkdirSync(path.join(tsLf, "test-data"), { recursive: true });
+  fs.mkdirSync(path.join(tsCrlf, "test-data"), { recursive: true });
+  fs.writeFileSync(path.join(tsLf, "test-data", "input.ts"), "a\nb\n");
+  fs.writeFileSync(path.join(tsCrlf, "test-data", "input.ts"), "a\r\nb\r\n");
+  assert.notEqual(regressionIdentity(tsLf), regressionIdentity(tsCrlf));
+  // And what selects the runner that judges: another lockfile is another regression.
+  const relocked = copy();
+  const beforeLock = regressionIdentity(relocked);
+  fs.writeFileSync(path.join(relocked, "package-lock.json"), '{ "lockfileVersion": 3 }\n');
+  assert.notEqual(regressionIdentity(relocked), beforeLock);
   // And whether test data may be executed, which the replay keeps.
   if (process.platform !== "win32") {
     const runnable = copy();
