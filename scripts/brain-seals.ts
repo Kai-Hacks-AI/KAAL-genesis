@@ -105,40 +105,87 @@ export function sealState(file: string, root = ROOT): SealState | undefined {
   return unit.length === 5 && unit.slice(1).every((part) => LEARNING.test(part)) ? "unit-seal" : "misplaced-seal";
 }
 
-/** Each entry of `git diff --name-status --no-renames` output: its status letter and path. */
-function entries(nameStatus: string): { status: string; file: string }[] {
-  return nameStatus
+/** A file that differs between two states of a directory: added, modified or deleted in the second. */
+export type Change = { status: "A" | "M" | "D"; file: string };
+
+/**
+ * Every file of `dir` by posix path relative to it, with its bytes: a
+ * symbolic link by its target. A directory that does not exist has none.
+ * Git's own `.git` and installed `node_modules` are not part of a state.
+ */
+function stateFiles(dir: string, rel = "", files = new Map<string, Buffer>()): Map<string, Buffer> {
+  if (!fs.existsSync(path.join(dir, rel))) return files;
+  for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+    if (e.name === ".git" || e.name === "node_modules") continue;
+    const file = rel ? `${rel}/${e.name}` : e.name;
+    const at = path.join(dir, file);
+    if (e.isSymbolicLink()) files.set(file, Buffer.from(`link:${fs.readlinkSync(at)}`));
+    else if (e.isDirectory()) stateFiles(dir, file, files);
+    else files.set(file, fs.readFileSync(at));
+  }
+  return files;
+}
+
+/**
+ * Changes as a list or as text, one `<status>\t<path>` line each, the form
+ * earlier generations of KAAL's cases pass them in.
+ */
+function changesOf(changes: Change[] | string): Change[] {
+  if (typeof changes !== "string") return changes;
+  return changes
     .split(/\r?\n/)
     .filter(Boolean)
     .map((line) => {
       const [status = "", file = ""] = line.split("\t");
-      return { status, file };
+      return { status: status as Change["status"], file };
     });
 }
 
 /**
- * Seal state is written only by sealing on main, never by a change: a change
- * that adds, modifies or deletes a seal, the chain heads or the lock would let
- * it rewrite sealed history, which file-based seals alone cannot detect.
- * Takes `git diff --name-status --no-renames` output and returns one error per
- * seal-state path it touches.
+ * How `after` differs from `before`, two states of the same directory, file
+ * by file and byte for byte, by posix path relative to them. Nothing but the
+ * two directories is consulted: no history, no index, no version control.
  */
-export function sealStateChanges(nameStatus: string, root = ROOT): string[] {
-  return entries(nameStatus)
+export function stateChanges(before: string, after: string): Change[] {
+  const was = stateFiles(before);
+  const is = stateFiles(after);
+  const changes: Change[] = [];
+  for (const [file, bytes] of is) {
+    const old = was.get(file);
+    if (!old) changes.push({ status: "A", file });
+    else if (!old.equals(bytes)) changes.push({ status: "M", file });
+  }
+  for (const file of was.keys()) if (!is.has(file)) changes.push({ status: "D", file });
+  return changes.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+}
+
+/**
+ * Seal state is written only by sealing the accepted state, never by a
+ * candidate: a candidate that adds, modifies or deletes a seal, the chain
+ * heads or the lock, compared with the accepted state it would succeed, would
+ * let it rewrite sealed history, which file-based seals alone cannot detect.
+ * Takes the changes between the two states, by path relative to the
+ * repository, and returns one error per seal-state path the candidate touches.
+ * Its words are the ones the accepted regression's cases pin; they can change
+ * once a case linked to KAAL's sealing meaning pins them instead.
+ */
+export function sealStateChanges(changes: Change[] | string, root = ROOT): string[] {
+  return changesOf(changes)
     .filter(({ file }) => sealState(file, root))
     .map(({ status, file }) => `${file}: seal state may only be written by sealing on main (${status})`);
 }
 
 /**
- * The other side of the same boundary: what sealing on main may commit. It
- * adds a seal to each newly sealed learning and adds or updates the chain
- * heads; it never changes or removes existing seal state, never commits the
- * lock, and never commits anything that is not seal state. Takes
- * `git diff --cached --name-status --no-renames` output for everything staged
- * and returns one error per entry sealing could not have produced.
+ * The other side of the same boundary: what sealing the accepted state may
+ * write. It adds a seal to each newly sealed learning and adds or updates the
+ * chain heads; it never changes or removes existing seal state, never leaves
+ * the lock behind, and never writes anything that is not seal state. Takes
+ * the changes between the state before sealing and the state after, by path
+ * relative to the repository, and returns one error per change sealing could
+ * not have produced.
  */
-export function sealingOutputErrors(nameStatus: string, root = ROOT): string[] {
-  return entries(nameStatus).flatMap(({ status, file }) => {
+export function sealingOutputErrors(changes: Change[] | string, root = ROOT): string[] {
+  return changesOf(changes).flatMap(({ status, file }) => {
     const kind = sealState(file, root);
     if (kind === "unit-seal" && status === "A") return [];
     if (kind === "heads" && (status === "A" || status === "M")) return [];

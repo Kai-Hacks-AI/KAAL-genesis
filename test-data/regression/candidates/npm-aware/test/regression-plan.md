@@ -7,7 +7,7 @@
 
 ## How this regression differs from the one it was derived from
 
-Derived from: `main` at `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`.
+Derived from: the accepted regression `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`.
 
 - Replaces: nothing.
 - Withdraws: nothing.

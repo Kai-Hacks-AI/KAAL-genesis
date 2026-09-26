@@ -24,7 +24,7 @@ function changed(file: string, change: (text: string) => string): string {
   return repo;
 }
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("links hold from the files alone: every case points at stated commitments, and several cases may prove one", () => {
   assert.deepEqual(linkErrors(regressionTrusted()), []);
   const cases = fileCases(CASES, fs.readFileSync(path.join(regressionTrusted(), CASES), "utf8"));
@@ -34,7 +34,7 @@ test("links hold from the files alone: every case points at stated commitments, 
   );
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a case may point at several commitments, one link each", () => {
   const repo = changed(CASES, (text) => text.replace(GREETS_LINK, `// Why: src/add.ts\n${GREETS_LINK}`));
   assert.deepEqual(linkErrors(repo), []);
@@ -42,7 +42,7 @@ test("a case may point at several commitments, one link each", () => {
   assert.deepEqual(greets?.places, ["src/add.ts", GREETING]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a case whose link disappears is refused, and so is the commitment it leaves without a case", () => {
   const repo = changed(CASES, (text) => text.replace(`// Why: ${GREETING}\n`, ""));
   assert.deepEqual(linkErrors(repo), [
@@ -51,13 +51,13 @@ test("a case whose link disappears is refused, and so is the commitment it leave
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a link redirected to another commitment leaves its own commitment without a case", () => {
   const repo = changed(CASES, (text) => text.replace(GREETS_LINK, GREETS_LINK.replace(GREETING, "src/add.ts")));
   assert.deepEqual(linkErrors(repo), [`${GREETING}: the plan says its cases show it, but no case points at it`]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a link to a commitment the plan does not state is refused, whether or not its place exists", () => {
   for (const place of ["brain/learning/k/26/01/01/01/nodes/unknown.md", "src/greet.ts"]) {
     const repo = changed(CASES, (text) => text.replace(GREETS_LINK, GREETS_LINK.replace(GREETING, place)));
@@ -68,7 +68,7 @@ test("a link to a commitment the plan does not state is refused, whether or not 
   }
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a link that belongs to no case is refused: one moved away from its case, or not written as a link", () => {
   const moved = changed(CASES, (text) => text.replace(GREETS_LINK, GREETS_LINK.replace("\ntest(", "\n\ntest(")));
   assert.deepEqual(linkErrors(moved), [
@@ -83,7 +83,7 @@ test("a link that belongs to no case is refused: one moved away from its case, o
   );
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a case whose title cannot be read is refused, since no link can follow it", () => {
   const repo = changed(CASES, (text) => text.replace('test("adds", () => {', "test(`adds`, () => {"));
   assert.deepEqual(linkErrors(repo), [
@@ -92,14 +92,14 @@ test("a case whose title cannot be read is refused, since no link can follow it"
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a commitment whose place states nothing is refused", () => {
   assert.deepEqual(linkErrors(regressionCandidate("misplaced")), [
     "brain/learning/k/26/01/01/01/nodes/parting.md: the plan names it, but nothing is stated there",
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a commitment whose place is outside the repository is refused, even where a file exists", () => {
   assert.deepEqual(linkErrors(regressionCandidate("outside")), [
     "/etc/passwd: the plan names it, but it is not a place inside the repository",
@@ -122,7 +122,7 @@ test("a commitment whose place is outside the repository is refused, even where 
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a plan says what shows each commitment; only one its cases show must have a case", () => {
   const silent = changed(PLAN, (text) => text.replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`."));
   assert.deepEqual(linkErrors(silent), ["src/add.ts: the plan does not say what shows it"]);
@@ -162,7 +162,7 @@ function withSkill(caseSource: string): string {
   return repo;
 }
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a skill's case proves its own SKILL.md without a link, and never points outside its skill", () => {
   const plain = 'import test from "node:test";\n\ntest("says hello", () => {});\n';
   assert.deepEqual(linkErrors(withSkill(plain)), []);
@@ -172,17 +172,17 @@ test("a skill's case proves its own SKILL.md without a link, and never points ou
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
-test("a candidate that would leave the next main with links it cannot read is refused", () => {
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("a candidate that would leave the next accepted regression with links it cannot read is refused", () => {
   const candidate = changed(CASES, (text) => text.replace(`// Why: ${GREETING}\n`, ""));
-  const errors = regressionErrors(regressionTrusted(), candidate, "b".repeat(40));
+  const errors = regressionErrors(regressionTrusted(), candidate, "b".repeat(64));
   assert.deepEqual(errors.slice(0, 2), [
-    `as the next main, ${CASES}: "greets" says no commitment it helps prove`,
-    `as the next main, ${GREETING}: the plan says its cases show it, but no case points at it`,
+    `as the next accepted regression, ${CASES}: "greets" says no commitment it helps prove`,
+    `as the next accepted regression, ${GREETING}: the plan says its cases show it, but no case points at it`,
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("KAAL's own testing links hold from its files", () => {
   assert.deepEqual(linkErrors(REPO), []);
 });

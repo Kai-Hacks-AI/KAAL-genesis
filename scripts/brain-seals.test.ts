@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
@@ -10,10 +13,11 @@ import {
   sealingOutputErrors,
   sealState,
   sealStateChanges,
+  stateChanges,
 } from "./brain-seals.js";
 import { brainData, diffData, scratchBrain, sealingDiff, tree, withSealWriteFailure } from "./test-data.js";
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("one chain per lineage, named after it, with its learnings oldest first", () => {
   assert.deepEqual(
     brainChains(brainData("lineages")),
@@ -24,7 +28,7 @@ test("one chain per lineage, named after it, with its learnings oldest first", (
   );
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("seals every learning of every lineage", () => {
   const root = scratchBrain("lineages");
   assert.deepEqual(sealBrain(root), ["genesis/26/09/25/01", "genesis/26/09/26/01", "other/26/09/25/01"]);
@@ -32,7 +36,7 @@ test("seals every learning of every lineage", () => {
   assert.deepEqual(checkBrain(root), []);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("sealing again seals only new learnings, exactly as sealing everything at once would", () => {
   const root = scratchBrain("sealed-new-learning");
   assert.deepEqual(checkBrain(root), []);
@@ -56,7 +60,7 @@ test("refuses to seal an invalid BRAIN, closing nothing", () => {
   assert.deepEqual(tree(root), tree(brainData("invalid-learning")));
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("refuses to seal any lineage while another lineage's seals are broken, closing nothing", () => {
   const root = scratchBrain("new-learning-other-broken");
   assert.throws(
@@ -66,7 +70,7 @@ test("refuses to seal any lineage while another lineage's seals are broken, clos
   assert.deepEqual(tree(root), tree(brainData("new-learning-other-broken")));
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("rolls back every lineage when a later lineage fails while sealing, closing nothing", () => {
   const root = scratchBrain("lineages");
   assert.throws(() => withSealWriteFailure("other/26/09/25/01", () => sealBrain(root)), /simulated write failure/);
@@ -74,14 +78,14 @@ test("rolls back every lineage when a later lineage fails while sealing, closing
   assert.deepEqual(sealBrain(root), ["genesis/26/09/25/01", "genesis/26/09/26/01", "other/26/09/25/01"]);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("restores the chain heads when a later lineage fails after an earlier one sealed on top of them", () => {
   const root = scratchBrain("new-learnings-in-both");
   assert.throws(() => withSealWriteFailure("other/26/09/26/01", () => sealBrain(root)), /simulated write failure/);
   assert.deepEqual(tree(root), tree(brainData("new-learnings-in-both")));
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
 test("reports what stops a BRAIN from being sealed: invalid nodes and broken seals", () => {
   assert.deepEqual(brainErrors(brainData("invalid-learning")), [
@@ -90,14 +94,14 @@ test("reports what stops a BRAIN from being sealed: invalid nodes and broken sea
   assert.deepEqual(brainErrors(brainData("sealed")), []);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("reports a node changed in a sealed learning", () => {
   assert.deepEqual(checkBrain(brainData("sealed-node-changed")), [
     "genesis/26/09/25/01/nodes/a.md: changed after sealing",
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("reports a sealed lineage removed with its learnings", () => {
   assert.deepEqual(checkBrain(brainData("sealed-lineage-removed")), [
     "other: head records units other/26/09/25/01, which do not begin the chain",
@@ -109,18 +113,18 @@ test("the committed BRAIN is valid", () => {
   assert.deepEqual(validate(ROOT), []);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("the committed BRAIN's seals are intact", () => {
   assert.deepEqual(checkBrain(ROOT), []);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("allows a change that only adds learnings or touches files outside BRAIN", () => {
   assert.deepEqual(sealStateChanges(diffData("new-learning")), []);
   assert.deepEqual(sealStateChanges(diffData("outside-brain")), []);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("refuses a change that adds, modifies or deletes seal state", () => {
   const refused = (file: string, status: string) => [
     `${file}: seal state may only be written by sealing on main (${status})`,
@@ -142,7 +146,7 @@ test("refuses a change that adds, modifies or deletes seal state", () => {
   assert.deepEqual(sealStateChanges(diffData("lock-added")), refused("brain/learning/seals.json.lock", "A"));
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("classifies seal state: each learning's seal, the chain heads and the lock, only under the BRAIN root", () => {
   assert.equal(sealState("brain/learning/genesis/26/09/25/01/seal.json"), "unit-seal");
   assert.equal(sealState("brain/learning/seals.json"), "heads");
@@ -155,7 +159,7 @@ test("classifies seal state: each learning's seal, the chain heads and the lock,
   assert.equal(sealState("skills/using-seals/test-data/chains/sealed/one/seal.json"), undefined);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("the guard also refuses a seal file placed anywhere else under the BRAIN root", () => {
   assert.deepEqual(sealStateChanges(diffData("misplaced-seal")), [
     "brain/learning/genesis/26/09/25/01/nodes/seal.json: seal state may only be written by sealing on main (A)",
@@ -163,7 +167,7 @@ test("the guard also refuses a seal file placed anywhere else under the BRAIN ro
   assert.deepEqual(sealStateChanges(diffData("stray-in-brain")), []);
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("accepts exactly what sealing produces: a first sealing, and sealing on top of existing seals", () => {
   for (const [from, to] of [
     ["lineages", "sealed"],
@@ -175,7 +179,7 @@ test("accepts exactly what sealing produces: a first sealing, and sealing on top
   }
 });
 
-// Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("refuses to commit anything sealing does not produce", () => {
   const refused = (file: string, what: string) => [`${file}: sealing never commits this (${what})`];
   assert.deepEqual(
@@ -214,4 +218,33 @@ test("refuses to commit anything sealing does not produce", () => {
     sealingOutputErrors(diffData("lock-added")),
     refused("brain/learning/seals.json.lock", "lock added"),
   );
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+test("compares two states of a directory file by file, from the files alone", () => {
+  const state = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-state-"));
+  const [before, after] = [state(), state()];
+  for (const dir of [before, after]) {
+    fs.mkdirSync(path.join(dir, "kept"));
+    fs.writeFileSync(path.join(dir, "kept", "same.txt"), "same\n");
+  }
+  fs.writeFileSync(path.join(before, "changed.txt"), "was\n");
+  fs.writeFileSync(path.join(after, "changed.txt"), "is\n");
+  fs.writeFileSync(path.join(before, "gone.txt"), "gone\n");
+  fs.writeFileSync(path.join(after, "new.txt"), "new\n");
+  // Neither Git's own files nor installed dependencies are part of a state.
+  for (const skipped of [".git", "node_modules"]) {
+    fs.mkdirSync(path.join(after, skipped));
+    fs.writeFileSync(path.join(after, skipped, "anything"), "ignored\n");
+  }
+  assert.deepEqual(stateChanges(before, after), [
+    { status: "M", file: "changed.txt" },
+    { status: "D", file: "gone.txt" },
+    { status: "A", file: "new.txt" },
+  ]);
+  assert.deepEqual(stateChanges(before, path.join(before, "missing")), [
+    { status: "D", file: "changed.txt" },
+    { status: "D", file: "gone.txt" },
+    { status: "D", file: "kept/same.txt" },
+  ]);
 });

@@ -1,0 +1,120 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { PLAN } from "./links.js";
+import { regressionCandidate, regressionTrusted } from "./test-data.js";
+
+// KAAL works on files. These cases copy KAAL out of Git, into plain
+// directories with no `.git`, and run its capabilities as their command lines
+// do, in processes that cannot find `git` and see no GitHub: nothing is
+// mocked, so each passes only because KAAL has no reason to ask either.
+
+const REPO = fileURLToPath(new URL("../", import.meta.url));
+const TSX = fileURLToPath(import.meta.resolve("tsx/cli"));
+
+/** A copy of `from` as plain files, without `.git`; dependencies are linked, as an install would provide them. */
+function plainCopy(from: string): string {
+  const to = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-plain-")), "kaal");
+  fs.cpSync(from, to, {
+    recursive: true,
+    verbatimSymlinks: true,
+    filter: (src) => {
+      const top = path.relative(from, src).split(path.sep)[0];
+      return top !== ".git" && top !== "node_modules";
+    },
+  });
+  fs.symlinkSync(path.join(REPO, "node_modules"), path.join(to, "node_modules"), "junction");
+  return to;
+}
+
+/** An environment in which no program can be found by name, and nothing of Git, GitHub or npm is set. */
+function withoutGit(): NodeJS.ProcessEnv {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) => !/^(path|ci|node_options|node_test_context)$|^(git|github|gh|runner|npm)_/i.test(key),
+    ),
+  );
+  return { ...env, PATH: fs.mkdtempSync(path.join(os.tmpdir(), "kaal-no-programs-")) };
+}
+
+/** Runs one of KAAL's command lines in `cwd`, as `npm run` would, but without npm, Git or GitHub. */
+function kaal(cwd: string, script: string, ...args: string[]) {
+  const run = spawnSync(process.execPath, [TSX, script, ...args], { cwd, env: withoutGit(), encoding: "utf8" });
+  return { status: run.status, out: `${run.stdout}${run.stderr}` };
+}
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the processes these cases run KAAL in cannot find git", () => {
+  const run = spawnSync("git", ["--version"], { env: withoutGit() });
+  assert.equal((run.error as NodeJS.ErrnoException | undefined)?.code, "ENOENT");
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+// Why: scripts/brain-seals.ts
+test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and its testing links", () => {
+  const kaalState = plainCopy(REPO);
+  assert.equal(fs.existsSync(path.join(kaalState, ".git")), false);
+  for (const [script, ...args] of [
+    ["skills/using-brain/scripts/validate.ts"],
+    ["scripts/check-seals.ts"],
+    ["skills/using-skills/scripts/check.ts", "skills"],
+    ["scripts/check-links.ts"],
+  ] as [string, ...string[]][]) {
+    const run = kaal(kaalState, script, ...args);
+    assert.equal(run.status, 0, `${script}: ${run.out}`);
+  }
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
+// Why: scripts/brain-seals.ts
+test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote, and guards seal state against a candidate", () => {
+  const before = plainCopy(REPO);
+  const sealed = plainCopy(REPO);
+  const sealing = kaal(sealed, "scripts/seal.ts");
+  assert.equal(sealing.status, 0, sealing.out);
+  assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 0, "sealing wrote only seal state");
+  assert.equal(kaal(sealed, "scripts/check-seals.ts").status, 0, "the new seals hold");
+
+  // A candidate that changes nothing of the accepted state's seal state passes the guard.
+  const candidate = plainCopy(sealed);
+  assert.equal(kaal(sealed, "scripts/seal-guard.ts", sealed, candidate).status, 0);
+  // One that rewrites a seal, or brings seals of its own, is refused.
+  const heads = path.join(candidate, "brain", "learning", "seals.json");
+  fs.writeFileSync(heads, fs.readFileSync(heads, "utf8").replace(/"seal": "[0-9a-f]/, '"seal": "0'));
+  const rewritten = kaal(sealed, "scripts/seal-guard.ts", sealed, candidate);
+  assert.equal(rewritten.status, 1);
+  assert.match(rewritten.out, /brain\/learning\/seals\.json: seal state .*\(M\)/);
+  const bringing = kaal(before, "scripts/seal-guard.ts", before, sealed);
+  assert.equal(bringing.status, 1);
+  assert.match(bringing.out, /seal\.json: seal state .*\(A\)/);
+  // What sealing wrote is refused as the output of anything but sealing once something else changes too.
+  fs.writeFileSync(path.join(sealed, "README.stray"), "not seal state\n");
+  assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 1);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("copied out of Git, KAAL judges a candidate state by an accepted state, both plain directories", () => {
+  const kaalState = plainCopy(REPO);
+  const accepted = plainCopy(regressionTrusted());
+  const identity = kaal(kaalState, "scripts/check-regression.ts", "--identity", accepted);
+  assert.equal(identity.status, 0, identity.out);
+  const id = identity.out.trim();
+  assert.match(id, /^[0-9a-f]{64}$/);
+
+  const named = (candidate: string) => {
+    const plan = path.join(candidate, PLAN);
+    fs.writeFileSync(plan, fs.readFileSync(plan, "utf8").replace(/regression `[0-9a-f]{64}`/, `regression \`${id}\``));
+    return candidate;
+  };
+  const holds = kaal(kaalState, "scripts/check-regression.ts", named(regressionCandidate("kept")), accepted);
+  assert.equal(holds.status, 0, holds.out);
+  assert.match(holds.out, new RegExp(`the accepted regression ${id} holds`));
+  const weakened = kaal(kaalState, "scripts/check-regression.ts", named(regressionCandidate("weakened")), accepted);
+  assert.equal(weakened.status, 1);
+  assert.match(weakened.out, /scripts\/cases\.test\.ts: "adds" failed/);
+});
