@@ -92,6 +92,22 @@ export function unreplayable(repo: string): string | undefined {
     .map(([file]) => file);
   if (unnamed.length)
     return `the accepted regression's inputs have names or link targets that are not UTF-8 (${unnamed.map((f) => f.split("\0")[0]).join(", ")})`;
+  // The replay copies each case file and item of test data from the accepted state, and nothing else, so a
+  // link among them must lead within the item it is in: anything else would be the candidate's.
+  const items = [...caseFiles(repo), ...dataOf(repo).map(([rel]) => rel)];
+  const uncopied = [...regressionInputs(repo)].flatMap(([file, entry]) => {
+    const item = items.find((i) => file === i || file.startsWith(`${i}/`));
+    if (!item || entry.kind !== "link") return [];
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), entry.content.toString("utf8")));
+    return target === item || target.startsWith(`${item}/`) ? [] : [file];
+  });
+  if (uncopied.length)
+    return `the accepted regression's cases or test data link to what its replay does not copy (${uncopied.join(", ")})`;
+  // The checker's imports are followed from where its files are named; one reached through a link runs from elsewhere.
+  const linked = checkerCode(repo).found.filter((file) =>
+    file.split("/").some((_, i, parts) => entryAt(path.join(repo, ...parts.slice(0, i + 1)))?.kind === "link"),
+  );
+  if (linked.length) return `the accepted regression's checker code is reached through a link (${linked.join(", ")})`;
   const imported = checkerCode(repo).escaping;
   if (imported.length)
     return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;

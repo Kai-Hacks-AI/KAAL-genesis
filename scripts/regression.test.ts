@@ -538,6 +538,25 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
       "the accepted regression's inputs link outside its state (package-lock.json)",
     );
   }
+  // The replay copies only cases and test data, so a case that is a link to other code would run the candidate's.
+  if (process.platform !== "win32") {
+    const redirected = regressionCandidate("kept");
+    fs.renameSync(path.join(redirected, "scripts", "cases.test.ts"), path.join(redirected, "scripts", "real.ts"));
+    fs.symlinkSync("real.ts", path.join(redirected, "scripts", "cases.test.ts"));
+    assert.equal(
+      unreplayable(redirected),
+      "the accepted regression's cases or test data link to what its replay does not copy (scripts/cases.test.ts)",
+    );
+    // And checker code reached through a link runs, and imports, from where the link leads.
+    const throughLink = regressionCandidate("kept");
+    fs.mkdirSync(path.join(throughLink, "scripts"), { recursive: true });
+    fs.writeFileSync(path.join(throughLink, "check.ts"), 'import "../change/evil.js";\n');
+    fs.symlinkSync("../check.ts", path.join(throughLink, "scripts", "check-regression.ts"));
+    assert.equal(
+      unreplayable(throughLink),
+      "the accepted regression's checker code is reached through a link (scripts/check-regression.ts)",
+    );
+  }
   // So would a checker that imports code from outside its state, such as from the next candidate beside it.
   const reaching = regressionCandidate("kept");
   fs.mkdirSync(path.join(reaching, "scripts"), { recursive: true });
