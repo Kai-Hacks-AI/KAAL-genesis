@@ -101,7 +101,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm ci
+      # Both sides install without lifecycle scripts, their own or their
+      # dependencies': neither may rewrite what is judged before it is read.
+      - run: npm ci --ignore-scripts
         working-directory: trusted
       - run: npm ci --ignore-scripts
         working-directory: change
@@ -114,8 +116,10 @@ jobs:
     if: ${{ !cancelled() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
     runs-on: ubuntu-latest
     permissions:
-      # contents: read, to read main's head again before and after publishing.
+      # contents: read, to read main's head again after publishing;
+      # pull-requests: read, to see whether another pull request shares the head.
       contents: read
+      pull-requests: read
       statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -129,6 +133,15 @@ jobs:
       # check below or the invalidation a later move of main triggers is
       # always the last to write the status.
       - run: |
+          set -o pipefail
+          # One commit status per head: if several open pull requests share this head, their
+          # judgements could differ, so none of them is published as a success.
+          HEAD_SHA="${STATUS_URL##*/}"
+          sharing=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | wc -l)
+          if [ "$RESULT" = success ] && [ "$sharing" -gt 1 ]; then
+            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="$sharing open pull requests share this head: give each its own"
+            exit 0
+          fi
           if [ "$RESULT" != success ]; then
             gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression does not hold for the change"
             exit 0
