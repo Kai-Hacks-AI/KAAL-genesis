@@ -91,11 +91,13 @@ jobs:
       main: ${{ steps.main.outputs.sha }}
     steps:
       - run: git config --global core.autocrlf true
-      # main's latest commit, named explicitly: the regression that judges the
-      # change, whatever branch the pull request targets.
+      # The commit of main this workflow was taken from, named explicitly: the
+      # regression that judges the change, whatever branch the pull request
+      # targets, and the same revision as the jobs judging it. If main moves
+      # after the run is created, the report sees that main is no longer it.
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.workflow_sha }}
           path: trusted
           persist-credentials: false
       - id: main
