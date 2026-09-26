@@ -140,24 +140,29 @@ jobs:
       JUDGED_BY: ${{ needs.run.outputs.main }}
       REPO: ${{ github.repository }}
     steps:
-      # Success is published before main is checked again, so either the
-      # check below or the invalidation a later move of main triggers is
-      # always the last to write the status.
+      # Success is published before the shared head and main are checked
+      # again, so either the checks below, or the run of a pull request
+      # opened on this head later, or the invalidation a later move of main
+      # triggers, is always the last to write the status.
       - run: |
           set -o pipefail
-          # One commit status per head: if several open pull requests share this head, their
-          # judgements could differ, so none of them is published as a success.
-          HEAD_SHA="${STATUS_URL##*/}"
-          sharing=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | wc -l)
-          if [ "$RESULT" = success ] && [ "$sharing" -gt 1 ]; then
-            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="$sharing open pull requests share this head: give each its own"
-            exit 0
-          fi
           if [ "$RESULT" != success ]; then
             gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression does not hold for the change"
             exit 0
           fi
           gh api "$STATUS_URL" -f state=success -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression holds (main ${JUDGED_BY:0:12})"
+          # One commit status per head: if several open pull requests share this head, their
+          # judgements could differ, so none of them keeps a success. Checked after publishing:
+          # a pull request opened on this head later is caught by its own run's report.
+          HEAD_SHA="${STATUS_URL##*/}"
+          if ! sharing=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | wc -l); then
+            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="open pull requests could not be listed: run it again"
+            exit 1
+          fi
+          if [ "$sharing" != 1 ]; then
+            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="$sharing open pull requests share this head: give each its own"
+            exit 0
+          fi
           if [ "$(gh api "repos/$REPO/commits/main" --jq .sha)" != "$JUDGED_BY" ]; then
             gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main moved while the change was judged: derive it from main again"
           fi
