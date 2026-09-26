@@ -17,7 +17,7 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 
 ## How this regression differs from the one it was derived from
 
-Derived from: the accepted regression `3ca628aac5d6bd7a42ca596a7a8b18ff2d52ef125772d4c952c9e636a5dd121a`.
+Derived from: the accepted regression `45496ada84a461050e81b668bb1759c6a1def2a8c8d0d747ccbf419cb2d78019`.
 
 This section names the regression a plan was derived from and what the plan does not retain of it, each with what supersedes it; every commitment of that regression it does not name is retained. A regression is named by its identity, taken from its own content: its plan, the places its commitments are stated, its case files and its test data (`npm run regression:check -- --identity <accepted>` prints it). On a candidate, it must be the identity of the accepted regression as it is now; once the candidate is accepted, the section stays as the record of how this regression came to be, and the next candidate replaces it with its own. Changes made within a candidate before it is accepted are not changes to the regression. How a commitment is replaced or withdrawn is stated in `brain/learning/genesis/26/09/26/03/nodes/testing.md`.
 

@@ -179,13 +179,16 @@ export function classify(trusted: string, candidate: string, base: string): Clas
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
  * content: its plan, the places its commitments are stated, its case files
- * and its test data, path by path, with line endings as in its text. Any
- * change to what the regression consists of changes it; nothing outside the
- * files, such as where they are kept or how they are versioned, does. A
+ * and its test data, entry by entry: each directory as one, each regular file
+ * by its bytes, each link by its target, anything else by its kind. Text
+ * outside `test-data` directories reads the same whichever line endings a
+ * checkout gave it; test data is taken byte for byte, as its cases read it.
+ * Any change to what the regression consists of changes it; nothing outside
+ * the files, such as where they are kept or how they are versioned, does. A
  * candidate names the regression it derives from by this identity.
  */
 export function regressionIdentity(repo: string): string {
-  const entries = new Map<string, string>();
+  const entries = new Map<string, [kind: string, content: Buffer]>();
   const add = (rel: string) => {
     const at = path.join(repo, rel);
     let entry: fs.Stats;
@@ -194,12 +197,17 @@ export function regressionIdentity(repo: string): string {
     } catch {
       return;
     }
-    // Each entry as what it is, never what it points at: a link is its target, and nothing but a regular file is read.
-    if (entry.isDirectory()) for (const e of fs.readdirSync(at)) add(`${rel}/${e}`);
-    else if (entry.isSymbolicLink()) entries.set(rel, `link:${fs.readlinkSync(at)}`);
-    else if (!entry.isFile()) entries.set(rel, `special:${entry.isFIFO() ? "fifo" : "other"}`);
-    // Text as it reads, whichever line endings a checkout gave it.
-    else entries.set(rel, `file:${fs.readFileSync(at).toString("latin1").replace(/\r\n/g, "\n")}`);
+    // Each entry as what it is, never what it points at: nothing but a regular file is read.
+    if (entry.isDirectory()) {
+      entries.set(rel, ["directory", Buffer.alloc(0)]);
+      for (const e of fs.readdirSync(at)) add(`${rel}/${e}`);
+    } else if (entry.isSymbolicLink()) entries.set(rel, ["link", Buffer.from(fs.readlinkSync(at), "utf8")]);
+    else if (!entry.isFile()) entries.set(rel, [entry.isFIFO() ? "fifo" : "special", Buffer.alloc(0)]);
+    else {
+      const bytes = fs.readFileSync(at);
+      const data = rel.split("/").includes("test-data");
+      entries.set(rel, ["file", data ? bytes : Buffer.from(bytes.toString("latin1").replace(/\r\n/g, "\n"), "latin1")]);
+    }
   };
   if (fs.existsSync(path.join(repo, PLAN))) {
     add(PLAN);
@@ -208,9 +216,14 @@ export function regressionIdentity(repo: string): string {
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
   for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
+  // Every part framed by its length in bytes, so no two different sets of entries hash alike.
   const hash = createHash("sha256");
-  for (const [file, content] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
-    hash.update(`${file}\0${content.length}\0`).update(content, "latin1");
+  const frame = (part: Buffer) => hash.update(`${part.length}:`).update(part);
+  for (const [file, [kind, content]] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    frame(Buffer.from(file, "utf8"));
+    frame(Buffer.from(kind, "utf8"));
+    frame(content);
+  }
   return hash.digest("hex");
 }
 

@@ -372,6 +372,28 @@ test("a regression's identity changes with what it consists of, a link as a link
   fs.mkdirSync(path.join(linked, "test-data"), { recursive: true });
   fs.symlinkSync(target, path.join(linked, "test-data", "shared"), "junction");
   assert.notEqual(regressionIdentity(plain), regressionIdentity(linked));
+  // An empty directory of test data, a link's exact target, and test data's exact bytes are all part of it.
+  const empty = copy();
+  const beforeEmpty = regressionIdentity(empty);
+  fs.mkdirSync(path.join(empty, "test-data", "empty"), { recursive: true });
+  assert.notEqual(regressionIdentity(empty), beforeEmpty);
+  const [wide, wider] = [copy(), copy()];
+  fs.mkdirSync(path.join(wide, "test-data"), { recursive: true });
+  fs.mkdirSync(path.join(wider, "test-data"), { recursive: true });
+  fs.symlinkSync(path.join(target, "\u0100"), path.join(wide, "test-data", "to"), "junction");
+  fs.symlinkSync(path.join(target, "\u0200"), path.join(wider, "test-data", "to"), "junction");
+  assert.notEqual(regressionIdentity(wide), regressionIdentity(wider));
+  const [lf, crlf] = [copy(), copy()];
+  fs.mkdirSync(path.join(lf, "test-data"), { recursive: true });
+  fs.mkdirSync(path.join(crlf, "test-data"), { recursive: true });
+  fs.writeFileSync(path.join(lf, "test-data", "lines.txt"), "a\nb\n");
+  fs.writeFileSync(path.join(crlf, "test-data", "lines.txt"), "a\r\nb\r\n");
+  assert.notEqual(regressionIdentity(lf), regressionIdentity(crlf));
+  // Text a checkout may give either line ending reads the same.
+  const [unix, windows] = [copy(), copy()];
+  const plan = (repo: string) => path.join(repo, PLAN);
+  fs.writeFileSync(plan(windows), fs.readFileSync(plan(windows), "utf8").replace(/\n/g, "\r\n"));
+  assert.equal(regressionIdentity(unix), regressionIdentity(windows));
   // Code that is not part of the regression does not change it.
   const before = regressionIdentity(other);
   fs.writeFileSync(path.join(other, "src", "unrelated.ts"), "export {};\n");
