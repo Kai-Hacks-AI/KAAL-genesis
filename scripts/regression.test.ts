@@ -441,6 +441,32 @@ test("a regression's identity changes with what it consists of, a link as a link
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("a state whose judging depends on files outside it cannot be replayed: local packages, and links out of it", () => {
+  const local = regressionCandidate("kept");
+  const pkg = path.join(local, "package.json");
+  fs.writeFileSync(
+    pkg,
+    JSON.stringify({ ...JSON.parse(fs.readFileSync(pkg, "utf8")), devDependencies: { tsx: "file:../tsx" } }),
+  );
+  assert.equal(
+    unreplayable(local),
+    "the accepted regression's install takes packages from local files (tsx), which its identity does not cover",
+  );
+  const linked = regressionCandidate("kept");
+  fs.mkdirSync(path.join(linked, "test-data"), { recursive: true });
+  fs.symlinkSync(
+    fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-")),
+    path.join(linked, "test-data", "shared"),
+    "junction",
+  );
+  assert.equal(unreplayable(linked), "the accepted regression's inputs link outside its state (test-data/shared)");
+  // As a candidate, either would leave the next accepted regression unable to judge from its own files.
+  assert.deepEqual(regressionErrors(regressionTrusted(), linked, BASE).slice(0, 1), [
+    "as the next accepted regression, inputs link outside its state (test-data/shared)",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("KAAL's own plan states a place for every commitment and the accepted regression it was derived from, and its npm test can be replayed and names every case", () => {
   const plan = fs.readFileSync(path.join(REPO, PLAN), "utf8");
   assert.equal(planCommitments(plan).length, [...plan.matchAll(/^\d+\. /gm)].length);

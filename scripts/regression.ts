@@ -16,7 +16,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
-import { entryAt, entryBytes } from "./state.js";
+import { type Entry, entryAt, entryBytes } from "./state.js";
 
 /**
  * KAAL's trusted regression: the accepted regression, a state of KAAL's
@@ -78,6 +78,12 @@ export function unreplayable(repo: string): string | undefined {
   const empty = rest.filter((arg) => !fs.globSync(arg, { cwd: repo }).length);
   if (empty.length)
     return `the accepted regression's npm test names case files that do not exist (${empty.join(", ")})`;
+  // What judges must be in the state's files: an install from local packages, or a link out of the state, is not.
+  const local = localPackages(repo);
+  if (local.length)
+    return `the accepted regression's install takes packages from local files (${local.join(", ")}), which its identity does not cover`;
+  const escaping = outsideLinks(repo);
+  if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
   return undefined;
 }
 
@@ -214,18 +220,29 @@ export function judgeFiles(repo: string): string[] {
  * regression it derives from by this identity.
  */
 export function regressionIdentity(repo: string): string {
-  const entries = new Map<string, Buffer>();
-  const add = (rel: string) => {
-    const entry = entryAt(path.join(repo, rel));
-    if (!entry) return;
-    if (entry.kind === "directory") for (const name of fs.readdirSync(path.join(repo, rel))) add(`${rel}/${name}`);
+  const hash = createHash("sha256");
+  // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
+  for (const [file, entry] of [...regressionInputs(repo)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     // Test data exactly as the replay copies it; everything else is text that reads the same whatever its line endings.
-    const regular = entry.kind === "file" || entry.kind === "executable";
-    const text = regular && !isData(rel, false);
+    const text = (entry.kind === "file" || entry.kind === "executable") && !isData(file, false);
     const content = text
       ? Buffer.from(entry.content.toString("latin1").replace(/\r\n/g, "\n"), "latin1")
       : entry.content;
-    entries.set(rel, entryBytes({ ...entry, content }));
+    const name = Buffer.from(file, "utf8");
+    const bytes = entryBytes({ ...entry, content });
+    hash.update(`${name.length}:`).update(name).update(`${bytes.length}:`).update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+/** Every entry a regression consists of, by posix path: what its identity is taken from. */
+function regressionInputs(repo: string): Map<string, Entry> {
+  const entries = new Map<string, Entry>();
+  const add = (rel: string) => {
+    const entry = entryAt(path.join(repo, rel));
+    if (!entry || entries.has(rel)) return;
+    entries.set(rel, entry);
+    if (entry.kind === "directory") for (const name of fs.readdirSync(path.join(repo, rel))) add(`${rel}/${name}`);
   };
   if (fs.existsSync(path.join(repo, PLAN))) {
     add(PLAN);
@@ -234,15 +251,35 @@ export function regressionIdentity(repo: string): string {
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
   for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
-  // How it judges is part of the regression too: the runner its install selects, and the checker's own files.
+  // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
   for (const file of judgeFiles(repo)) add(file);
-  // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
-  const hash = createHash("sha256");
-  for (const [file, bytes] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    const name = Buffer.from(file, "utf8");
-    hash.update(`${name.length}:`).update(name).update(`${bytes.length}:`).update(bytes);
-  }
-  return hash.digest("hex");
+  return entries;
+}
+
+/**
+ * The links among a regression's inputs that point outside its state: the
+ * replay keeps them, so what they point at could change how it judges while
+ * nothing in the state, and so nothing in its identity, changes.
+ */
+function outsideLinks(repo: string): string[] {
+  const root = path.resolve(repo);
+  return [...regressionInputs(repo)].flatMap(([file, entry]) => {
+    if (entry.kind !== "link") return [];
+    const target = path.resolve(path.dirname(path.join(root, file)), entry.content.toString("utf8"));
+    return target === root || target.startsWith(root + path.sep) ? [] : [file];
+  });
+}
+
+/** The packages a repository's install would take from local files, rather than as its lockfile pins them. */
+function localPackages(repo: string): string[] {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as Record<string, unknown>;
+  const local = /^(file:|link:|workspace:|portal:|\.{0,2}\/)/;
+  const named = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].flatMap((field) =>
+    Object.entries((manifest[field] as Record<string, string> | undefined) ?? {}).flatMap(([name, spec]) =>
+      local.test(spec) ? [name] : [],
+    ),
+  );
+  return manifest.workspaces ? ["workspaces", ...named] : named;
 }
 
 export type Result = { file: string; name: string; outcome: "pass" | "fail" | "skip" };

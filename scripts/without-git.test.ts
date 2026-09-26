@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
+import { judgeFiles } from "./regression.js";
 import { regressionCandidate, regressionTrusted } from "./test-data.js";
 
 // KAAL works on files. These cases copy KAAL out of Git, into plain
@@ -98,10 +99,14 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
-test("copied out of Git, KAAL judges a candidate state by an accepted state, both plain directories", () => {
-  const kaalState = plainCopy(REPO);
+test("copied out of Git, an accepted state judges a candidate state with its own checker, both plain directories", () => {
+  // The accepted state carries KAAL's checker, as main does, and judges with it.
   const accepted = plainCopy(regressionTrusted());
-  const identity = kaal(kaalState, "scripts/check-regression.ts", "--identity", accepted);
+  for (const file of judgeFiles(REPO).filter((f) => fs.existsSync(path.join(REPO, f)) && f.endsWith(".ts"))) {
+    fs.mkdirSync(path.dirname(path.join(accepted, file)), { recursive: true });
+    fs.copyFileSync(path.join(REPO, file), path.join(accepted, file));
+  }
+  const identity = kaal(accepted, "scripts/check-regression.ts", "--identity");
   assert.equal(identity.status, 0, identity.out);
   const id = identity.out.trim();
   assert.match(id, /^[0-9a-f]{64}$/);
@@ -111,10 +116,10 @@ test("copied out of Git, KAAL judges a candidate state by an accepted state, bot
     fs.writeFileSync(plan, fs.readFileSync(plan, "utf8").replace(/regression `[0-9a-f]{64}`/, `regression \`${id}\``));
     return candidate;
   };
-  const holds = kaal(kaalState, "scripts/check-regression.ts", named(regressionCandidate("kept")), accepted);
+  const holds = kaal(accepted, "scripts/check-regression.ts", named(regressionCandidate("kept")));
   assert.equal(holds.status, 0, holds.out);
   assert.match(holds.out, new RegExp(`the accepted regression ${id} holds`));
-  const weakened = kaal(kaalState, "scripts/check-regression.ts", named(regressionCandidate("weakened")), accepted);
+  const weakened = kaal(accepted, "scripts/check-regression.ts", named(regressionCandidate("weakened")));
   assert.equal(weakened.status, 1);
   assert.match(weakened.out, /scripts\/cases\.test\.ts: "adds" failed/);
 });
