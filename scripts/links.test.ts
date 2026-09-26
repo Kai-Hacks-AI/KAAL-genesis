@@ -173,6 +173,19 @@ test("a skill's case proves its own SKILL.md without a link, and never points ou
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("each skill's SKILL.md needs a case of its own: another skill's cases do not show it", () => {
+  const repo = withSkill('import test from "node:test";\n\ntest("says hello", () => {});\n');
+  fs.mkdirSync(path.join(repo, "skills", "silent"));
+  fs.writeFileSync(
+    path.join(repo, "skills", "silent", "SKILL.md"),
+    "---\nname: silent\n---\n\nIts script says nothing.\n",
+  );
+  assert.deepEqual(linkErrors(repo), [
+    "skills/silent/SKILL.md: the plan says its cases show it, but the skill has none",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a candidate that would leave the next accepted regression with links it cannot read is refused", () => {
   const candidate = changed(CASES, (text) => text.replace(`// Why: ${GREETING}\n`, ""));
   const errors = regressionErrors(regressionTrusted(), candidate, "b".repeat(64));

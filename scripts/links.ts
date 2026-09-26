@@ -208,8 +208,22 @@ export function linkErrors(repo: string): string[] {
   }
   errors.push(...unnamedCases(repo).map((at) => `${at}: a case whose title cannot be read, so no link can follow it`));
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
-  for (const { place, shownBy } of entries)
-    if (place && !unplaced.has(place) && shownBy?.includes("its cases") && !proven.has(place))
-      errors.push(`${place}: the plan says its cases show it, but no case points at it`);
+  // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
+  const ownProof = new Set(
+    caseFiles(repo)
+      .filter(ownedBySkill)
+      .map((file) => file.split("/").slice(0, 2).join("/")),
+  );
+  for (const { place, shownBy } of entries) {
+    if (!place || unplaced.has(place) || !shownBy?.includes("its cases")) continue;
+    if (!proven.has(place)) errors.push(`${place}: the plan says its cases show it, but no case points at it`);
+    else if (place === SKILL_CASES)
+      for (const skill of fs
+        .globSync(place, { cwd: repo })
+        .map((f) => f.split(path.sep).slice(0, 2).join("/"))
+        .sort())
+        if (!ownProof.has(skill))
+          errors.push(`${skill}/SKILL.md: the plan says its cases show it, but the skill has none`);
+  }
   return errors;
 }
