@@ -35,8 +35,9 @@ permissions: {}
 # One judgement per pull request at a time: a newer run, such as one after
 # a retarget, cancels the older, and a cancelled run publishes nothing. An
 # edit that does not change the base judges nothing, so it cancels nothing.
+# Pushes to main share one group, so a newer invalidation replaces an older.
 concurrency:
-  group: regression-${{ (github.event.action == 'edited' && !github.event.changes.base) && github.run_id || github.event.pull_request.number || github.sha }}
+  group: regression-${{ (github.event.action == 'edited' && !github.event.changes.base) && github.run_id || github.event.pull_request.number || 'main' }}
   cancel-in-progress: true
 
 jobs:
@@ -45,6 +46,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
       statuses: write
     env:
@@ -54,7 +56,12 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - run: |
-          for head in $(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha'); do
+          set -o pipefail
+          # Assigned first, so a failure to list pull requests fails the step instead of invalidating nothing.
+          heads=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha')
+          for head in $heads; do
+            # A later push to main has its own invalidation, which judges against the newer main.
+            [ "$(gh api "repos/$REPO/commits/main" --jq .sha)" = "$MAIN" ] || exit 0
             # A result already judged against this main is not stale.
             current=$(gh api "repos/$REPO/commits/$head/status" --jq '.statuses[] | select(.context == "regression-linux") | .description')
             case "$current" in *"main ${MAIN:0:12}"*) continue ;; esac
