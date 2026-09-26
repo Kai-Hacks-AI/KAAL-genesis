@@ -4,7 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { learningOf, nodeFiles, parseNode, relativeIdentity } from "../skills/using-brain/scripts/brain.js";
-import { type Case, caseFiles, linkErrors, PLAN, planCommitments, repoCases, section, testArgs } from "./links.js";
+import {
+  type Case,
+  caseFiles,
+  linkErrors,
+  PLAN,
+  planCommitments,
+  planEntries,
+  repoCases,
+  section,
+  testArgs,
+} from "./links.js";
 
 /**
  * KAAL's trusted regression: `main`, the authoritative regression, judges a
@@ -74,6 +84,11 @@ function brainNodes(repo: string): Node[] {
   });
 }
 
+/** What `plan` says shows the commitment stated at `place`. */
+function shownBy(plan: string, place: string): string[] {
+  return planEntries(plan).find((e) => e.place === place)?.shownBy ?? [];
+}
+
 export type Classification = {
   retained: string[];
   replaced: Map<string, string>;
@@ -88,7 +103,8 @@ export type Classification = {
  * name, in the same lineage, is what KAAL means now. If the candidate's plan
  * names that node, the commitment is replaced by it; if not, it is withdrawn
  * by it. A commitment stated outside BRAIN has no succession, so it can only
- * be retained. Anything else is a silent escape. Every place the candidate's
+ * be retained, and a retained commitment keeps everything that showed it, such
+ * as its cases. Anything else is a silent escape. Every place the candidate's
  * plan names, retained or added, must not be superseded already; whether it is
  * a place at all is a question of links (see links.ts). The plan's own account of
  * what it replaces and withdraws is only checked against this, never trusted.
@@ -115,6 +131,12 @@ export function classify(trusted: string, candidate: string, base: string): Clas
     const successor = node && current(node);
     if (kept.has(place)) {
       retained.push(place);
+      // A retained commitment is shown at least as it was: dropping what showed it weakens it, which only
+      // superseding it in BRAIN may do. Cases in particular are what protect it in the next generation.
+      const was = shownBy(trustedPlan!, place);
+      const is = shownBy(candidatePlan, place);
+      for (const by of was.filter((by) => !is.includes(by)))
+        errors.push(`${place}: the accepted regression shows it by ${by}, but the plan no longer does`);
     } else if (!successor) {
       errors.push(`${place}: silent escape: the plan no longer names it, and nothing in BRAIN supersedes it`);
     } else if (kept.has(successor.place)) {

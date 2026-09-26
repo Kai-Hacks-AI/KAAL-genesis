@@ -66,6 +66,28 @@ test("a replacement no case of the candidate points at is refused", () => {
 });
 
 // Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
+test("a retained commitment keeps what showed it: a plan that stops showing it by its cases is refused", () => {
+  const candidate = regressionCandidate("kept");
+  const plan = path.join(candidate, PLAN);
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`. Shown by the seal checks."),
+  );
+  assert.deepEqual(classify(regressionTrusted(), candidate, BASE).errors, [
+    "src/add.ts: the accepted regression shows it by its cases, but the plan no longer does",
+  ]);
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace("`src/add.ts`. Shown by the seal checks.", "`src/add.ts`. Shown by its cases and the seal checks."),
+  );
+  assert.deepEqual(classify(regressionTrusted(), candidate, BASE).errors, []);
+});
+
+// Why: brain/learning/genesis/26/09/26/02/nodes/testing.md
 test("a plan that still names a commitment BRAIN has superseded is refused", () => {
   assert.deepEqual(classified("superseded-kept").errors, [
     `${GREETING}: the plan names it, but ${GREETING_LATER} supersedes it`,
