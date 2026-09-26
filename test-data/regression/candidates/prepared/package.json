@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "scripts": { "prepare": "node make-cases.js", "test": "tsx --test scripts/*.test.ts" }
+}

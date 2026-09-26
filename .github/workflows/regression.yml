@@ -1,0 +1,177 @@
+# Carries out the trusted part of KAAL's Regression Plan: test/regression-plan.md
+#
+# Runs `npm run regression:check` from main against a pull request: main's
+# cases, chosen by main's links, run against the change's code with main's
+# test runner, and every commitment of main the change does not retain must be
+# superseded in BRAIN. The script decides what counts, not this workflow.
+#
+# On a pull request this runs as pull_request_target: GitHub takes the
+# workflow and main's checkout from the default branch, never from the change,
+# so a change cannot weaken the checks that judge it. The gate therefore
+# applies to pull requests into every branch once this workflow is on main,
+# and to none before. Unlike the seal checks, this runs the change's code, so
+# that runs in a job that holds no write permission, no secret and no
+# dependency cache; the jobs that write the regression-linux commit status
+# never check the change out.
+#
+# A result holds only for the main it was judged by. When main moves, every
+# open pull request's regression-linux status is set to failure, and a
+# success is only published if main has not moved while the change was
+# judged: the change must be derived from the new main, and pushing that
+# runs this again. A pull request retargeted to another base is judged
+# again. When a base other than main moves, only the ruleset's "require
+# branches to be up to date" makes the change be judged again.
+name: regression
+
+on:
+  push:
+    branches: [main]
+  # edited: a pull request retargeted to another base is judged again.
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+# One judgement per pull request at a time: a newer run, such as one after
+# a retarget, cancels the older, and a cancelled run publishes nothing. An
+# edit that does not change the base judges nothing, so it cancels nothing.
+# Pushes to main share one group, so a newer invalidation replaces an older.
+concurrency:
+  group: regression-${{ (github.event.action == 'edited' && !github.event.changes.base) && github.run_id || github.event.pull_request.number || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  invalidate:
+    name: regression-invalidate-linux
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      MAIN: ${{ github.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - run: |
+          set -o pipefail
+          # Assigned first, so a failure to list pull requests fails the step instead of invalidating nothing.
+          heads=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha')
+          for head in $heads; do
+            # A later push to main has its own invalidation, which judges against the newer main.
+            # If main cannot be read, invalidating goes on: a failure written needlessly is judged again, a success left is not.
+            current_main=$(gh api "repos/$REPO/commits/main" --jq .sha) || current_main=$MAIN
+            [ "$current_main" = "$MAIN" ] || exit 0
+            # A result already judged against this main is not stale; one that cannot be read is.
+            current=$(gh api "repos/$REPO/commits/$head/status" --jq '.statuses[] | select(.context == "regression-linux") | .description') || current=""
+            case "$current" in *"main ${MAIN:0:12}"*) continue ;; esac
+            gh api "repos/$REPO/statuses/$head" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main moved to ${MAIN:0:12}: derive the change from it"
+          done
+
+  start:
+    name: regression-start-linux
+    if: github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base)
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_URL: repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - run: gh api "$STATUS_URL" -f state=pending -f context=regression-linux -f target_url="$RUN_URL" -f description="Judging the change by main's regression"
+
+  run:
+    name: regression-run-linux
+    needs: start
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      main: ${{ steps.main.outputs.sha }}
+    steps:
+      - run: git config --global core.autocrlf true
+      # The commit of main this workflow was taken from, named explicitly: the
+      # regression that judges the change, whatever branch the pull request
+      # targets, and the same revision as the jobs judging it. If main moves
+      # after the run is created, the report sees that main is no longer it.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: trusted
+          persist-credentials: false
+      - id: main
+        run: echo "sha=$(git -C trusted rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          path: change
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # Both sides install without lifecycle scripts, their own or their
+      # dependencies': neither may rewrite what is judged before it is read.
+      - run: npm ci --ignore-scripts
+        working-directory: trusted
+      - run: npm ci --ignore-scripts
+        working-directory: change
+      # Run directly, not through npm, so no npm configuration (such as an
+      # .npmrc's node-options) can reach the checker.
+      - run: ./node_modules/.bin/tsx scripts/check-regression.ts ../change
+        working-directory: trusted
+        env:
+          NODE_OPTIONS: ""
+
+  report:
+    name: regression-report-linux
+    needs: run
+    if: ${{ !cancelled() && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) }}
+    runs-on: ubuntu-latest
+    permissions:
+      # contents: read, to read main's head again after publishing;
+      # pull-requests: read, to see whether another pull request shares the head.
+      contents: read
+      pull-requests: read
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_URL: repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      RESULT: ${{ needs.run.result }}
+      JUDGED_BY: ${{ needs.run.outputs.main }}
+      REPO: ${{ github.repository }}
+    steps:
+      # Success is published before the shared head and main are checked
+      # again, so either the checks below, or the run of a pull request
+      # opened on this head later, or the invalidation a later move of main
+      # triggers, is always the last to write the status.
+      - run: |
+          set -o pipefail
+          if [ "$RESULT" != success ]; then
+            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression does not hold for the change"
+            exit 0
+          fi
+          # One commit status per head: if several open pull requests share this head, their
+          # judgements could differ, so none of them is given a success. Checked before publishing,
+          # so a head already shared never shows one, and again after: a pull request opened on
+          # this head later is caught by its own run's report.
+          HEAD_SHA="${STATUS_URL##*/}"
+          unshared() {
+            if ! sharing=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .number" | wc -l); then
+              gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="open pull requests could not be listed: run it again"
+              exit 1
+            fi
+            if [ "$sharing" != 1 ]; then
+              gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="$sharing open pull requests share this head: give each its own"
+              exit 0
+            fi
+          }
+          unshared
+          gh api "$STATUS_URL" -f state=success -f context=regression-linux -f target_url="$RUN_URL" -f description="main's regression holds (main ${JUDGED_BY:0:12})"
+          unshared
+          if [ "$(gh api "repos/$REPO/commits/main" --jq .sha)" != "$JUDGED_BY" ]; then
+            gh api "$STATUS_URL" -f state=failure -f context=regression-linux -f target_url="$RUN_URL" -f description="main moved while the change was judged: derive it from main again"
+          fi

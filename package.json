@@ -19,6 +19,7 @@
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",
     "seals:sealing-check": "tsx scripts/sealing-check.ts",
+    "regression:check": "tsx scripts/check-regression.ts",
     "typecheck": "tsc -p .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

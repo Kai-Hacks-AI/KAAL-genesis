@@ -86,3 +86,19 @@ export function sealingDiff(from: string, to: string): string {
     .map((file) => `${file in before ? "M" : "A"}\t${ROOT}/${file}`)
     .join("\n");
 }
+
+/** The trusted regression in test-data/regression: a small repository with a plan, BRAIN, code and cases. */
+export function regressionTrusted(): string {
+  return path.join(DATA, "regression", "trusted");
+}
+
+/**
+ * A candidate from test-data/regression/candidates: the trusted repository
+ * with the candidate's own files laid over it, in a scratch directory.
+ */
+export function regressionCandidate(name: string): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-candidate-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  fs.cpSync(path.join(DATA, "regression", "candidates", name), root, { recursive: true });
+  return root;
+}

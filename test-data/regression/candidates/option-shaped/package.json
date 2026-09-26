@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "scripts": { "test": "tsx --test --test-name-pattern=never.test.ts scripts/*.test.ts" }
+}

@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "scripts": { "test": "tsx --test scripts/unnamed.test.ts" }
+}

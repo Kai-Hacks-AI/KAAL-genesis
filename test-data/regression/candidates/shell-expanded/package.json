@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "scripts": { "test": "tsx --test $npm_package_name.test.ts scripts/*.test.ts" }
+}

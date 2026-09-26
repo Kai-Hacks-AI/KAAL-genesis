@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "scripts": { "test": "tsx --import ./scripts/setup.ts --test scripts/*.test.ts" }
+}

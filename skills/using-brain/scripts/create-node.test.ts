@@ -21,13 +21,13 @@ test("rejects traversal in lineage and slug", () => {
 test("rejects an empty name", () => {
   assert.throws(() => createNode(birth("empty-name", scratchBrain())), /name is required/);
 });
-for (const kind of ["resolving", "dangling"] as const) {
-  test(`refuses birth through a ${kind} symlinked ancestor and writes nothing outside`, () => {
+test("refuses birth through a symlinked ancestor, resolving or dangling, and writes nothing outside", () => {
+  for (const kind of ["resolving", "dangling"] as const) {
     const { root, outside } = symlinkedBrain(kind);
-    assert.throws(() => createNode(birth("example", root)), /symlink in BRAIN path/);
-    assert.deepEqual(fs.readdirSync(outside), []);
-  });
-}
+    assert.throws(() => createNode(birth("example", root)), /symlink in BRAIN path/, kind);
+    assert.deepEqual(fs.readdirSync(outside), [], kind);
+  }
+});
 test("writes edges whose relation and target were born earlier", () => {
   const file = createNode(birth("edge-to-earlier", scratchBrain("relation-and-target")));
   assert.equal(fs.readFileSync(file, "utf8"), expected("edge-to-earlier"));
