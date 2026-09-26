@@ -16,6 +16,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
+import { entryAt, entryBytes } from "./state.js";
 
 /**
  * KAAL's trusted regression: the accepted regression, a state of KAAL's
@@ -189,27 +190,18 @@ export function classify(trusted: string, candidate: string, base: string): Clas
  * candidate names the regression it derives from by this identity.
  */
 export function regressionIdentity(repo: string): string {
-  const entries = new Map<string, [kind: string, content: Buffer]>();
+  const entries = new Map<string, Buffer>();
   const add = (rel: string) => {
-    const at = path.join(repo, rel);
-    let entry: fs.Stats;
-    try {
-      entry = fs.lstatSync(at);
-    } catch {
-      return;
-    }
-    // Each entry as what it is, never what it points at: nothing but a regular file is read.
-    if (entry.isDirectory()) {
-      entries.set(rel, ["directory", Buffer.alloc(0)]);
-      for (const e of fs.readdirSync(at)) add(`${rel}/${e}`);
-    } else if (entry.isSymbolicLink()) entries.set(rel, ["link", Buffer.from(fs.readlinkSync(at), "utf8")]);
-    else if (!entry.isFile()) entries.set(rel, [entry.isFIFO() ? "fifo" : "special", Buffer.alloc(0)]);
-    else {
-      const bytes = fs.readFileSync(at);
-      // Test data as the replay copies it; only code and other text read the same whatever its line endings.
-      const data = isData(rel, false) && !/\.(ts|js|mjs|cjs|mts|cts)$/.test(rel);
-      entries.set(rel, ["file", data ? bytes : Buffer.from(bytes.toString("latin1").replace(/\r\n/g, "\n"), "latin1")]);
-    }
+    const entry = entryAt(path.join(repo, rel));
+    if (!entry) return;
+    if (entry.kind === "directory") for (const name of fs.readdirSync(path.join(repo, rel))) add(`${rel}/${name}`);
+    // Test data as the replay copies it; only code and other text read the same whatever its line endings.
+    const regular = entry.kind === "file" || entry.kind === "executable";
+    const text = regular && (!isData(rel, false) || /\.(ts|js|mjs|cjs|mts|cts)$/.test(rel));
+    const content = text
+      ? Buffer.from(entry.content.toString("latin1").replace(/\r\n/g, "\n"), "latin1")
+      : entry.content;
+    entries.set(rel, entryBytes({ ...entry, content }));
   };
   if (fs.existsSync(path.join(repo, PLAN))) {
     add(PLAN);
@@ -218,13 +210,11 @@ export function regressionIdentity(repo: string): string {
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
   for (const file of [...caseFiles(repo), ...dataOf(repo)]) add(file);
-  // Every part framed by its length in bytes, so no two different sets of entries hash alike.
+  // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
   const hash = createHash("sha256");
-  const frame = (part: Buffer) => hash.update(`${part.length}:`).update(part);
-  for (const [file, [kind, content]] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
-    frame(Buffer.from(file, "utf8"));
-    frame(Buffer.from(kind, "utf8"));
-    frame(content);
+  for (const [file, bytes] of [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const name = Buffer.from(file, "utf8");
+    hash.update(`${name.length}:`).update(name).update(`${bytes.length}:`).update(bytes);
   }
   return hash.digest("hex");
 }

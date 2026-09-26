@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
+import { entryAt, entryBytes } from "./state.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
 import {
   checkChain,
@@ -109,28 +110,20 @@ export function sealState(file: string, root = ROOT): SealState | undefined {
 export type Change = { status: "A" | "M" | "D"; file: string };
 
 /**
- * Every entry of `dir` but directories, by posix path relative to it, with
- * what it holds: a regular file whether it may be executed and its bytes, a symbolic link its target, and
- * anything else, such as a named pipe, only its kind, so nothing but a
- * regular file is ever opened. A directory that does not exist has none. Git's
- * own `.git` and installed `node_modules` at the top of the state are not part
- * of it; a directory of either name anywhere below is.
+ * Every entry of `dir` but directories, by posix path relative to it, as bytes
+ * (see state.ts). A directory that does not exist has none. Git's own `.git`
+ * and installed `node_modules` at the top of the state are not part of it; a
+ * directory of either name anywhere below is.
  */
 function stateFiles(dir: string, rel = "", files = new Map<string, Buffer>()): Map<string, Buffer> {
   if (!fs.existsSync(path.join(dir, rel))) return files;
-  for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
-    if (!rel && (e.name === ".git" || e.name === "node_modules")) continue;
-    const file = rel ? `${rel}/${e.name}` : e.name;
-    const at = path.join(dir, file);
-    if (e.isDirectory()) stateFiles(dir, file, files);
-    // A regular file by whether it may be executed, as Git records it, and its bytes.
-    else if (e.isFile())
-      files.set(
-        file,
-        Buffer.concat([Buffer.from(fs.statSync(at).mode & 0o111 ? "exec:" : "file:"), fs.readFileSync(at)]),
-      );
-    else if (e.isSymbolicLink()) files.set(file, Buffer.from(`link:${fs.readlinkSync(at)}`));
-    else files.set(file, Buffer.from(`special:${e.isFIFO() ? "fifo" : e.isSocket() ? "socket" : "device"}`));
+  for (const name of fs.readdirSync(path.join(dir, rel))) {
+    if (!rel && (name === ".git" || name === "node_modules")) continue;
+    const file = rel ? `${rel}/${name}` : name;
+    const entry = entryAt(path.join(dir, file));
+    if (!entry) continue;
+    if (entry.kind === "directory") stateFiles(dir, file, files);
+    else files.set(file, entryBytes(entry));
   }
   return files;
 }
