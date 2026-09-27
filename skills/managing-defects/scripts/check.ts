@@ -12,7 +12,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.error(errors.join("\n"));
       process.exitCode = 1;
     } else {
-      for (const d of readDefects(dir)) console.log(`${d.name}: ${d.resolved ? `resolved by ${d.resolved}` : "open"}`);
+      for (const d of readDefects(dir)) console.log(`${d.name}: tested by ${d.testedBy.join("; ")}`);
     }
   }
 }
