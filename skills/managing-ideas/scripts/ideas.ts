@@ -6,7 +6,10 @@ import YAML from "yaml";
 /** An Idea is a possibility worth retaining without commitment. */
 
 export const IDEA = "idea.md";
-/** The only field an Idea records; its body supplies the context. */
+/**
+ * The only field an Idea records; its body supplies the context. This
+ * allowlist refuses lifecycle state without inventing a vocabulary of states.
+ */
 const FIELDS = ["idea"];
 
 export type Idea = { name: string; idea: string };
@@ -96,6 +99,8 @@ export function ideaErrors(dir: string): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
     if (!entry.isDirectory()) continue;
     const at = path.join(dir, entry.name);
+    // Hidden staging directories are not ignored: one left by a crash is
+    // incomplete state and remains visible to the check until removed.
     if (!named(entry.name)) {
       errors.push(`${at}: not an Idea; each Idea is a directory named with ${NAMED}`);
       continue;
