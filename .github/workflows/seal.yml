@@ -1,8 +1,10 @@
-# KAAL's sealing policy: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+# KAAL's sealing policy: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 # Carries out the trusted part of KAAL's Regression Plan: test/regression-plan.md
 #
 # Runs `npm run seals:check` and, on a pull request, `npm run seals:guard`
-# against the target branch; both decide what counts, not this workflow.
+# with the target branch's checkout as the accepted state and the pull
+# request's as the candidate; both decide what counts, from the files of
+# those directories alone, not this workflow.
 #
 # On a pull request this runs as pull_request_target: GitHub takes the
 # workflow and the checked-out code from the default branch, main, never
@@ -52,8 +54,13 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           path: change
-          fetch-depth: 0
           persist-credentials: false
+          # The merge and the target it was made with, its first parent.
+          fetch-depth: 2
+      # The accepted state the change would succeed: exactly the target the merge was made with, not
+      # the target's name resolved again, which may have moved on since the merge was made.
+      - if: github.event_name == 'pull_request_target'
+        run: git -C change worktree add --detach ../accepted HEAD^1
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -68,7 +75,7 @@ jobs:
         run: npm run seals:check -- ../change/brain/learning
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
-        run: npm run seals:guard -- "origin/${{ github.base_ref }}" ../change
+        run: npm run seals:guard -- ../accepted ../change
         working-directory: trusted
       - if: always() && github.event_name == 'pull_request_target'
         run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=seal-linux -f target_url="$RUN_URL" -f description="BRAIN's seals ${{ job.status == 'success' && 'hold' || 'are broken or the change touches seal state' }}"

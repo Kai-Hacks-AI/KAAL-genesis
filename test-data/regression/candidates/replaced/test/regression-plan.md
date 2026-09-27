@@ -7,7 +7,7 @@
 
 ## How this regression differs from the one it was derived from
 
-Derived from: `main` at `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`.
+Derived from: the accepted regression `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`.
 
 - Replaces: `brain/learning/k/26/01/01/01/nodes/greeting.md` by `brain/learning/k/26/01/02/01/nodes/greeting.md`.
 - Withdraws: nothing.

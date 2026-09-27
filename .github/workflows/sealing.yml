@@ -1,9 +1,11 @@
-# KAAL's sealing policy: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+# KAAL's sealing policy: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 #
 # Runs `npm run seal` after every push to main and commits what it wrote back
-# to main. Before anything is committed, `npm run seals:sealing-check` refuses
-# any staged change that sealing could not have produced; the workflow only
-# asks Git what is staged and never decides that itself.
+# to main. Before anything is committed, `npm run seals:sealing-check` compares
+# a copy of the checkout taken before sealing with the checkout after it, as
+# two plain directories, and refuses any change sealing could not have
+# produced; the workflow never decides that itself. Git only stages and
+# commits what was checked.
 #
 # main's ruleset admits no direct push, and the workflow token cannot bypass
 # rulesets, so the sealing commit is pushed as the sealing GitHub App: the
@@ -37,11 +39,19 @@ jobs:
           ref: main
           # Nothing that runs before the push needs a credential.
           persist-credentials: false
+      # The state before sealing, as a plain copy taken straight from the
+      # checkout, before anything is installed, so what sealing wrote, and
+      # anything else that writes into the checkout after this, such as an
+      # install script, can be checked from the files alone.
+      - run: |
+          mkdir "$RUNNER_TEMP/before"
+          tar --exclude=./.git -cf - . | tar -xf - -C "$RUNNER_TEMP/before"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # Without lifecycle scripts: nothing installed may write into the checkout or its index.
+      - run: npm ci --ignore-scripts
       # The list of sealed learnings is kept outside the checkout, so it is
       # never staged. A redirect, not a pipe: the default shell has no
       # pipefail, so a pipe would hide a failed sealing.
@@ -62,11 +72,14 @@ jobs:
           APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           git add -A
+          # The installed tree is not part of the state the check compares, so nothing in it is ever
+          # committed, even something forced into the index.
+          git rm -r -q --cached --ignore-unmatch node_modules
           if git diff --cached --quiet; then
             echo "Nothing new to seal."
             exit 0
           fi
-          npm run -s seals:sealing-check
+          npm run -s seals:sealing-check -- "$RUNNER_TEMP/before"
           user_id="$(GH_TOKEN="$APP_TOKEN" gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)"
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"

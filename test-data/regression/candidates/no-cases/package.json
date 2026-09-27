@@ -1,4 +1,4 @@
 {
   "type": "module",
-  "scripts": { "test": "tsx --test scripts/unnamed.test.ts" }
+  "scripts": { "test": "tsx --test scripts/unnamed.test.ts", "regression:check": "tsx scripts/check-regression.ts" }
 }

@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildSync } from "esbuild";
 import { learningOf, nodeFiles, parseNode, relativeIdentity } from "../skills/using-brain/scripts/brain.js";
 import {
   type Case,
@@ -15,21 +17,24 @@ import {
   section,
   testArgs,
 } from "./links.js";
+import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
- * KAAL's trusted regression: `main`, the authoritative regression, judges a
- * candidate with `main`'s own cases, chosen by `main`'s own links and run
- * against the candidate's code, so a candidate cannot weaken, remove or
- * relabel one of `main`'s commitments by changing its own tests. How a
- * commitment is legitimately replaced or withdrawn is stated in
- * brain/learning/genesis/26/09/26/02/nodes/testing.md; this applies it.
+ * KAAL's trusted regression: the accepted regression, a state of KAAL's
+ * files, judges a candidate, another state, with its own cases, chosen by its
+ * own links and run against the candidate's code, so a candidate cannot
+ * weaken, remove or relabel one of its commitments by changing its own tests.
+ * Both states are plain directories: which states they are, and where they
+ * come from, is decided outside KAAL. How a commitment is legitimately
+ * replaced or withdrawn is stated in
+ * brain/learning/genesis/26/09/26/03/nodes/testing.md; this applies it.
  */
 
 const BRAIN = "brain/learning";
 
 export type Ledger = { base?: string; replaces: [string, string][]; withdraws: [string, string][] };
 
-/** What a plan says it was derived from, and what it replaces and withdraws, each with what supersedes it. */
+/** The accepted regression a plan says it was derived from, by identity, and what it replaces and withdraws, each with what supersedes it. */
 export function planLedger(plan: string): Ledger {
   const text = section(plan, "How this regression differs from the one it was derived from");
   const pairs = (label: string): [string, string][] => {
@@ -37,17 +42,17 @@ export function planLedger(plan: string): Ledger {
     return [...line.matchAll(/`([^`]+)` by `([^`]+)`/g)].map((m) => [m[1]!, m[2]!]);
   };
   return {
-    base: /^Derived from: `main` at `([0-9a-f]{40})`/m.exec(text)?.[1],
+    base: /^Derived from: the accepted regression `([0-9a-f]{64})`/m.exec(text)?.[1],
     replaces: pairs("Replaces"),
     withdraws: pairs("Withdraws"),
   };
 }
 
 /**
- * Why main's `npm test` cannot be replayed faithfully, if it cannot: trusted
- * regression runs main's case files with its own `tsx --test`, so a script
- * that is anything more, such as one that preloads a module, would be judged
- * under other conditions than main's own run.
+ * Why the accepted regression's `npm test` cannot be replayed faithfully, if it
+ * cannot: trusted regression runs its case files with its own `tsx --test`, so
+ * a script that is anything more, such as one that preloads a module, would be
+ * judged under other conditions than its own run.
  */
 export function unreplayable(repo: string): string | undefined {
   const scripts = (JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as { scripts?: object })
@@ -59,18 +64,67 @@ export function unreplayable(repo: string): string | undefined {
     ...["install", "prepare", "dependencies", "test"].flatMap((event) => [`pre${event}`, event, `post${event}`]),
   ].filter((hook) => hook !== "test");
   const hooks = lifecycle.filter((hook) => scripts && hook in scripts);
-  if (hooks.length) return `main's npm ci or npm test runs ${hooks.join(", ")}, which its cases' replay would not`;
+  if (hooks.length)
+    return `the accepted regression's npm ci or npm test runs ${hooks.join(", ")}, which its cases' replay would not`;
   const [runner, flag, ...rest] = testArgs(repo);
   // Only plain paths and globs: anything a shell could expand ($, `, ~, braces) might name other files on another platform.
   const extra = rest.filter((arg) => !/^[\w.*][\w./*-]*\.test\.ts$/.test(arg));
   if (runner !== "tsx" || flag !== "--test" || extra.length)
-    return `main's npm test is not "tsx --test" with case files only ("${testArgs(repo).join(" ")}"), so its cases cannot be run as main runs them`;
+    return `the accepted regression's npm test is not "tsx --test" with case files only ("${testArgs(repo).join(" ")}"), so its cases cannot be run as it runs them`;
   // Inside the checkout, by any name it is checked out under: no . or .. segment.
   const outside = rest.filter((arg) => arg.split("/").some((segment) => segment === "." || segment === ".."));
-  if (outside.length) return `main's npm test names case files outside its checkout (${outside.join(", ")})`;
+  if (outside.length)
+    return `the accepted regression's npm test names case files outside its checkout (${outside.join(", ")})`;
   // A path or glob that names nothing would be dropped without a trace.
   const empty = rest.filter((arg) => !fs.globSync(arg, { cwd: repo }).length);
-  if (empty.length) return `main's npm test names case files that do not exist (${empty.join(", ")})`;
+  if (empty.length)
+    return `the accepted regression's npm test names case files that do not exist (${empty.join(", ")})`;
+  // What judges must be in the state's files: an install from local packages, a link out of the state, or checker code
+  // imported from outside it, is not.
+  const unpinned = unpinnedPackages(repo);
+  if (unpinned.length)
+    return `the accepted regression's install takes packages other than from the registry as its lockfile pins them (${unpinned.join(", ")}), which its identity does not cover`;
+  const escaping = outsideLinks(repo);
+  if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
+  // The checker is found from where it starts, so it must start where the command line that runs it says.
+  const command = checkCommand(repo);
+  if (command !== undefined && command !== CHECK_COMMAND)
+    return `the accepted regression's checker is run as "${command}", not "${CHECK_COMMAND}", so its code could not be found`;
+  const configured = typescriptConfig(repo).outside;
+  if (configured)
+    return `the accepted regression's TypeScript configuration extends one outside its state (${configured})`;
+  // The replay copies its inputs by name, and a name that is not UTF-8 has none it could be copied by.
+  // Nor has a link whose target is not UTF-8 a target that could be followed by name.
+  const unnamed = [...regressionInputs(repo)]
+    .filter(([file, entry]) => file.includes("\0") || (entry.kind === "link" && !utf8(entry.content)))
+    .map(([file]) => file);
+  if (unnamed.length)
+    return `the accepted regression's inputs have names or link targets that are not UTF-8 (${unnamed.map((f) => f.split("\0")[0]).join(", ")})`;
+  // The replay copies each case file and item of test data from the accepted state, and nothing else, so a
+  // link among them must lead within the item it is in: anything else would be the candidate's.
+  const items = [...caseFiles(repo), ...dataOf(repo).map(([rel]) => rel)];
+  const uncopied = [...regressionInputs(repo)].flatMap(([file, entry]) => {
+    const item = items.find((i) => file === i || file.startsWith(`${i}/`));
+    if (!item || entry.kind !== "link") return [];
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), entry.content.toString("utf8")));
+    return target === item || target.startsWith(`${item}/`) ? [] : [file];
+  });
+  if (uncopied.length)
+    return `the accepted regression's cases or test data link to what its replay does not copy (${uncopied.join(", ")})`;
+  // The checker's imports are followed from where its files are named; one reached through a link runs from elsewhere.
+  const linked = [
+    ...new Set([...CHECKER.filter((file) => fs.existsSync(path.join(repo, file))), ...checkerCode(repo).found]),
+  ].filter((file) =>
+    file.split("/").some((_, i, parts) => entryAt(path.join(repo, ...parts.slice(0, i + 1)))?.kind === "link"),
+  );
+  if (linked.length) return `the accepted regression's checker code is reached through a link (${linked.join(", ")})`;
+  // A relative import that names no file the state holds could only be satisfied by something the identity does not see.
+  const unresolved = checkerCode(repo).unresolved;
+  if (unresolved.length)
+    return `the accepted regression's checker imports code it does not hold (${unresolved.join(", ")})`;
+  const imported = checkerCode(repo).escaping;
+  if (imported.length)
+    return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;
   return undefined;
 }
 
@@ -147,7 +201,7 @@ export function classify(trusted: string, candidate: string, base: string): Clas
       withdrawn.set(place, successor.place);
     }
   }
-  // Whatever the plan names, retained or new, must be what KAAL means now: the next main's
+  // Whatever the plan names, retained or new, must be what KAAL means now: the next accepted regression's
   // plan must not name a commitment BRAIN has already superseded.
   for (const place of kept) {
     const node = nodes.find((n) => n.place === place);
@@ -155,7 +209,8 @@ export function classify(trusted: string, candidate: string, base: string): Clas
     if (successor) errors.push(`${place}: the plan names it, but ${successor.place} supersedes it`);
   }
   const ledger = planLedger(candidatePlan);
-  if (ledger.base !== base) errors.push(`${PLAN}: derived from ${ledger.base ?? "nothing"}, not from main at ${base}`);
+  if (ledger.base !== base)
+    errors.push(`${PLAN}: derived from ${ledger.base ?? "nothing"}, not from the accepted regression ${base}`);
   const same = (said: [string, string][], found: Map<string, string>) =>
     JSON.stringify([...said].sort()) === JSON.stringify([...found].sort());
   if (!same(ledger.replaces, replaced))
@@ -167,6 +222,247 @@ export function classify(trusted: string, candidate: string, base: string): Clas
       `${PLAN}: says it withdraws ${JSON.stringify(ledger.withdraws)}, but BRAIN shows ${JSON.stringify([...withdrawn])}`,
     );
   return { retained, replaced, withdrawn, errors };
+}
+
+/**
+ * What fixes how a regression judges: everything that decides what its
+ * install puts in place, which selects its runner and packages, and the
+ * checker's own code, found from its entry points by following their
+ * relative imports. Code the checker loads any other way is not found here.
+ */
+export function judgeFiles(repo: string): string[] {
+  // Everything that decides what the install puts in place: the manifest, either lockfile, and npm's own settings.
+  return [
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    ".npmrc",
+    // How the checker and the cases are compiled.
+    ...typescriptConfig(repo).files,
+    ...checkerCode(repo).found,
+  ];
+}
+
+/** Where the checker starts: the command line `regression:check` runs, and the reporter it hands the test runner. */
+export const CHECKER = ["scripts/check-regression.ts", "scripts/regression-reporter.ts"];
+/** The one command line a state may run its checker by, so the checker is always found where it starts. */
+const CHECK_COMMAND = `tsx ${CHECKER[0]}`;
+
+/** The command line a state runs its checker by, if it names one. */
+function checkCommand(repo: string): string | undefined {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  return manifest.scripts?.["regression:check"];
+}
+
+/**
+ * How TypeScript is compiled for the checker and the cases: a state's
+ * `tsconfig.json` and every local configuration it extends, in order, or the
+ * first `extends` that leads out of the state, which the identity cannot see.
+ */
+function typescriptConfig(repo: string): { files: string[]; outside?: string } {
+  const files: string[] = [];
+  let at = "tsconfig.json";
+  while (fs.existsSync(path.join(repo, at)) && !files.includes(at)) {
+    files.push(at);
+    const base = /"extends"\s*:\s*"(\.{1,2}\/[^"]+)"/.exec(fs.readFileSync(path.join(repo, at), "utf8"))?.[1];
+    if (!base) break;
+    const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
+    if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
+    at = fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`;
+  }
+  return { files };
+}
+
+type BuildError = { text: string; location?: { file: string } | null };
+
+/**
+ * The checker's own code: every file the checker loads from its entry points,
+ * as esbuild, which tsx runs on, resolves their imports (comments, extensions
+ * and all), and every file one of them names by a relative URL built from
+ * its own module URL. Also every import, as `file: specifier`, that leads out of the
+ * state, and every one that names nothing the state holds: code either way
+ * would run as part of the checker, but is no part of the state it judges with.
+ */
+function checkerCode(repo: string): { found: string[]; escaping: string[]; unresolved: string[] } {
+  const found = new Set<string>();
+  const escaping: string[] = [];
+  const unresolved: string[] = [];
+  const leaves = (from: string, specifier: string) => {
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier));
+    return target === ".." || target.startsWith("../");
+  };
+  let entries = CHECKER.filter((file) => fs.existsSync(path.join(repo, file)));
+  while (entries.length) {
+    let inputs: Record<string, { imports: { path: string; original?: string }[] }>;
+    try {
+      inputs = buildSync({
+        entryPoints: entries,
+        absWorkingDir: path.resolve(repo),
+        bundle: true,
+        write: false,
+        outdir: "checker",
+        metafile: true,
+        platform: "node",
+        format: "esm",
+        packages: "external",
+        preserveSymlinks: true,
+        treeShaking: false,
+        logLevel: "silent",
+      }).metafile.inputs;
+    } catch (error) {
+      for (const { text, location } of (error as { errors?: BuildError[] }).errors ?? [{ text: String(error) }]) {
+        const specifier = /Could not resolve "([^"]+)"/.exec(text)?.[1];
+        const from = location?.file ?? "?";
+        if (specifier && leaves(from, specifier)) escaping.push(`${from}: ${specifier}`);
+        else unresolved.push(specifier ? `${from}: ${specifier}` : `${from}: ${text}`);
+      }
+      break;
+    }
+    for (const [input, { imports }] of Object.entries(inputs)) {
+      if (input.startsWith("../") || path.isAbsolute(input)) continue;
+      found.add(input);
+      for (const { path: to, original } of imports)
+        if (original && (to.startsWith("../") || path.isAbsolute(to))) escaping.push(`${input}: ${original}`);
+    }
+    // A file the checker hands on by URL, as it hands the reporter to the test runner, is its code too.
+    entries = [...found].flatMap((file) =>
+      [...fs.readFileSync(path.join(repo, file), "utf8").matchAll(/new URL\(\s*["'](\.{1,2}\/[^"']+)["']/g)].flatMap(
+        ([, specifier]) => {
+          const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier!));
+          if (leaves(file, specifier!)) return (escaping.push(`${file}: ${specifier}`), []);
+          if (!fs.existsSync(path.join(repo, target))) return (unresolved.push(`${file}: ${specifier}`), []);
+          return found.has(target) ? [] : [target];
+        },
+      ),
+    );
+  }
+  return { found: [...found].sort(), escaping: [...new Set(escaping)], unresolved: [...new Set(unresolved)] };
+}
+
+/**
+ * The identity of the regression a state of KAAL's files holds, from its own
+ * content: its plan, the places its commitments are stated, its case files,
+ * its test data, and what fixes how it judges (everything that decides what
+ * its install puts in place, and the checker's code, found through its
+ * relative imports), entry by entry: each directory as one, each regular file
+ * by its bytes and whether it may be executed, each link by its target and
+ * what it points at inside the state, anything else by its kind. Every entry is taken
+ * byte for byte, as the replay copies it, so a checkout that rewrites line
+ * endings has another identity. Any change to what the regression consists of
+ * changes it; nothing outside the files, such as where they are kept or how
+ * they are versioned, does. A candidate names the regression it derives from
+ * by this identity. The identity does not protect the judgement: what does is
+ * that the checker judging is always the accepted state's own.
+ */
+export function regressionIdentity(repo: string): string {
+  const hash = createHash("sha256");
+  // Every path and entry framed by its length in bytes, so no two different sets of entries hash alike.
+  for (const [file, entry] of [...regressionInputs(repo)].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const name = Buffer.from(file, "utf8");
+    const bytes = entryBytes(entry);
+    hash.update(`${name.length}:`).update(name).update(`${bytes.length}:`).update(bytes);
+  }
+  return hash.digest("hex");
+}
+
+/** Whether `bytes` are UTF-8, read back exactly as they are. */
+const utf8 = (bytes: Buffer) => Buffer.from(bytes.toString("utf8"), "utf8").equals(bytes);
+
+/** Every entry a regression consists of, by posix path: what its identity is taken from. */
+function regressionInputs(repo: string): Map<string, Entry> {
+  const root = path.resolve(repo);
+  const entries = new Map<string, Entry>();
+  // Each entry is read at its path as bytes, so a name that is not UTF-8 is read, and known, as it is.
+  const add = (rel: string, at: string | Buffer = path.join(repo, rel)) => {
+    // An entry reached through a link above it is read through that link, so the link is part of it too.
+    const parts = rel.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const above = parts.slice(0, i).join("/");
+      if (entryAt(path.join(repo, above))?.kind === "link") add(above);
+    }
+    const entry = entryAt(at);
+    if (!entry || entries.has(rel)) return;
+    entries.set(rel, entry);
+    if (entry.kind === "directory") for (const { name, at: below } of entriesIn(at)) add(`${rel}/${name}`, below);
+    // What a link inside the state points at is read through it, so it is part of the regression too.
+    if (entry.kind === "link") {
+      const target = path.relative(
+        root,
+        path.resolve(path.dirname(path.join(root, rel)), entry.content.toString("utf8")),
+      );
+      const up = target === ".." || target.startsWith(`..${path.sep}`);
+      if (target && !up && !path.isAbsolute(target)) add(target.split(path.sep).join("/"));
+    }
+  };
+  if (fs.existsSync(path.join(repo, PLAN))) {
+    add(PLAN);
+    const plan = fs.readFileSync(path.join(repo, PLAN), "utf8");
+    for (const place of planCommitments(plan))
+      for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
+  }
+  for (const file of caseFiles(repo)) add(file);
+  for (const [file, at] of dataOf(repo)) add(file, at);
+  // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
+  for (const file of judgeFiles(repo)) add(file);
+  return entries;
+}
+
+/**
+ * The links among a regression's inputs that point outside its state: the
+ * replay keeps them, so what they point at could change how it judges while
+ * nothing in the state, and so nothing in its identity, changes. Whether a
+ * link stays inside is read from its target alone, never from where the state
+ * is kept now: an absolute target, or one that climbs above the state's top
+ * even to come back into it by the name its directory has today, points
+ * elsewhere once the state is kept under another name.
+ */
+function outsideLinks(repo: string): string[] {
+  return [...regressionInputs(repo)].flatMap(([file, entry]) => {
+    if (entry.kind !== "link") return [];
+    const target = entry.content.toString("utf8");
+    if (path.posix.isAbsolute(target) || path.win32.isAbsolute(target)) return [file];
+    let depth = file.split("/").length - 1;
+    for (const segment of target.split(/[\\/]/)) {
+      if (segment === "..") depth--;
+      else if (segment && segment !== ".") depth++;
+      if (depth < 0) return [file];
+    }
+    return [];
+  });
+}
+
+/**
+ * The packages a repository's install would not take, as its lockfile pins
+ * them, from the registry: anything named by a local spec in its manifest, a
+ * workspace, or any lockfile entry that is a link or lacks a registry source
+ * and integrity, or all of them when there is no lockfile at all. Only the
+ * allowed form passes, so what the install puts in place is fixed by files
+ * the identity covers.
+ */
+function unpinnedPackages(repo: string): string[] {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as Record<string, unknown>;
+  const local = /^(file:|link:|workspace:|portal:|\.{0,2}\/)/;
+  const named = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"].flatMap((field) =>
+    Object.entries((manifest[field] as Record<string, string> | undefined) ?? {}).flatMap(([name, spec]) =>
+      local.test(spec) ? [name] : [],
+    ),
+  );
+  // npm ci installs from npm-shrinkwrap.json when there is one, from package-lock.json otherwise.
+  const lockfile = ["npm-shrinkwrap.json", "package-lock.json"].find((f) => fs.existsSync(path.join(repo, f)));
+  const locked: string[] = [];
+  // Without one, nothing in the state pins what the install puts in place.
+  if (!lockfile) locked.push("no lockfile");
+  if (lockfile) {
+    const lock = JSON.parse(fs.readFileSync(path.join(repo, lockfile), "utf8")) as {
+      packages?: Record<string, { link?: boolean; resolved?: string; integrity?: string }>;
+    };
+    if (!lock.packages) locked.push(`${lockfile} without package entries`);
+    for (const [at, entry] of Object.entries(lock.packages ?? {}))
+      if (at && (entry.link || !/^https:\/\//.test(entry.resolved ?? "") || !entry.integrity)) locked.push(at);
+  }
+  return [...(manifest.workspaces ? ["workspaces"] : []), ...named, ...locked];
 }
 
 export type Result = { file: string; name: string; outcome: "pass" | "fail" | "skip" };
@@ -221,16 +517,17 @@ function isData(file: string, directory: boolean): boolean {
 }
 
 /** The test data and test-data loaders of a repository, outside its dependencies and Git's own files. */
-function dataOf(repo: string, dir = ""): string[] {
-  return fs.readdirSync(path.join(repo, dir), { withFileTypes: true }).flatMap((e) => {
-    const rel = dir ? `${dir}/${e.name}` : e.name;
+function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
+  return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
+    const rel = dir ? `${dir}/${name}` : name;
     if (rel === "node_modules" || rel === ".git") return [];
-    if (isData(rel, e.isDirectory())) return [rel];
-    return e.isDirectory() ? dataOf(repo, rel) : [];
+    const directory = fs.lstatSync(at).isDirectory();
+    if (isData(rel, directory)) return [[rel, at]];
+    return directory ? dataOf(at, rel) : [];
   });
 }
 
-/** A scratch copy of a checkout to run cases in, sharing its dependencies; without its test data unless `data`. */
+/** A scratch copy of a checkout to run cases in, sharing its dependencies, with only the permissions its identity records; without its test data unless `data`. */
 function scratchCopy(repo: string, data: boolean): string {
   const code = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-regression-")), "repo");
   fs.cpSync(repo, code, {
@@ -241,6 +538,7 @@ function scratchCopy(repo: string, data: boolean): string {
       return rel !== ".git" && rel !== "node_modules" && (data || !isData(rel, fs.lstatSync(src).isDirectory()));
     },
   });
+  recordedModes(code);
   if (fs.existsSync(path.join(repo, "node_modules")))
     // Absolute: a relative target would resolve against the copy, not the checkout.
     fs.symlinkSync(path.resolve(repo, "node_modules"), path.join(code, "node_modules"), "junction");
@@ -282,10 +580,12 @@ function runFiles(code: string, files: string[]): Result[] {
 export function runTrusted(trusted: string, candidate: string): Result[] {
   const code = scratchCopy(candidate, false);
   const files = caseFiles(trusted);
-  for (const rel of [...files, ...dataOf(trusted)]) {
+  for (const rel of [...files, ...dataOf(trusted).map(([rel]) => rel)]) {
     fs.rmSync(path.join(code, rel), { recursive: true, force: true });
     fs.mkdirSync(path.dirname(path.join(code, rel)), { recursive: true });
     fs.cpSync(path.join(trusted, rel), path.join(code, rel), { recursive: true, verbatimSymlinks: true });
+    // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
+    recordedModes(path.join(code, rel));
   }
   return runFiles(code, files);
 }
@@ -293,7 +593,7 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
 /**
  * The candidate's own cases, run by the trusted runner and reporter. They
  * prove what the candidate replaces, and they show which cases it really
- * runs, so the next main can name every one of them.
+ * runs, so the next accepted regression can name every one of them.
  */
 function runCandidate(candidate: string): Result[] {
   const files = caseFiles(candidate);
@@ -304,7 +604,7 @@ function runCandidate(candidate: string): Result[] {
  * The cases a candidate's source names, checked against what its run did, one
  * to one: a named case that did not run (such as one inside a comment), or a
  * case that ran without being named (such as one registered through `it` or
- * built in a loop), would leave the next main unable to tell when it goes missing.
+ * built in a loop), would leave the next accepted regression unable to tell when it goes missing.
  */
 export function unmatchedCases(cases: Case[], results: Result[]): string[] {
   const left = [...results];
@@ -324,7 +624,7 @@ export function unmatchedCases(cases: Case[], results: Result[]): string[] {
   return [...ghosts, ...unnamed];
 }
 
-/** The candidate's cases that point at a commitment replacing one of main's must each pass: a skip proves nothing. */
+/** The candidate's cases that point at a commitment replacing one of the accepted regression's must each pass: a skip proves nothing. */
 function replacementErrors(cases: Case[], results: Result[], successors: Set<string>): string[] {
   const proving = cases.filter((c) => c.places.some((p) => successors.has(p)));
   return judge(
@@ -334,32 +634,40 @@ function replacementErrors(cases: Case[], results: Result[], successors: Set<str
   ).map((error) => `replacement not proven: ${error}`);
 }
 
-/** Everything that stops a candidate from being accepted over the trusted regression at `base`. */
+/** Everything that stops a candidate from being accepted over the trusted regression, whose identity is `base`. */
 export function regressionErrors(trusted: string, candidate: string, base: string): string[] {
   // No trusted case would judge nothing and accept everything, so that is refused.
   const unfaithful = unreplayable(trusted);
   if (unfaithful) return [unfaithful];
   if (!repoCases(trusted).length)
-    return ["main's npm test runs no case it can name, so nothing could judge the candidate"];
-  // Once merged, the candidate is the regression that judges the next change, so it must be one that can.
+    return ["the accepted regression's npm test runs no case it can name, so nothing could judge the candidate"];
+  // Once accepted, the candidate is the regression that judges the next candidate, so it must be one that can.
   const successor = [
     ...[unreplayable(candidate)]
       .filter((e) => e !== undefined)
-      .map((e) => `as the next main, ${e.slice("main's ".length)}`),
-    ...(repoCases(candidate).length ? [] : ["as the next main, its npm test would run no case it can name"]),
+      .map((e) => `as the next accepted regression, ${e.slice("the accepted regression's ".length)}`),
+    ...(repoCases(candidate).length
+      ? []
+      : ["as the next accepted regression, its npm test would run no case it can name"]),
+    // Once accepted, its own checker judges every later candidate, so it must hold one, run as it is run.
+    ...(fs.existsSync(path.join(candidate, CHECKER[0])) && checkCommand(candidate) === CHECK_COMMAND
+      ? []
+      : [
+          `as the next accepted regression, it has no checker to judge the next candidate with: ${CHECKER[0]}, run by "regression:check": "${CHECK_COMMAND}"`,
+        ]),
     // Its links are what choose which of its cases protect which commitment, so they must hold from its files.
-    ...linkErrors(candidate).map((error) => `as the next main, ${error}`),
+    ...linkErrors(candidate).map((error) => `as the next accepted regression, ${error}`),
   ];
   const candidateCases = repoCases(candidate);
   const candidateResults = runCandidate(candidate);
   successor.push(
-    ...unmatchedCases(candidateCases, candidateResults).map((error) => `as the next main, ${error}`),
-    // As main, its cases are replayed by this runner, so each must pass under it, whatever its own npm test did.
+    ...unmatchedCases(candidateCases, candidateResults).map((error) => `as the next accepted regression, ${error}`),
+    // As the accepted regression, its cases are replayed by this runner, so each must pass under it, whatever its own npm test did.
     ...candidateResults
       .filter((r) => r.outcome !== "pass" && r.name.split("\\").join("/") !== r.file)
       .map(
         (r) =>
-          `as the next main, ${r.file}: "${r.name}" ${r.outcome === "fail" ? "fails" : "is skipped"} when main replays it`,
+          `as the next accepted regression, ${r.file}: "${r.name}" ${r.outcome === "fail" ? "fails" : "is skipped"} when the accepted regression replays it`,
       ),
   );
   const { replaced, withdrawn, errors } = classify(trusted, candidate, base);
