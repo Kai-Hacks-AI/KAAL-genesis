@@ -112,7 +112,9 @@ const conditionSets = (value: unknown, what: string): Conditions[] => {
 export function readPlan(repo: string, plan: string): PlanReading {
   const part = section(planText(repo, plan), AS_RUNS_READ_IT);
   if (!part) return { conditions: [], proof: {} };
-  const block = /\n```yaml\n([\s\S]*?)\n```/.exec(part)?.[1];
+  // The fence may close directly after it opens: a block with nothing in it.
+  const found = /\n```yaml\n(?:([\s\S]*?)\n)?```/.exec(part);
+  const block = found ? (found[1] ?? "") : undefined;
   if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
   // A block that says nothing, or holds only comments, requires nothing; anything else must say what runs read.
   const says = block.split("\n").some((line) => line.trim() && !line.trim().startsWith("#"));
