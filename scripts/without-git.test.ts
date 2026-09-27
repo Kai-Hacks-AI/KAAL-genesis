@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
 import { judgeFiles } from "./regression.js";
-import { kaal as kaalState, regressionCandidate, regressionTrusted } from "./test-data.js";
+import { kaal as kaalState, regressionCandidate, regressionTrusted, runState } from "./test-data.js";
 
 // KAAL works on files. These cases copy KAAL out of Git, into plain
 // directories with no `.git`, and run its capabilities as their command lines
@@ -76,6 +76,7 @@ test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and 
   }
 });
 
+// Tests: defects/seal-guard-case-rewrites-nothing
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
 test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote, and guards seal state against a candidate", () => {
@@ -91,7 +92,13 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
   assert.equal(kaal(sealed, "scripts/seal-guard.ts", sealed, candidate).status, 0);
   // One that rewrites a seal, or brings seals of its own, is refused.
   const heads = path.join(candidate, "brain", "learning", "seals.json");
-  fs.writeFileSync(heads, fs.readFileSync(heads, "utf8").replace(/"seal": "[0-9a-f]/, '"seal": "0'));
+  // Always a rewrite: the seal's first digit is changed to another, whatever it was.
+  fs.writeFileSync(
+    heads,
+    fs
+      .readFileSync(heads, "utf8")
+      .replace(/"seal": "([0-9a-f])/, (_, digit: string) => `"seal": "${digit === "0" ? "1" : "0"}`),
+  );
   const rewritten = kaal(sealed, "scripts/seal-guard.ts", sealed, candidate);
   assert.equal(rewritten.status, 1);
   assert.match(rewritten.out, /brain\/learning\/seals\.json: seal state .*\(M\)/);
@@ -115,6 +122,22 @@ test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and 
     const run = kaal(newborn, path.join(kaalState, script));
     assert.equal(run.status, 0, `${script}: ${run.out}`);
   }
+});
+
+// Why: brain/learning/genesis/26/09/27/05/nodes/run.md
+test("copied out of Git, KAAL runs one state's cases against another, both plain directories, and says what it observed", () => {
+  const kaalState = plainCopy(KAAL);
+  const [greeter, silent] = [runState("greeter"), runState("silent")];
+  const observedIn = (out: string) =>
+    (JSON.parse(out) as { observations: { title: string; observed: string }[] }).observations.find(
+      (o) => o.title === "the state says hello",
+    )?.observed;
+  const own = kaal(kaalState, "scripts/run.ts", greeter);
+  assert.equal(own.status, 0, own.out);
+  assert.equal(observedIn(own.out), "passed");
+  const other = kaal(kaalState, "scripts/run.ts", greeter, silent);
+  assert.equal(other.status, 1, other.out);
+  assert.equal(observedIn(other.out), "failed");
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md

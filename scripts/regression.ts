@@ -470,6 +470,12 @@ function unpinnedPackages(repo: string): string[] {
 }
 
 export type Result = { file: string; name: string; outcome: "pass" | "fail" | "skip" };
+/**
+ * A result with where the runner reported it, a case where it is declared and a file that did not run as a whole
+ * at 1:1, whether it was marked todo, since its body ran, so a todo reported as a skip held, and for a failure,
+ * how the runner says it failed.
+ */
+export type Positioned = Result & { line?: number; column?: number; todo?: boolean; failureType?: string };
 
 /**
  * Judges the trusted cases' results against the candidate. A case that did not
@@ -549,11 +555,26 @@ function scratchCopy(repo: string, data: boolean): string {
   return code;
 }
 
-/** Runs `files` in `code` with the trusted test runner and reporter, never the checkout's own. */
-function runFiles(code: string, files: string[]): Result[] {
-  const out = path.join(path.dirname(code), "results.jsonl");
+/** The environment variables through which a run hands its cases the tested state, and says which testing state it is handed to. */
+export const TESTED_STATE = "KAAL_TESTED_STATE";
+export const TESTING_STATE = "KAAL_TESTING_STATE";
+
+/**
+ * Runs `files`, cases kept in `code`, with the trusted test runner and
+ * reporter, never the checkout's own, handing them `tested` as the state they
+ * test: a case asks the run for its subject rather than taking the state it
+ * happens to be kept or run in. What the runner reports is written outside
+ * both states. With no files, nothing is run. A runner that does not
+ * complete is refused, never read as having nothing more to report.
+ */
+export function execute(code: string, files: string[], tested: string): Result[];
+export function execute(code: string, files: string[], tested: string, positions: true): Positioned[];
+export function execute(code: string, files: string[], tested: string, positions = false): Positioned[] {
+  // With no files to run, the test runner would look for cases of its own, which no state named: run nothing.
+  if (!files.length) return [];
+  const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-")), "results.jsonl");
   fs.writeFileSync(out, "");
-  spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...files], {
+  const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...files], {
     cwd: code,
     // A run started from within another test run would report to that run instead.
     // No npm_* variable either: they describe whichever package's script started this run, not the one
@@ -563,23 +584,31 @@ function runFiles(code: string, files: string[]): Result[] {
       NODE_TEST_CONTEXT: undefined,
       NODE_OPTIONS: undefined,
       KAAL_REGRESSION_RESULTS: out,
+      [TESTING_STATE]: path.resolve(code),
+      [TESTED_STATE]: path.resolve(tested),
     },
     stdio: "ignore",
   });
-  return fs
-    .readFileSync(out, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const r = JSON.parse(line) as Result;
-      return { ...r, file: path.relative(code, r.file).split(path.sep).join("/") };
-    });
+  const lines = fs.readFileSync(out, "utf8").split("\n").filter(Boolean);
+  // A runner that could not start, was stopped, or did not report to its end has not said what every case did.
+  if (run.error || run.signal || lines.at(-1) !== JSON.stringify({ end: true }))
+    throw new Error(
+      `the test runner did not complete: ${run.error?.message ?? (run.signal ? `stopped by ${run.signal}` : "its report has no end")}`,
+    );
+  // The runner reports where each file really is, so reports are read against where the cases really are.
+  const root = fs.realpathSync(code);
+  return lines.slice(0, -1).map((line) => {
+    const { file, name, outcome, line: at, column, todo, failureType } = JSON.parse(line) as Positioned;
+    const result = { file: path.relative(root, file).split(path.sep).join("/"), name, outcome };
+    return positions ? { ...result, line: at, column, todo, failureType } : result;
+  });
 }
 
 /**
  * Runs the trusted cases, with the trusted test data and the trusted plan,
  * against a copy of the candidate's code, using the trusted test runner and
- * reporter, never the candidate's. Returns what each case did. The plan is
+ * reporter, never the candidate's, and hands them the candidate itself as the
+ * state they test. Returns what each case did. The plan is
  * the accepted regression's own, as its identity says, so a case that reads
  * it reads what its links were written against, not a plan that has since
  * replaced or withdrawn what they point at.
@@ -628,7 +657,9 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
     // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
     recordedModes(to);
   }
-  return runFiles(code, files);
+  // The state the accepted cases judge is the candidate itself, as it is, not the copy they are run in, which
+  // holds the accepted regression's cases, data and plan beside the candidate's code.
+  return execute(code, files, scratchCopy(candidate, true));
 }
 
 /** Whether `rel`, read as a path, stays inside `code` rather than climbing out of it. */
@@ -676,7 +707,9 @@ function within(code: string, rel: string): string {
  */
 function runCandidate(candidate: string): Result[] {
   const files = caseFiles(candidate);
-  return files.length ? runFiles(scratchCopy(candidate, true), files) : [];
+  if (!files.length) return [];
+  const code = scratchCopy(candidate, true);
+  return execute(code, files, code);
 }
 
 /**
