@@ -555,6 +555,8 @@ function scratchCopy(repo: string, data: boolean): string {
 }
 
 /** The environment variables through which a run hands its cases the tested state, and says which testing state it is handed to. */
+/** How a run hands the cases it reaches the test data their plan provides: a directory, by its absolute path. */
+export const PLAN_DATA = "KAAL_PLAN_DATA";
 export const TESTED_STATE = "KAAL_TESTED_STATE";
 export const TESTING_STATE = "KAAL_TESTING_STATE";
 
@@ -595,7 +597,9 @@ export function execute(
       NODE_TEST_CONTEXT: undefined,
       NODE_OPTIONS: undefined,
       KAAL_REGRESSION_RESULTS: out,
-      // What else the run hands its cases, such as the test data a plan provides.
+      // What else the run hands its cases, such as the test data a plan provides, and nothing a run it was started
+      // from handed its own.
+      [PLAN_DATA]: undefined,
       ...handed,
       [TESTING_STATE]: path.resolve(code),
       [TESTED_STATE]: path.resolve(tested),

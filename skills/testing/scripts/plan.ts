@@ -27,13 +27,16 @@ export type Verdict = "held" | "failed" | "not demonstrated";
 
 /**
  * Whether conditions a run recorded are ones a plan required: every condition
- * the plan names is recorded with its value, or, for a version, with that
- * version further qualified, so `node v22` is met by `node v22.22.2`.
+ * the plan names is recorded with its very value, or, for a version, one whose
+ * value ends in a number, with that version further qualified by numbers, so
+ * `node v22` is met by `node v22.22.2`, but `plain` is not met by `plain.2`.
  */
 export function satisfies(recorded: Conditions, required: Conditions): boolean {
   return Object.entries(required).every(([name, value]) => {
     const had = Object.hasOwn(recorded, name) ? recorded[name] : undefined;
-    return had === value || (had !== undefined && had.startsWith(`${value}.`));
+    if (had === undefined) return false;
+    if (had === value) return true;
+    return /\d$/.test(value) && had.startsWith(value) && /^(\.\d+)+$/.test(had.slice(value.length));
   });
 }
 

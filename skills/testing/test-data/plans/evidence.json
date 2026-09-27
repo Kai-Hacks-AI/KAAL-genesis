@@ -1,86 +1,356 @@
 [
   {
     "shows": "a suite shown passing under each required set of conditions holds",
-    "requirements": [{ "name": "suite x", "under": [{ "platform": "linux" }, { "platform": "win32" }] }],
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": [
+          {
+            "platform": "linux"
+          },
+          {
+            "platform": "win32"
+          }
+        ]
+      }
+    ],
     "runs": [
-      { "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["passed", "passed"] } },
-      { "conditions": { "platform": "win32" }, "unaccounted": 0, "shown": { "suite x": ["passed", "passed"] } }
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed",
+            "passed"
+          ]
+        }
+      },
+      {
+        "conditions": {
+          "platform": "win32"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed",
+            "passed"
+          ]
+        }
+      }
     ],
     "verdict": "held",
-    "under": [["held", "held"]]
+    "under": [
+      [
+        "held",
+        "held"
+      ]
+    ]
   },
   {
     "shows": "the same plan and suite, required under one set fewer, is held by fewer runs",
-    "requirements": [{ "name": "suite x", "under": [{ "platform": "linux" }] }],
-    "runs": [{ "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["passed", "passed"] } }],
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": [
+          {
+            "platform": "linux"
+          }
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed",
+            "passed"
+          ]
+        }
+      }
+    ],
     "verdict": "held",
-    "under": [["held"]]
+    "under": [
+      [
+        "held"
+      ]
+    ]
   },
   {
     "shows": "a set of conditions no run had is not demonstrated",
-    "requirements": [{ "name": "suite x", "under": [{ "platform": "linux" }, { "platform": "win32" }] }],
-    "runs": [{ "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["passed"] } }],
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": [
+          {
+            "platform": "linux"
+          },
+          {
+            "platform": "win32"
+          }
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed"
+          ]
+        }
+      }
+    ],
     "verdict": "not demonstrated",
-    "under": [["held", "not demonstrated"]]
+    "under": [
+      [
+        "held",
+        "not demonstrated"
+      ]
+    ]
   },
   {
     "shows": "a case not run leaves its requirement undemonstrated, never held",
-    "requirements": [{ "name": "suite x", "under": [] }],
-    "runs": [{ "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["passed", "not run"] } }],
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": []
+      }
+    ],
+    "runs": [
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed",
+            "not run"
+          ]
+        }
+      }
+    ],
     "verdict": "not demonstrated",
-    "under": [["not demonstrated"]]
+    "under": [
+      [
+        "not demonstrated"
+      ]
+    ]
   },
   {
     "shows": "a failed case fails its requirement, whatever another run observed",
-    "requirements": [{ "name": "suite x", "under": [] }],
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": []
+      }
+    ],
     "runs": [
-      { "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["passed"] } },
-      { "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["failed"] } }
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed"
+          ]
+        }
+      },
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "failed"
+          ]
+        }
+      }
     ],
     "verdict": "failed",
-    "under": [["failed"]]
+    "under": [
+      [
+        "failed"
+      ]
+    ]
   },
   {
     "shows": "a run that kept something apart fails what it was to show",
-    "requirements": [{ "name": "suite x", "under": [] }],
-    "runs": [{ "conditions": { "platform": "linux" }, "unaccounted": 1, "shown": { "suite x": ["passed"] } }],
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": []
+      }
+    ],
+    "runs": [
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 1,
+        "shown": {
+          "suite x": [
+            "passed"
+          ]
+        }
+      }
+    ],
     "verdict": "failed",
-    "under": [["failed"]]
+    "under": [
+      [
+        "failed"
+      ]
+    ]
   },
   {
     "shows": "a suite no case belongs to, and a proof no run reached, are not demonstrated",
     "requirements": [
-      { "name": "suite x", "under": [] },
-      { "name": "suite empty", "under": [] },
-      { "name": "the seal checks", "under": [{ "platform": "linux" }] }
+      {
+        "name": "suite x",
+        "under": []
+      },
+      {
+        "name": "suite empty",
+        "under": []
+      },
+      {
+        "name": "the seal checks",
+        "under": [
+          {
+            "platform": "linux"
+          }
+        ]
+      }
     ],
     "runs": [
-      { "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": { "suite x": ["passed"], "suite empty": [] } }
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed"
+          ],
+          "suite empty": []
+        }
+      }
     ],
     "verdict": "not demonstrated",
-    "under": [["held"], ["not demonstrated"], ["not demonstrated"]]
+    "under": [
+      [
+        "held"
+      ],
+      [
+        "not demonstrated"
+      ],
+      [
+        "not demonstrated"
+      ]
+    ]
   },
   {
     "shows": "a plan that requires nothing yet demonstrates nothing",
     "requirements": [],
-    "runs": [{ "conditions": { "platform": "linux" }, "unaccounted": 0, "shown": {} }],
+    "runs": [
+      {
+        "conditions": {
+          "platform": "linux"
+        },
+        "unaccounted": 0,
+        "shown": {}
+      }
+    ],
     "verdict": "not demonstrated",
     "under": []
   },
   {
     "shows": "a version required is met by that version further qualified, and by no other",
     "requirements": [
-      { "name": "suite x", "under": [{ "runtime": "node v22" }] },
-      { "name": "suite y", "under": [{ "runtime": "node v2" }] }
+      {
+        "name": "suite x",
+        "under": [
+          {
+            "runtime": "node v22"
+          }
+        ]
+      },
+      {
+        "name": "suite y",
+        "under": [
+          {
+            "runtime": "node v2"
+          }
+        ]
+      }
     ],
     "runs": [
       {
-        "conditions": { "runtime": "node v22.22.2" },
+        "conditions": {
+          "runtime": "node v22.22.2"
+        },
         "unaccounted": 0,
-        "shown": { "suite x": ["passed"], "suite y": ["passed"] }
+        "shown": {
+          "suite x": [
+            "passed"
+          ],
+          "suite y": [
+            "passed"
+          ]
+        }
       }
     ],
     "verdict": "not demonstrated",
-    "under": [["held"], ["not demonstrated"]]
+    "under": [
+      [
+        "held"
+      ],
+      [
+        "not demonstrated"
+      ]
+    ]
+  },
+  {
+    "shows": "a condition that is no version is met only by that very value",
+    "requirements": [
+      {
+        "name": "suite x",
+        "under": [
+          {
+            "checkout": "plain"
+          }
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "conditions": {
+          "checkout": "plain.modified"
+        },
+        "unaccounted": 0,
+        "shown": {
+          "suite x": [
+            "passed"
+          ]
+        }
+      }
+    ],
+    "verdict": "not demonstrated",
+    "under": [
+      [
+        "not demonstrated"
+      ]
+    ]
   }
 ]

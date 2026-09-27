@@ -6,7 +6,7 @@ import test from "node:test";
 import { runTrusted, TESTED_STATE, TESTING_STATE } from "./regression.js";
 import { PLAN, planCommitments } from "./links.js";
 import { planRequirements } from "./plans.js";
-import { planEvidence, type Run, testRun } from "./run.js";
+import { PLAN_DATA, planEvidence, type Run, testRun } from "./run.js";
 import { escapingState, kaal, regressionCandidate, replayTrusted, runState } from "./test-data.js";
 
 const RUN = "brain/learning/genesis/26/09/27/05/nodes/run.md";
@@ -396,8 +396,16 @@ test("a plan's data is handed to the cases its run reaches, through whichever su
     [HELLO]: "failed",
     [HELLO_BY_NAME]: "failed",
   });
-  // The data is the plan's: a run of the suite alone hands none, and the cases use their own.
-  assert.equal(observed(testRun({ testing: state, suite: "suites/greeting.md" }))[HELLO], "passed");
+  // The data is the plan's: a run of the suite alone hands none, and the cases use their own, even when the run is
+  // started from within a run of a plan, which handed data of its own.
+  const outer = process.env[PLAN_DATA];
+  process.env[PLAN_DATA] = path.join(state, "plan-data", "greeting");
+  try {
+    assert.equal(observed(testRun({ testing: state, suite: "suites/greeting.md" }))[HELLO], "passed");
+  } finally {
+    if (outer === undefined) delete process.env[PLAN_DATA];
+    else process.env[PLAN_DATA] = outer;
+  }
 });
 
 // Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
@@ -414,6 +422,12 @@ test("a plan's conditions are what it requires, and a run records the conditions
   );
   assert.equal(judged.verdict, "not demonstrated");
   assert.throws(() => planEvidence(state, GREETING_PLAN, [{ ...run, plan: "plans/naming.md" }]), /shows nothing of/);
+  // Runs show a plan together only of one tested state, from one testing state, both named as the runs name them.
+  assert.throws(() => planEvidence(runState("plans"), GREETING_PLAN, [run]), /a run from another testing state/);
+  assert.throws(
+    () => planEvidence(state, GREETING_PLAN, [run, { ...run, tested: runState("plans") }]),
+    /runs of different tested states/,
+  );
 });
 
 // Why: brain/learning/genesis/26/09/27/07/nodes/plan.md

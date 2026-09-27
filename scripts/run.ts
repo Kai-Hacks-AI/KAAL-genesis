@@ -7,7 +7,9 @@ import { type Conditions, evidence, type PlanRun } from "../skills/testing/scrip
 import { reached } from "../skills/testing/scripts/suite.js";
 import { caseFiles, caseSuites, ownedBySkill, repoCases, suiteError } from "./links.js";
 import { planDataError, planError, type PlanRequirement, planRequirements, readPlan } from "./plans.js";
-import { execute, type Positioned } from "./regression.js";
+import { execute, PLAN_DATA, type Positioned } from "./regression.js";
+
+export { PLAN_DATA };
 
 /**
  * KAAL's runs of cases. A test run executes something testing can run, a
@@ -26,9 +28,6 @@ import { execute, type Positioned } from "./regression.js";
  * keeps no record of itself: it is returned, and whoever started it may keep
  * or report it.
  */
-
-/** How a run hands the cases it reaches the test data their plan provides: a directory, by its absolute path. */
-export const PLAN_DATA = "KAAL_PLAN_DATA";
 
 export type Run = {
   /** The state that supplied what was run: here, its cases and their test data. */
@@ -52,10 +51,17 @@ export type Run = {
 /**
  * What `runs` of `plan`, in the testing state `testing`, demonstrate of it, as
  * the plan judges: each requirement under each set of conditions it states.
+ * Runs show a plan together only as runs of it from that testing state against
+ * one tested state; a state is named here by where it is, as a run records it,
+ * so runs of one state kept in different places show nothing together.
  */
 export function planEvidence(testing: string, plan: string, runs: Run[]): ReturnType<typeof evidence> {
+  if (new Set(runs.map((r) => r.tested)).size > 1)
+    throw new Error("runs of different tested states show nothing together");
   const shown = (run: Run): PlanRun => {
     if (run.plan !== plan) throw new Error(`a run of ${run.plan ?? "no plan"} shows nothing of ${plan}`);
+    if (run.testing !== path.resolve(testing))
+      throw new Error(`a run from another testing state shows nothing of ${plan}`);
     return {
       conditions: run.conditions as Conditions,
       unaccounted: run.unaccounted.length,
