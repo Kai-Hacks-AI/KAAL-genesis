@@ -573,14 +573,19 @@ function runFiles(code: string, files: string[]): Result[] {
 }
 
 /**
- * Runs the trusted cases, with the trusted test data, against a copy of the
- * candidate's code, using the trusted test runner and reporter, never the
- * candidate's. Returns what each case did.
+ * Runs the trusted cases, with the trusted test data and the trusted plan,
+ * against a copy of the candidate's code, using the trusted test runner and
+ * reporter, never the candidate's. Returns what each case did. The plan is
+ * the accepted regression's own, as its identity says, so a case that reads
+ * it reads what its links were written against, not a plan that has since
+ * replaced or withdrawn what they point at.
  */
 export function runTrusted(trusted: string, candidate: string): Result[] {
   const code = scratchCopy(candidate, false);
   const files = caseFiles(trusted);
-  for (const rel of [...files, ...dataOf(trusted).map(([rel]) => rel)]) {
+  fs.rmSync(path.join(code, PLAN), { force: true });
+  const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
+  for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
     fs.rmSync(path.join(code, rel), { recursive: true, force: true });
     fs.mkdirSync(path.dirname(path.join(code, rel)), { recursive: true });
     fs.cpSync(path.join(trusted, rel), path.join(code, rel), { recursive: true, verbatimSymlinks: true });

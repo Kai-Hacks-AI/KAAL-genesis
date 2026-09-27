@@ -485,6 +485,31 @@ test("a regression's identity changes with what it consists of, a link as a link
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the replay gives the accepted regression's cases its own plan, not the plan of a candidate that replaces a commitment", () => {
+  const trusted = regressionCandidate("kept");
+  const plan = path.join(trusted, PLAN);
+  fs.appendFileSync(plan, "\nThe accepted regression's own plan.\n");
+  // A case that reads the plan, as a check of the regression's own links does, reads what its links were written against.
+  fs.writeFileSync(
+    path.join(trusted, "scripts", "plan.test.ts"),
+    [
+      'import assert from "node:assert/strict";',
+      'import fs from "node:fs";',
+      'import test from "node:test";',
+      'test("reads the plan it was written against", () => {',
+      '  assert.match(fs.readFileSync("test/regression-plan.md", "utf8"), /The accepted regression\'s own plan\./);',
+      "});",
+      "",
+    ].join("\n"),
+  );
+  const results = runTrusted(trusted, regressionCandidate("replaced"));
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/plan.test.ts").map((r) => r.outcome),
+    ["pass"],
+  );
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test(
   "the replay gives the accepted regression's cases only the permissions its identity records",
   { skip: process.platform === "win32" },
