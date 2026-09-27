@@ -11,6 +11,8 @@ const DEFECTS = path.join(REPO, "defects");
 
 // Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
 test("KAAL keeps its defects in defects/, each a complete record of what was observed not to hold", () => {
+  // A missing defects/ is not an empty one: it would lose every defect KAAL records.
+  assert.ok(fs.lstatSync(DEFECTS, { throwIfNoEntry: false })?.isDirectory(), "defects/ is missing");
   assert.deepEqual(defectErrors(DEFECTS), []);
   // What should hold is named by the place it is stated where it has one, so such a place must exist.
   for (const defect of readDefects(DEFECTS)) {
