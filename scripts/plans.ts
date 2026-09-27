@@ -97,6 +97,10 @@ const conditionSets = (value: unknown, what: string): Conditions[] => {
     )
   )
     throw new Error(`${what}: not a list of sets of conditions, each naming its conditions' values`);
+  // A run is given a condition as name=value, so a condition a plan requires is named by a plain word.
+  for (const name of (value as Conditions[]).flatMap((set) => Object.keys(set)))
+    if (!/^[A-Za-z][\w-]*$/.test(name))
+      throw new Error(`${what}: ${JSON.stringify(name)} is no name a run can be given as a condition`);
   return value as Conditions[];
 };
 

@@ -387,6 +387,15 @@ test("a plan that says how runs read it says it so they can, with its data insid
     `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
   ]);
   assert.deepEqual(linkErrors(served("", "suites: [suites/greeting.md]")), [`${PLAN}: runs read no suites of a plan`]);
+  // A condition is named as a run can be given it, name=value, so a name is a plain word.
+  for (const name of ['""', "a=b", "two words"])
+    assert.deepEqual(
+      linkErrors(served("", `conditions:\n  - { ${name}: linux }`)),
+      [
+        `${PLAN}: conditions: ${JSON.stringify(name === '""' ? "" : name)} is no name a run can be given as a condition`,
+      ],
+      name,
+    );
   // What runs read is a mapping of what they read: anything else would read as requiring nothing.
   for (const block of ["false", "42", "[]", "null"])
     assert.deepEqual(
