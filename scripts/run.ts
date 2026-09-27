@@ -71,8 +71,13 @@ export function testRun({
   // observed, and the file's own report observes none of the testing state's cases.
   const startsWithCase = (file: string) =>
     /^test\(/.test(fs.readFileSync(path.join(testing, file), "utf8").split(/\r?\n/, 1)[0] ?? "");
+  // Reported there and failed, it is the file's own even beside such a case: a file's own report is never a pass, and
+  // a case the file never got to declare was not run.
   const whole = (r: Positioned) =>
-    r.name.split("\\").join("/") === r.file && r.line === 1 && r.column === 1 && !startsWithCase(r.file);
+    r.name.split("\\").join("/") === r.file &&
+    r.line === 1 &&
+    r.column === 1 &&
+    (r.outcome === "fail" || !startsWithCase(r.file));
   const broken = new Set(results.filter(whole).map((r) => r.file));
   const report = (r: Positioned): Report => ({
     file: r.file,

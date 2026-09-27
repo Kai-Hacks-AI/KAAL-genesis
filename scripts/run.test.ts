@@ -111,6 +111,10 @@ test("a case titled with its own file's path is that case, and a file that does 
   assert.deepEqual(observed(testRun({ testing: runState("lineone") })), {
     "scripts/lineone.test.ts: scripts/lineone.test.ts": "passed",
   });
+  // Such a case in a file that fails before declaring it was not run: the failure is the file's.
+  const unresolved = testRun({ testing: runState("unresolved") });
+  assert.deepEqual(observed(unresolved), { "scripts/unresolved.test.ts: scripts/unresolved.test.ts": "not run" });
+  assert.equal(unresolved.unaccounted.length, 1);
   const unloadable = testRun({ testing: runState("unloadable") });
   assert.deepEqual(observed(unloadable), { "scripts/unloadable.test.ts: scripts/unloadable.test.ts": "not run" });
   assert.deepEqual(unloadable.unaccounted, [
