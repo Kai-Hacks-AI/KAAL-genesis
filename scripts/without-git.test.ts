@@ -57,6 +57,7 @@ test("the processes these cases run KAAL in cannot find git", () => {
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
+// Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
 test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and its testing links", () => {
   const kaalState = plainCopy(REPO);
   assert.equal(fs.existsSync(path.join(kaalState, ".git")), false);
@@ -65,6 +66,7 @@ test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and 
     ["scripts/check-seals.ts"],
     ["skills/using-skills/scripts/check.ts", "skills"],
     ["scripts/check-links.ts"],
+    ["skills/managing-defects/scripts/check.ts", "defects"],
   ] as [string, ...string[]][]) {
     const run = kaal(kaalState, script, ...args);
     assert.equal(run.status, 0, `${script}: ${run.out}`);

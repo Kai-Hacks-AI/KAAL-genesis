@@ -15,6 +15,8 @@
     "agents:create": "tsx skills/using-agents/scripts/create-agents.ts",
     "skills:check": "tsx skills/using-skills/scripts/check.ts skills",
     "testing:create-anchor": "tsx skills/testing/scripts/create-anchor.ts",
+    "defects:record": "tsx skills/managing-defects/scripts/record.ts defects",
+    "defects:check": "tsx skills/managing-defects/scripts/check.ts defects",
     "seal": "tsx scripts/seal.ts",
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",
