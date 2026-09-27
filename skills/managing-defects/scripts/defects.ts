@@ -49,7 +49,9 @@ function required(value: string, what: string): void {
  * `observed`, where it was observed not to hold; and `observation`, what was
  * observed. Refuses a name that is not lowercase letters, digits and single
  * hyphens or that Windows reserves, and a defect that is already recorded, so
- * a record is never overwritten. Returns the record's path.
+ * a record is never overwritten. A record is written whole or not at all: if
+ * writing it fails, the defect's directory is removed again, so it can be
+ * recorded once the failure is gone. Returns the record's path.
  */
 export function recordDefect(
   dir: string,
@@ -62,10 +64,17 @@ export function recordDefect(
   required(observation, "the observation");
   const at = path.join(dir, name);
   if (fs.existsSync(at)) throw new Error(`${at}: already recorded; a defect's record never changes`);
-  fs.mkdirSync(at, { recursive: true });
+  fs.mkdirSync(dir, { recursive: true });
+  // Exclusive: only the call that creates the directory writes into it, or removes it again.
+  fs.mkdirSync(at);
   const file = path.join(at, DEFECT);
   const fields = YAML.stringify({ holds, observed }).trimEnd();
-  fs.writeFileSync(file, `---\n${fields}\n---\n\n${observation.trim()}\n`, { flag: "wx" });
+  try {
+    fs.writeFileSync(file, `---\n${fields}\n---\n\n${observation.trim()}\n`, { flag: "wx" });
+  } catch (e) {
+    fs.rmSync(at, { recursive: true, force: true });
+    throw e;
+  }
   return file;
 }
 

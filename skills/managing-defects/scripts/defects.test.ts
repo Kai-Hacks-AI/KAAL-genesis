@@ -48,6 +48,21 @@ test("never records a defect twice, and refuses a record without its name, what 
   assert.deepEqual(fs.readdirSync(dir), ["leaks-temp-files"]);
 });
 
+test("a record whose writing fails leaves nothing behind, so the defect can be recorded once it is gone", (t) => {
+  const dir = emptyDir();
+  const write = fs.writeFileSync;
+  // Fault injection: the record is partly written, then writing fails.
+  t.mock.method(fs, "writeFileSync", (target: fs.PathOrFileDescriptor, data: string, options?: fs.WriteFileOptions) => {
+    write(target, data.slice(0, 3), options);
+    throw new Error("write failed on purpose");
+  });
+  assert.throws(() => recordDefect(dir, "leaks-temp-files", leak()), /write failed on purpose/);
+  t.mock.restoreAll();
+  assert.deepEqual(fs.readdirSync(dir), []);
+  recordDefect(dir, "leaks-temp-files", leak());
+  assert.deepEqual(defectErrors(dir), []);
+});
+
 test("reads every defect in name order, with no state of its own", () => {
   assert.deepEqual(readDefects(defectsDir("defects")), [
     {

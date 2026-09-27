@@ -12,3 +12,5 @@ test-data/** -text
 skills/*/SKILL.md -text
 # Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
 AGENTS.md -text
+# Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
+defects/** -text
