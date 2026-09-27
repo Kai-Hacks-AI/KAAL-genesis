@@ -20,6 +20,26 @@ import { PLAN, planCommitments, planEntries, planEntryErrors, section, SUITES, s
 
 export const PLANS = "plans";
 const PLAN_PLACE = /^plans\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+/**
+ * What is at `at`: a directory, something else, or nothing. What cannot be
+ * read, such as a link that loops back on itself, is something else: no
+ * directory, so nothing is stated there.
+ */
+export function kindAt(at: string): "directory" | "other" | undefined {
+  try {
+    const stat = fs.statSync(at, { throwIfNoEntry: false });
+    return stat === undefined
+      ? fs.lstatSync(at, { throwIfNoEntry: false })
+        ? "other"
+        : undefined
+      : stat.isDirectory()
+        ? "directory"
+        : "other";
+  } catch {
+    return "other";
+  }
+}
+
 /** A line meant to say its suite serves a plan, strictly written or not: any line that starts with "Serves". */
 const SERVES_LIKE = /^\s*serves\b/i;
 const SERVES = /^Serves: (\S+)$/;
@@ -46,7 +66,7 @@ export function planError(repo: string, place: string): string | undefined {
 export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
   const dir = path.join(repo, SUITES);
   // What is not a directory states no suite; the links check says so.
-  if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
+  if (kindAt(dir) !== "directory") return [];
   return (
     fs
       .readdirSync(dir)
@@ -208,13 +228,13 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
 export function planErrors(repo: string): string[] {
   const errors: string[] = [];
   // What is not a directory states no suite and no plan, so no suite or plan a run should require goes unread.
-  const suites = fs.statSync(path.join(repo, SUITES), { throwIfNoEntry: false });
-  if (suites && !suites.isDirectory()) errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
-  const where = fs.statSync(path.join(repo, PLANS), { throwIfNoEntry: false });
-  if (where && !where.isDirectory()) errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
+  if (kindAt(path.join(repo, SUITES)) === "other")
+    errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
+  const where = kindAt(path.join(repo, PLANS));
+  if (where === "other") errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
   const plans = [
     ...(fs.existsSync(path.join(repo, PLAN)) ? [PLAN] : []),
-    ...(where?.isDirectory()
+    ...(where === "directory"
       ? fs
           .readdirSync(path.join(repo, PLANS))
           .sort()
@@ -233,6 +253,12 @@ export function planErrors(repo: string): string[] {
       const { proof, data } = readPlan(repo, plan);
       const dataWrong = data === undefined ? undefined : planDataError(repo, plan, data);
       if (dataWrong) errors.push(dataWrong);
+      // The Regression Plan's data is kept where the regression's identity finds test data, under a test-data/
+      // directory, so a change to it is a change to the regression, never one its identity misses.
+      else if (plan === PLAN && data !== undefined && !data.split("/").includes("test-data"))
+        errors.push(
+          `${PLAN}: data: ${data} is not kept under a test-data/ directory, where the regression's identity finds test data`,
+        );
       // A plan that says how runs read it says it in full: every check it names as showing a commitment is proof it
       // requires. One that does not yet say how runs read it requires no proof of them.
       const text = planText(repo, plan);

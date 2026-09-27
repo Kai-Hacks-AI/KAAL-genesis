@@ -385,6 +385,14 @@ test("a suite says which plans it serves, strictly written, and only plans its s
     "suites: not a directory, where KAAL states its suites",
     "plans: not a directory, where KAAL states its plans",
   ]);
+  // Also where a link loops back on itself, so nothing can be read there.
+  const looped = regressionCandidate("kept");
+  fs.symlinkSync("plans", path.join(looped, "plans"));
+  fs.symlinkSync("suites", path.join(looped, "suites"));
+  assert.deepEqual(linkErrors(looped), [
+    "suites: not a directory, where KAAL states its suites",
+    "plans: not a directory, where KAAL states its plans",
+  ]);
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });
@@ -417,6 +425,15 @@ test("a plan that says how runs read it says it so they can, with its data insid
   assert.deepEqual(linkErrors(served("", "data: plan-data")), [
     `${PLAN}: data: plan-data is no directory inside the state`,
   ]);
+  // The Regression Plan's data is kept where the regression's identity finds test data, so the regression names it.
+  const kept = served("", "data: plan-data");
+  fs.mkdirSync(path.join(kept, "plan-data"));
+  assert.deepEqual(linkErrors(kept), [
+    `${PLAN}: data: plan-data is not kept under a test-data/ directory, where the regression's identity finds test data`,
+  ]);
+  const underTestData = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(underTestData, "test-data", "plan"), { recursive: true });
+  assert.deepEqual(linkErrors(underTestData), []);
   // Nothing a plan says runs read is ever null, and its data is a place of its own in the state, never the state itself.
   assert.deepEqual(linkErrors(served("", "proof: null")), [`${PLAN}: proof: not proofs by name`]);
   for (const data of ['""', ".", "./", "src/.."])

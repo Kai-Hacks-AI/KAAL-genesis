@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
-import { planErrors } from "./plans.js";
+import { kindAt, planErrors } from "./plans.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -341,10 +341,10 @@ export function linkErrors(repo: string): string[] {
   // Every suite is stated in its own place. One no case belongs to yet is still that suite: its concern gives it its
   // meaning, not its cases, and a run of it observes nothing, which is no evidence.
   // Where suites are stated is no directory: said among the plans' errors, which runs of plans refuse too.
-  const where = fs.statSync(path.join(repo, SUITES), { throwIfNoEntry: false });
-  const suiteFiles = where?.isDirectory()
-    ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
-    : [];
+  const suiteFiles =
+    kindAt(path.join(repo, SUITES)) === "directory"
+      ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
+      : [];
   for (const suite of suiteFiles.sort()) {
     const wrong = suiteError(repo, suite);
     if (wrong) errors.push(wrong);
