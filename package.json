@@ -4,7 +4,7 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "engines": {
-    "node": ">=20.12"
+    "node": ">=22"
   },
   "scripts": {
     "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts",
@@ -14,16 +14,24 @@
     "brain:validate": "tsx skills/using-brain/scripts/validate.ts",
     "agents:create": "tsx skills/using-agents/scripts/create-agents.ts",
     "skills:check": "tsx skills/using-skills/scripts/check.ts skills",
+    "testing:create-anchor": "tsx skills/testing/scripts/create-anchor.ts",
+    "defects:record": "tsx skills/managing-defects/scripts/record.ts defects",
+    "defects:check": "tsx skills/managing-defects/scripts/check.ts defects",
+    "ideas:record": "tsx skills/managing-ideas/scripts/record.ts ideas",
+    "ideas:check": "tsx skills/managing-ideas/scripts/check.ts ideas",
     "seal": "tsx scripts/seal.ts",
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",
     "seals:sealing-check": "tsx scripts/sealing-check.ts",
+    "regression:check": "tsx scripts/check-regression.ts",
+    "links:check": "tsx scripts/check-links.ts",
     "typecheck": "tsc -p .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
+    "esbuild": "^0.28.2",
     "prettier": "^3.9.9",
     "tsx": "^4.20.0",
     "typescript": "^7.0.2",

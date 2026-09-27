@@ -164,7 +164,8 @@ export function birthErrors(dir: string, timeout = 60_000): string[] {
       ? []
       : [`${skill}: SKILL.md is not what scripts/init.ts generates; change init and run it, never SKILL.md`];
   } finally {
-    fs.rmSync(scratch, { recursive: true, force: true });
+    // A stopped init may still hold its directory for a moment, as Windows lets it: removal retries until it is released.
+    fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 

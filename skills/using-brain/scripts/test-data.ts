@@ -50,3 +50,14 @@ export function symlinkedBrain(kind: "resolving" | "dangling"): { root: string; 
   fs.symlinkSync(target, path.join(root, "genesis"), "dir");
   return { root, outside };
 }
+
+/**
+ * Every way createBrain can fail after it has created the BRAIN's directory, by
+ * name: the fs operation that fails, the path it fails on, and whether the
+ * write starts before failing, as a full disk would.
+ */
+export const CREATE_FAILURES = {
+  "agents-unwritten": { operation: "writeFileSync", path: "AGENTS.md", partial: false },
+  "agents-partly-written": { operation: "writeFileSync", path: "AGENTS.md", partial: true },
+  "learning-not-created": { operation: "mkdirSync", path: "learning", partial: false },
+} as const;

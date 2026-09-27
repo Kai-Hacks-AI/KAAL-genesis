@@ -1,12 +1,19 @@
-# Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+# Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 brain/** -text
 # Why: the tests reading these fixtures compare them byte for byte.
 skills/using-brain/test-data/** -text
 skills/using-seals/test-data/** -text
 skills/using-agents/test-data/** -text
 skills/using-skills/test-data/** -text
+skills/testing/test-data/** -text
+skills/managing-defects/test-data/** -text
+skills/managing-ideas/test-data/** -text
 test-data/** -text
 # Why: brain/learning/genesis/26/09/25/01/nodes/using-skills.md
 skills/*/SKILL.md -text
-# Why: scripts/genesis.test.ts
+# Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
 AGENTS.md -text
+# Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
+defects/** -text
+# Why: brain/learning/genesis/26/09/27/04/nodes/managing-ideas.md
+ideas/** -text
