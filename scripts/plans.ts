@@ -3,7 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import type { Conditions, Requirement } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planCommitments, planEntries, section, SUITES, suiteError } from "./links.js";
+import { PLAN, planCommitments, planEntries, planEntryErrors, section, SUITES, suiteError } from "./links.js";
 
 /**
  * KAAL's test plans, read from a state's files alone. A plan states a testing
@@ -164,9 +164,10 @@ export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "pr
  */
 export function planRequirements(repo: string, plan: string): PlanRequirement[] {
   // A run reads plans as the links check reads them, so what the check refuses of a state's plans, such as a plan
+  // entry that says not where its commitment is stated,
   // naming commitments it may not, a check it names but does not require, or a suite's line that serves no plan, a
   // run refuses too, before anything runs, rather than require less than the plan says.
-  const incoherent = planErrors(repo);
+  const incoherent = [...(plan === PLAN ? planEntryErrors(repo).errors : []), ...planErrors(repo)];
   if (incoherent.length) throw new Error(incoherent.join("\n"));
   const { conditions, proof } = readPlan(repo, plan);
   const text = planText(repo, plan);

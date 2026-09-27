@@ -440,6 +440,15 @@ test("a plan's conditions are what it requires, and a run records the conditions
     [verdictOf("commitment: suites/greeting.md"), verdictOf("suite: suites/greeting.md")],
     ["not demonstrated", "held"],
   );
+  // The Regression Plan's own entries are read as its links check reads them: one that says not where it is stated is
+  // refused, never dropped from what the plan requires.
+  const unreadable = path.join(alike, PLAN);
+  fs.appendFileSync(unreadable, "2. Farewell, somewhere. Shown by its cases.\n");
+  assert.throws(() => testRun({ testing: alike, plan: PLAN }), /does not say where it is stated/);
+  fs.writeFileSync(
+    unreadable,
+    fs.readFileSync(unreadable, "utf8").replace("2. Farewell, somewhere. Shown by its cases.\n", ""),
+  );
   // A plan other than the Regression Plan that names commitments is refused before anything runs.
   fs.appendFileSync(
     path.join(alike, GREETING_PLAN),

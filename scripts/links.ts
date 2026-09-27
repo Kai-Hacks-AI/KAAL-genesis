@@ -259,17 +259,13 @@ export function placeError(repo: string, place: string): string | undefined {
 }
 
 /**
- * Everything that makes a checkout's testing links incoherent, read from its
- * files alone. Every commitment its plan states is at a place that exists and
- * says what shows it; a commitment its cases show has at least one case
- * pointing at it. Every case KAAL keeps outside its skills points at least at
- * one commitment, and only at places the plan states. A skill's cases prove
- * its own SKILL.md and never point at KAAL. A link that belongs to no case,
- * or a case whose title cannot be read, would be lost without a trace when
- * the case changes or moves, so both are refused too.
+ * Everything that makes the Regression Plan's own entries incoherent: each
+ * commitment says where it is stated, at a place that exists inside the
+ * repository, and what shows it, which is always its cases and maybe checks
+ * KAAL knows besides; with the places that do not exist, whose cases are then
+ * not looked for.
  */
-export function linkErrors(repo: string): string[] {
-  if (!fs.existsSync(path.join(repo, PLAN))) return [`${PLAN}: there is no plan, so no link can be read`];
+export function planEntryErrors(repo: string): { errors: string[]; unplaced: Set<string> } {
   const entries = planEntries(fs.readFileSync(path.join(repo, PLAN), "utf8"));
   const errors: string[] = [];
   const unplaced = new Set<string>();
@@ -292,6 +288,23 @@ export function linkErrors(repo: string): string[] {
         `${place}: the plan says only ${shownBy.join(" and ")} show it, but only cases say which commitment they show`,
       );
   }
+  return { errors, unplaced };
+}
+
+/**
+ * Everything that makes a checkout's testing links incoherent, read from its
+ * files alone. Every commitment its plan states is at a place that exists and
+ * says what shows it; a commitment its cases show has at least one case
+ * pointing at it. Every case KAAL keeps outside its skills points at least at
+ * one commitment, and only at places the plan states. A skill's cases prove
+ * its own SKILL.md and never point at KAAL. A link that belongs to no case,
+ * or a case whose title cannot be read, would be lost without a trace when
+ * the case changes or moves, so both are refused too.
+ */
+export function linkErrors(repo: string): string[] {
+  if (!fs.existsSync(path.join(repo, PLAN))) return [`${PLAN}: there is no plan, so no link can be read`];
+  const entries = planEntries(fs.readFileSync(path.join(repo, PLAN), "utf8"));
+  const { errors, unplaced } = planEntryErrors(repo);
   const stated = new Set(entries.flatMap((e) => (e.place ? [e.place] : [])));
   for (const file of caseFiles(repo)) {
     const { cases, stray, suites, straySuites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
