@@ -112,6 +112,15 @@ test("a run refuses a case file reached through a link, whose report would not b
 });
 
 // Why: brain/learning/genesis/26/09/27/05/nodes/run.md
+test("a run refuses a testing state whose manifest is reached through a link, which would select its cases from elsewhere", () => {
+  const linked = runState("greeter");
+  const manifest = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-manifest-")), "package.json");
+  fs.renameSync(path.join(linked, "package.json"), manifest);
+  fs.symlinkSync(manifest, path.join(linked, "package.json"));
+  assert.throws(() => testRun({ testing: linked }), /package\.json: a manifest reached through a link/);
+});
+
+// Why: brain/learning/genesis/26/09/27/05/nodes/run.md
 test("a case titled with its own file's path is that case, and a file that does not run as a whole is that file, whatever its cases are titled", () => {
   assert.deepEqual(observed(testRun({ testing: runState("titled") })), {
     "scripts/titled.test.ts: scripts/titled.test.ts": "passed",

@@ -55,6 +55,11 @@ export function testRun({
   // A run executes only cases its testing state holds: a case file its npm test names outside it, by its path or
   // through a link, is refused, never run as if the state supplied it.
   const root = fs.realpathSync(testing);
+  // The manifest that selects the cases is the testing state's own too: reached through a link, what runs would be
+  // chosen by a file the run does not record.
+  const manifest = path.join(testing, "package.json");
+  if (fs.existsSync(manifest) && path.relative(root, fs.realpathSync(manifest)) !== "package.json")
+    throw new Error("package.json: a manifest reached through a link");
   const files = caseFiles(testing);
   for (const file of files) {
     const at = path.relative(root, fs.realpathSync(path.join(testing, file)));
