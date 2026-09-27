@@ -45,3 +45,19 @@ export function entriesIn(dir: string | Buffer): { name: string; at: Buffer }[] 
     return { name, at: Buffer.concat([base, Buffer.from(path.sep), raw]) };
   });
 }
+
+/**
+ * Gives every entry under `at` the permissions a state records of it and
+ * nothing more: a regular file its owner may execute 0755, any other 0644,
+ * a directory 0755; links are left as they are. A copy of a state made this
+ * way holds no permission that the state's entries, and so its identity, do
+ * not name, so nothing run on the copy can depend on one.
+ */
+export function recordedModes(at: string): void {
+  const stat = fs.lstatSync(at);
+  if (stat.isSymbolicLink()) return;
+  if (stat.isDirectory()) {
+    fs.chmodSync(at, 0o755);
+    for (const name of fs.readdirSync(at)) recordedModes(path.join(at, name));
+  } else if (stat.isFile()) fs.chmodSync(at, stat.mode & 0o100 ? 0o755 : 0o644);
+}

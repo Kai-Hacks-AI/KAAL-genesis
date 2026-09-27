@@ -16,7 +16,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
-import { type Entry, entriesIn, entryAt, entryBytes } from "./state.js";
+import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
  * KAAL's trusted regression: the accepted regression, a state of KAAL's
@@ -421,7 +421,7 @@ function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   });
 }
 
-/** A scratch copy of a checkout to run cases in, sharing its dependencies; without its test data unless `data`. */
+/** A scratch copy of a checkout to run cases in, sharing its dependencies, with only the permissions its identity records; without its test data unless `data`. */
 function scratchCopy(repo: string, data: boolean): string {
   const code = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-regression-")), "repo");
   fs.cpSync(repo, code, {
@@ -432,6 +432,7 @@ function scratchCopy(repo: string, data: boolean): string {
       return rel !== ".git" && rel !== "node_modules" && (data || !isData(rel, fs.lstatSync(src).isDirectory()));
     },
   });
+  recordedModes(code);
   if (fs.existsSync(path.join(repo, "node_modules")))
     // Absolute: a relative target would resolve against the copy, not the checkout.
     fs.symlinkSync(path.resolve(repo, "node_modules"), path.join(code, "node_modules"), "junction");
@@ -477,6 +478,8 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
     fs.rmSync(path.join(code, rel), { recursive: true, force: true });
     fs.mkdirSync(path.dirname(path.join(code, rel)), { recursive: true });
     fs.cpSync(path.join(trusted, rel), path.join(code, rel), { recursive: true, verbatimSymlinks: true });
+    // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
+    recordedModes(path.join(code, rel));
   }
   return runFiles(code, files);
 }

@@ -12,6 +12,7 @@ import {
   planLedger,
   regressionErrors,
   regressionIdentity,
+  runTrusted,
   unreplayable,
   type Result,
 } from "./regression.js";
@@ -482,6 +483,38 @@ test("a regression's identity changes with what it consists of, a link as a link
   fs.writeFileSync(path.join(other, "src", "unrelated.ts"), "export {};\n");
   assert.equal(regressionIdentity(other), before);
 });
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test(
+  "the replay gives the accepted regression's cases only the permissions its identity records",
+  { skip: process.platform === "win32" },
+  () => {
+    const trusted = regressionCandidate("kept");
+    const fixture = path.join(trusted, "scripts", "fixtures", "sum.txt");
+    const before = regressionIdentity(trusted);
+    // A permission the identity does not record: a read-only fixture has the same identity as a writable one.
+    fs.chmodSync(fixture, 0o400);
+    assert.equal(regressionIdentity(trusted), before);
+    // So the replay must not let a case see it.
+    fs.writeFileSync(
+      path.join(trusted, "scripts", "mode.test.ts"),
+      [
+        'import assert from "node:assert/strict";',
+        'import fs from "node:fs";',
+        'import test from "node:test";',
+        'test("sees its fixture as the identity records it", () => {',
+        '  assert.equal(fs.statSync("scripts/fixtures/sum.txt").mode & 0o777, 0o644);',
+        "});",
+        "",
+      ].join("\n"),
+    );
+    const results = runTrusted(trusted, regressionCandidate("kept"));
+    assert.deepEqual(
+      results.filter((r) => r.file === "scripts/mode.test.ts").map((r) => r.outcome),
+      ["pass"],
+    );
+  },
+);
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a state whose judging depends on files outside it cannot be replayed: local packages, links out of it, and checker code imported from outside it", () => {
