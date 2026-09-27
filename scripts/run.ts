@@ -93,7 +93,10 @@ export function testRun({
     (r.failureType === undefined || ["cancelledByParent", "hookFailed"].includes(r.failureType));
   const { observations, unaccounted } = observe(
     cases,
-    results.filter((r) => !broken.has(r.file) && !unexercised(r)).map(report),
+    // An unexercised report still holds its case's place, so a later case at the same address gets its own report.
+    results
+      .filter((r) => !broken.has(r.file))
+      .map((r) => (unexercised(r) ? { ...report(r), outcome: "skipped" as const } : report(r))),
   );
   return {
     testing: path.resolve(testing),

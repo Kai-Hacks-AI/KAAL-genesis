@@ -46,7 +46,13 @@ test("a case cancelled before it starts is not run, not failed, and its reported
   });
   assert.deepEqual(run.unaccounted, [
     { file: "scripts/cancelled.test.ts", title: "is cancelled before it starts", outcome: "failed" },
-  ]);
+  ]); // It keeps its own place: a later case at the same address is observed by its own report.
+  const twice = testRun({ testing: runState("twice") });
+  assert.deepEqual(
+    twice.observations.map((o) => o.observed),
+    ["not run", "passed"],
+  );
+  assert.equal(twice.unaccounted.length, 1);
 });
 
 // Why: brain/learning/genesis/26/09/27/05/nodes/run.md
