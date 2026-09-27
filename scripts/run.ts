@@ -224,20 +224,28 @@ export function testRun({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  let args: { values: { suite?: string; plan?: string }; positionals: string[] } | undefined;
+  let args: { values: { suite?: string; plan?: string; condition?: string[] }; positionals: string[] } | undefined;
   try {
-    args = parseArgs({ allowPositionals: true, options: { suite: { type: "string" }, plan: { type: "string" } } });
+    args = parseArgs({
+      allowPositionals: true,
+      options: { suite: { type: "string" }, plan: { type: "string" }, condition: { type: "string", multiple: true } },
+    });
   } catch {
-    args = undefined; // An option it does not know, or --suite without a place.
+    args = undefined; // An option it does not know, or one without its value.
   }
   const [testing, tested, ...rest] = args?.positionals ?? [];
   const values = args?.values ?? {};
-  if (!args || !testing || rest.length) {
-    console.error("usage: run.ts [--suite <place> | --plan <place>] <testing-state> [tested-state]");
+  // A condition whoever starts the run gives, as name=value, such as how the files were checked out.
+  const given = (values.condition ?? []).map((c) => /^([^=]+)=(.*)$/.exec(c));
+  if (!args || !testing || rest.length || given.some((g) => !g)) {
+    console.error(
+      "usage: run.ts [--suite <place> | --plan <place>] [--condition <name>=<value>]... <testing-state> [tested-state]",
+    );
     process.exitCode = 2;
   } else {
     try {
-      const run = testRun({ testing, tested, suite: values.suite, plan: values.plan });
+      const conditions = Object.fromEntries(given.map((g) => [g![1]!, g![2]!]));
+      const run = testRun({ testing, tested, suite: values.suite, plan: values.plan, conditions });
       // A run of a plan is printed beside what it demonstrates of the plan, which is the plan's to judge, not the run's.
       console.log(
         JSON.stringify(
@@ -251,7 +259,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       // of a suite no case belongs to yet, is no evidence at all, so it is never reported as a success either.
       if (run.unaccounted.length || run.observations.some((o) => o.observed === "failed")) process.exitCode = 1;
       else if (!run.observations.some((o) => o.observed === "passed")) {
-        console.error(`${run.suite ?? testing}: the run observed no case pass, so it is no evidence`);
+        console.error(`${run.suite ?? run.plan ?? testing}: the run observed no case pass, so it is no evidence`);
         process.exitCode = 1;
       }
     } catch (e) {

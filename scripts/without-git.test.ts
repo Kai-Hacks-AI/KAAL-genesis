@@ -173,13 +173,22 @@ test("copied out of Git, KAAL runs a suite of a plain directory's cases, reachin
 // Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
 test("copied out of Git, KAAL runs a plan of a plain directory's cases and says what that run demonstrates of the plan", () => {
   const kaalState = plainCopy(KAAL);
-  const greeting = kaal(kaalState, "scripts/run.ts", "--plan", "plans/greeting.md", runState("plans"));
+  const greeting = kaal(
+    kaalState,
+    "scripts/run.ts",
+    "--plan",
+    "plans/greeting.md",
+    "--condition",
+    "checkout=plain",
+    runState("plans"),
+  );
   assert.equal(greeting.status, 0, greeting.out);
   const { run, evidence } = JSON.parse(greeting.out) as {
-    run: { plan: string; requirements: { name: string }[] };
+    run: { plan: string; conditions: Record<string, string>; requirements: { name: string }[] };
     evidence: { verdict: string; requirements: { under: { conditions: { platform: string }; verdict: string }[] }[] };
   };
   assert.equal(run.plan, "plans/greeting.md");
+  assert.equal(run.conditions.checkout, "plain");
   assert.deepEqual(
     run.requirements.map((r) => r.name),
     ["suites/greeting.md", "suites/names.md"],
