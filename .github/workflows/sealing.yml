@@ -50,7 +50,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # Without lifecycle scripts: nothing installed may write into the checkout or its index.
+      - run: npm ci --ignore-scripts
       # The list of sealed learnings is kept outside the checkout, so it is
       # never staged. A redirect, not a pipe: the default shell has no
       # pipefail, so a pipe would hide a failed sealing.
@@ -71,6 +72,9 @@ jobs:
           APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           git add -A
+          # The installed tree is not part of the state the check compares, so nothing in it is ever
+          # committed, even something forced into the index.
+          git rm -r -q --cached --ignore-unmatch node_modules
           if git diff --cached --quiet; then
             echo "Nothing new to seal."
             exit 0

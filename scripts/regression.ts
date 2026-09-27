@@ -108,6 +108,10 @@ export function unreplayable(repo: string): string | undefined {
     file.split("/").some((_, i, parts) => entryAt(path.join(repo, ...parts.slice(0, i + 1)))?.kind === "link"),
   );
   if (linked.length) return `the accepted regression's checker code is reached through a link (${linked.join(", ")})`;
+  // A relative import that names no file the state holds could only be satisfied by something the identity does not see.
+  const unresolved = checkerCode(repo).unresolved;
+  if (unresolved.length)
+    return `the accepted regression's checker imports code it does not hold (${unresolved.join(", ")})`;
   const imported = checkerCode(repo).escaping;
   if (imported.length)
     return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;
@@ -221,27 +225,47 @@ export function judgeFiles(repo: string): string[] {
   return ["package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc", ...checkerCode(repo).found];
 }
 
+/** The TypeScript sources an emitted name can stand for, as tsx resolves a relative import. */
+const TS_SOURCES: [string, string[]][] = [
+  [".js", [".ts", ".tsx"]],
+  [".jsx", [".tsx"]],
+  [".mjs", [".mts"]],
+  [".cjs", [".cts"]],
+];
+
 /**
  * The checker's own code, found from its entry points through their relative
- * imports, and every such import that leads out of the state, as
- * `file: specifier`: code there would run as part of the checker, but is no
- * part of the state it judges with.
+ * imports, and every such import that leads out of the state or names no file
+ * the state holds, as `file: specifier`: code either way would run as part of
+ * the checker, but is no part of the state it judges with.
  */
-function checkerCode(repo: string): { found: string[]; escaping: string[] } {
+function checkerCode(repo: string): { found: string[]; escaping: string[]; unresolved: string[] } {
   const found = new Set<string>();
   const escaping: string[] = [];
+  const unresolved: string[] = [];
   const visit = (rel: string) => {
     if (found.has(rel) || !fs.existsSync(path.join(repo, rel))) return;
     found.add(rel);
     const source = fs.readFileSync(path.join(repo, rel), "utf8");
     for (const m of source.matchAll(/(?:from\s+|import\s*\(?\s*|new URL\(\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[1]!));
-      if (target === ".." || target.startsWith("../")) escaping.push(`${rel}: ${m[1]}`);
-      else visit(fs.existsSync(path.join(repo, target)) ? target : target.replace(/\.js$/, ".ts"));
+      if (target === ".." || target.startsWith("../")) {
+        escaping.push(`${rel}: ${m[1]}`);
+        continue;
+      }
+      // As tsx resolves it: the file named, or the TypeScript file an emitted name stands for.
+      const found = [
+        target,
+        ...TS_SOURCES.flatMap(([js, ts]) =>
+          target.endsWith(js) ? ts.map((t) => target.slice(0, -js.length) + t) : [],
+        ),
+      ].find((file) => fs.statSync(path.join(repo, file), { throwIfNoEntry: false })?.isFile());
+      if (found) visit(found);
+      else unresolved.push(`${rel}: ${m[1]}`);
     }
   };
   for (const entry of ["scripts/check-regression.ts", "scripts/regression-reporter.ts"]) visit(entry);
-  return { found: [...found].sort(), escaping };
+  return { found: [...found].sort(), escaping, unresolved };
 }
 
 /**

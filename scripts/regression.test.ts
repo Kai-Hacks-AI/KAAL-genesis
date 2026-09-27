@@ -590,6 +590,19 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
       "the accepted regression's checker code is reached through a link (scripts/check-regression.ts)",
     );
   }
+  // A checker's relative import is followed to the TypeScript file tsx would load for it, whatever its extension.
+  const policy = regressionCandidate("kept");
+  fs.mkdirSync(path.join(policy, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(policy, "scripts", "check-regression.ts"), 'import "./policy.mjs";\n');
+  fs.writeFileSync(path.join(policy, "scripts", "policy.mts"), "export const rule = 1;\n");
+  assert.ok(judgeFiles(policy).includes("scripts/policy.mts"));
+  assert.equal(unreplayable(policy), undefined);
+  // And one that names no file the state holds is refused: whatever satisfied it, the identity would not see.
+  fs.rmSync(path.join(policy, "scripts", "policy.mts"));
+  assert.equal(
+    unreplayable(policy),
+    "the accepted regression's checker imports code it does not hold (scripts/check-regression.ts: ./policy.mjs)",
+  );
   // So would a checker that imports code from outside its state, such as from the next candidate beside it.
   const reaching = regressionCandidate("kept");
   fs.mkdirSync(path.join(reaching, "scripts"), { recursive: true });
