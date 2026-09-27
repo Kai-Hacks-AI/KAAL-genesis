@@ -27,3 +27,8 @@ export function defectsDir(name: "defects" | "broken"): string {
 export function emptyDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "defects-"));
 }
+
+/** A module that, preloaded into a recording, crashes it partway through writing the record. */
+export function crashOnWrite(): string {
+  return path.join(DATA, "crash-on-write.mjs");
+}

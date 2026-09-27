@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
@@ -51,9 +52,10 @@ function required(value: string, what: string): void {
  * `observed`, where it was observed not to hold; and `observation`, what was
  * observed. Refuses a name that is not lowercase letters, digits and single
  * hyphens or that Windows reserves, and a defect that is already recorded, so
- * a record is never overwritten. A record is written whole or not at all: if
- * writing it fails, the defect's directory is removed again, so it can be
- * recorded once the failure is gone. Returns the record's path.
+ * a record is never overwritten. A record is written whole or not at all: it
+ * is staged under a hidden name and renamed into place once complete, so a
+ * failure, or a crash, before then never takes the defect's name, and the
+ * defect can be recorded once the failure is gone. Returns the record's path.
  */
 export function recordDefect(
   dir: string,
@@ -67,17 +69,21 @@ export function recordDefect(
   const at = path.join(dir, name);
   if (fs.existsSync(at)) throw new Error(`${at}: already recorded; a defect's record never changes`);
   fs.mkdirSync(dir, { recursive: true });
-  // Exclusive: only the call that creates the directory writes into it, or removes it again.
-  fs.mkdirSync(at);
-  const file = path.join(at, DEFECT);
+  // The record is written whole in a staging directory, then renamed into place: a record is
+  // never seen partly written, and a failure or crash before the rename leaves the name free.
+  const staged = path.join(dir, `.${name}.${randomUUID()}.tmp`);
   const fields = YAML.stringify({ holds, observed }).trimEnd();
   try {
-    fs.writeFileSync(file, `---\n${fields}\n---\n\n${observation.trim()}\n`, { flag: "wx" });
+    fs.mkdirSync(staged);
+    fs.writeFileSync(path.join(staged, DEFECT), `---\n${fields}\n---\n\n${observation.trim()}\n`, { flag: "wx" });
+    // A complete record is never an empty directory, so renaming never replaces one.
+    if (fs.existsSync(at)) throw new Error(`${at}: already recorded; a defect's record never changes`);
+    fs.renameSync(staged, at);
   } catch (e) {
-    fs.rmSync(at, { recursive: true, force: true });
+    fs.rmSync(staged, { recursive: true, force: true });
     throw e;
   }
-  return file;
+  return path.join(at, DEFECT);
 }
 
 /** Every defect recorded in `dir`, in name order. */

@@ -3,11 +3,12 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { defectErrors, readDefects, recordDefect } from "./defects.js";
-import { defectsDir, emptyDir, observation, observationFile } from "./test-data.js";
+import { crashOnWrite, defectsDir, emptyDir, observation, observationFile } from "./test-data.js";
 
 const TSX = fileURLToPath(import.meta.resolve("tsx/cli"));
+const TSX_LOADER = fileURLToPath(import.meta.resolve("tsx"));
 const SCRIPTS = fileURLToPath(new URL("./", import.meta.url));
 
 const leak = () => ({
@@ -61,6 +62,32 @@ test("a record whose writing fails leaves nothing behind, so the defect can be r
   assert.deepEqual(fs.readdirSync(dir), []);
   recordDefect(dir, "leaks-temp-files", leak());
   assert.deepEqual(defectErrors(dir), []);
+});
+
+test("a crash while a record is written leaves the defect's name free, and what it left is reported", () => {
+  const dir = emptyDir();
+  const args = ["leaks-temp-files", "--holds", leak().holds, "--observed", leak().observed, observationFile("leak")];
+  const crashed = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      pathToFileURL(TSX_LOADER).href,
+      "--import",
+      pathToFileURL(crashOnWrite()).href,
+      path.join(SCRIPTS, "record.ts"),
+      dir,
+      ...args,
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(crashed.status, 9, crashed.stderr);
+  assert.equal(fs.existsSync(path.join(dir, "leaks-temp-files")), false);
+  const [left] = fs.readdirSync(dir);
+  assert.match(left!, /^\.leaks-temp-files\..*\.tmp$/);
+  recordDefect(dir, "leaks-temp-files", leak());
+  assert.deepEqual(defectErrors(dir), [
+    `${path.join(dir, left!)}: not a defect; each defect is a directory named with lowercase letters, digits and single hyphens, never a name Windows reserves such as con or nul`,
+  ]);
 });
 
 test("reads every defect in name order, with no state of its own", () => {
