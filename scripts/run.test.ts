@@ -415,12 +415,29 @@ test("a plan's conditions are what it requires, and a run records the conditions
   const here = process.platform === "win32" ? "win32" : "linux";
   const judged = planEvidence(state, GREETING_PLAN, [run]);
   assert.deepEqual(
+    judged.requirements.map((r) => r.name),
+    ["suite: suites/greeting.md", "suite: suites/names.md"],
+  );
+  assert.deepEqual(
     judged.requirements.map((r) => r.under.map((u) => `${u.conditions.platform}: ${u.verdict}`)),
     [0, 1].map(() =>
       ["linux", "win32"].map((platform) => `${platform}: ${platform === here ? "held" : "not demonstrated"}`),
     ),
   );
   assert.equal(judged.verdict, "not demonstrated");
+  // A commitment and a suite of the same name are two requirements: one's observations never stand for the other's.
+  const alike = runState("plans");
+  fs.appendFileSync(
+    path.join(alike, GREETING_PLAN),
+    "\n## Commitments\n\n1. Greeting. Stated in `suites/greeting.md`. Shown by its cases.\n",
+  );
+  const both = planEvidence(alike, GREETING_PLAN, [testRun({ testing: alike, plan: GREETING_PLAN })]);
+  const verdictHere = (name: string) =>
+    both.requirements.find((r) => r.name === name)?.under.find((u) => u.conditions.platform === here)?.verdict;
+  assert.deepEqual(
+    [verdictHere("commitment: suites/greeting.md"), verdictHere("suite: suites/greeting.md")],
+    ["not demonstrated", "held"],
+  );
   assert.throws(() => planEvidence(state, GREETING_PLAN, [{ ...run, plan: "plans/naming.md" }]), /shows nothing of/);
   // Runs show a plan together only of one tested state, from one testing state, both named as the runs name them.
   assert.throws(() => planEvidence(runState("plans"), GREETING_PLAN, [run]), /a run from another testing state/);

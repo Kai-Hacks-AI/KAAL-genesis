@@ -50,7 +50,8 @@ export type Run = {
 
 /**
  * What `runs` of `plan`, in the testing state `testing`, demonstrate of it, as
- * the plan judges: each requirement under each set of conditions it states.
+ * the plan judges: each requirement under each set of conditions it states,
+ * named by its kind and name, so a commitment and a suite named alike are two.
  * Runs show a plan together only as runs of it from that testing state against
  * one tested state; a state is named here by where it is, as a run records it,
  * so runs of one state kept in different places show nothing together.
@@ -65,11 +66,13 @@ export function planEvidence(testing: string, plan: string, runs: Run[]): Return
     return {
       conditions: run.conditions as Conditions,
       unaccounted: run.unaccounted.length,
-      shown: Object.fromEntries((run.requirements ?? []).map((r) => [r.name, r.observations.map((o) => o.observed)])),
+      shown: Object.fromEntries(
+        (run.requirements ?? []).map((r) => [`${r.kind}: ${r.name}`, r.observations.map((o) => o.observed)]),
+      ),
     };
   };
   return evidence(
-    planRequirements(testing, plan).map(({ name, under }) => ({ name, under })),
+    planRequirements(testing, plan).map(({ kind, name, under }) => ({ name: `${kind}: ${name}`, under })),
     runs.map(shown),
   );
 }

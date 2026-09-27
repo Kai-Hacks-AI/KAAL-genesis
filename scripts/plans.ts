@@ -96,9 +96,11 @@ export function readPlan(repo: string, plan: string): PlanReading {
   if (!part) return { conditions: [], proof: {} };
   const block = /\n```yaml\n([\s\S]*?)\n```/.exec(part)?.[1];
   if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
-  const parsed: unknown = YAML.parse(block) ?? {};
+  // A block that says nothing, or holds only comments, requires nothing; anything else must say what runs read.
+  const says = block.split("\n").some((line) => line.trim() && !line.trim().startsWith("#"));
+  const parsed: unknown = says ? YAML.parse(block) : {};
   // Anything but a mapping of what runs read would read as requiring nothing, so it is refused.
-  if (typeof parsed !== "object" || Array.isArray(parsed))
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
     throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no mapping of what runs read`);
   const read = parsed as Record<string, unknown>;
   for (const key of Object.keys(read))

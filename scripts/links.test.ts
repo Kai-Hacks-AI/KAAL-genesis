@@ -361,12 +361,14 @@ test("a suite says which plans it serves, strictly written, and only plans its s
 // Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
 test("a plan that says how runs read it says it so they can, with its data inside its state, and requires as proof every check it says shows a commitment", () => {
   assert.deepEqual(linkErrors(served("", "conditions:\n  - { platform: linux }\n  - { platform: win32 }")), []);
+  // A block that says nothing, or only comments, requires nothing.
+  assert.deepEqual(linkErrors(served("", "# nothing yet")), []);
   assert.deepEqual(linkErrors(served("", "conditions: linux")), [
     `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
   ]);
   assert.deepEqual(linkErrors(served("", "suites: [suites/greeting.md]")), [`${PLAN}: runs read no suites of a plan`]);
   // What runs read is a mapping of what they read: anything else would read as requiring nothing.
-  for (const block of ["false", "42", "[]"])
+  for (const block of ["false", "42", "[]", "null"])
     assert.deepEqual(
       linkErrors(served("", block)),
       [`${PLAN}: As runs read it holds no mapping of what runs read`],
