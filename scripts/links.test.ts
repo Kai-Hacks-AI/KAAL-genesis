@@ -58,7 +58,7 @@ test("a case moved to another file and retitled keeps every relation it states: 
   const after = greetingCase(regressionCandidate("moved"));
   assert.deepEqual(
     [before, after].map(({ file, title }) => `${file}: ${title}`),
-    ["scripts/cases.test.ts: greets", "scripts/greetings.test.ts: greets whoever it is given"],
+    ["scripts/cases.test.ts: greets", "scripts/greetings.test.ts: greets with hello"],
   );
   assert.deepEqual(
     [before, after].map(({ places, defects }) => ({ places, defects })),
