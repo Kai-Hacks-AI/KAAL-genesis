@@ -350,6 +350,10 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   fs.mkdirSync(path.join(forward, "plans"));
   fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
   assert.deepEqual(linkErrors(forward), []);
+  // A suite that is a link to nothing states nothing, and is said to, as any other place that is not a suite.
+  const dangling = served(`Serves: ${PLAN}`);
+  fs.symlinkSync("nowhere.md", path.join(dangling, "suites", "ghost.md"));
+  assert.deepEqual(linkErrors(dangling), ["suites/ghost.md: no suite is stated there"]);
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });
@@ -361,6 +365,13 @@ test("a plan that says how runs read it says it so they can, with its data insid
     `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
   ]);
   assert.deepEqual(linkErrors(served("", "suites: [suites/greeting.md]")), [`${PLAN}: runs read no suites of a plan`]);
+  // What runs read is a mapping of what they read: anything else would read as requiring nothing.
+  for (const block of ["false", "42", "[]"])
+    assert.deepEqual(
+      linkErrors(served("", block)),
+      [`${PLAN}: As runs read it holds no mapping of what runs read`],
+      block,
+    );
   assert.deepEqual(linkErrors(served("", "data: plan-data")), [
     `${PLAN}: data: plan-data is no directory inside the state`,
   ]);

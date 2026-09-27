@@ -46,17 +46,20 @@ export function planError(repo: string, place: string): string | undefined {
 export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
   const dir = path.join(repo, SUITES);
   if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .sort()
-    .map((name) => `${SUITES}/${name}`)
-    .filter((suite) => fs.statSync(path.join(repo, suite)).isFile())
-    .map((suite) => {
-      const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
-      const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
-      const stray = lines.flatMap((line, i) => (SERVES_LIKE.test(line) && !SERVES.test(line) ? [i + 1] : []));
-      return { suite, serves, stray };
-    });
+  return (
+    fs
+      .readdirSync(dir)
+      .sort()
+      .map((name) => `${SUITES}/${name}`)
+      // A link to nothing states nothing, and is refused as such where suites are checked.
+      .filter((suite) => fs.statSync(path.join(repo, suite), { throwIfNoEntry: false })?.isFile())
+      .map((suite) => {
+        const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
+        const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
+        const stray = lines.flatMap((line, i) => (SERVES_LIKE.test(line) && !SERVES.test(line) ? [i + 1] : []));
+        return { suite, serves, stray };
+      })
+  );
 }
 
 /** What a plan says runs read of it: its sets of conditions, the proof other than cases it requires, and its data. */
@@ -93,7 +96,11 @@ export function readPlan(repo: string, plan: string): PlanReading {
   if (!part) return { conditions: [], proof: {} };
   const block = /\n```yaml\n([\s\S]*?)\n```/.exec(part)?.[1];
   if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
-  const read = (YAML.parse(block) ?? {}) as Record<string, unknown>;
+  const parsed: unknown = YAML.parse(block) ?? {};
+  // Anything but a mapping of what runs read would read as requiring nothing, so it is refused.
+  if (typeof parsed !== "object" || Array.isArray(parsed))
+    throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no mapping of what runs read`);
+  const read = parsed as Record<string, unknown>;
   for (const key of Object.keys(read))
     if (!["conditions", "proof", "data"].includes(key)) throw new Error(`${plan}: runs read no ${key} of a plan`);
   const proof = read.proof ?? {};
