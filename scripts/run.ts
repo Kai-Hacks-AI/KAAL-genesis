@@ -42,9 +42,10 @@ export type Run = {
 /**
  * Carries out a run of `testing`'s cases against `tested`, by default the
  * testing state itself; given a `suite`, by its place in the testing state, a
- * run of that suite, which reaches every case that belongs to it and no other. `conditions` are those whoever starts the run knows
- * and the run cannot measure, such as how the files were checked out; the
- * platform and runtime are measured, and refused if given.
+ * run of that suite, which reaches every case that belongs to it and no
+ * other. `conditions` are those whoever starts the run knows and the run
+ * cannot measure, such as how the files were checked out; the platform and
+ * runtime are measured, and refused if given.
  */
 export function testRun({
   testing,
