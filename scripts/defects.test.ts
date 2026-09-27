@@ -4,7 +4,9 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { defectErrors, readDefects } from "../skills/managing-defects/scripts/defects.js";
-import { caseFiles } from "./links.js";
+import { testedDefects } from "./links.js";
+import { regressionErrors } from "./regression.js";
+import { regressionCandidate, regressionTrusted } from "./test-data.js";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
 const DEFECTS = path.join(REPO, "defects");
@@ -21,29 +23,29 @@ test("KAAL keeps its defects in defects/, each a complete record of what was obs
   }
 });
 
-/** A line meant to say a case tests a defect, strictly written or not: any line comment that starts with "Tests". */
-const TESTS_LIKE = /^\s*\/\/\s*tests\b/i;
-const TESTS = /^\/\/ Tests: defects\/(\S+)$/;
-
 // Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
-test("a case of KAAL's that tests a defect points at it, directly above the case, and the defect is one KAAL records", () => {
-  const recorded = new Set(readDefects(DEFECTS).map((d) => d.name));
-  const errors: string[] = [];
-  for (const file of caseFiles(REPO)) {
-    const lines = fs.readFileSync(path.join(REPO, file), "utf8").split(/\r?\n/);
-    lines.forEach((line, i) => {
-      if (!TESTS_LIKE.test(line)) return;
-      const at = `${file}:${i + 1}`;
-      // A skill's case points at nothing outside its skill, so only KAAL's own cases point at KAAL's defects.
-      if (file.startsWith("skills/")) return errors.push(`${at}: a skill's case points at nothing outside its skill`);
-      const defect = TESTS.exec(line)?.[1];
-      if (!defect) return errors.push(`${at}: written as "// Tests: defects/<name>"`);
-      if (!recorded.has(defect)) errors.push(`${at}: defects/${defect} is not a defect KAAL records`);
-      let next = i + 1;
-      while (next < lines.length && /^\/\/ (Tests|Why): /.test(lines[next]!)) next++;
-      if (!/^test\(/.test(lines[next] ?? "")) errors.push(`${at}: belongs to no case`);
-      return undefined;
-    });
+test("a case of KAAL's that tests a defect points at it, among its links, and the defect is one KAAL records", () => {
+  const recorded = new Set(readDefects(DEFECTS).map((d) => `defects/${d.name}`));
+  const { tested, stray } = testedDefects(REPO);
+  const errors = stray.map((at) => `${at}: belongs to no case, written as "// Tests: defects/<name>"`);
+  for (const { file, title, defects } of tested) {
+    // A skill's case points at nothing outside its skill, so only KAAL's own cases point at KAAL's defects.
+    if (file.startsWith("skills/")) errors.push(`${file}: "${title}" is a skill's case, so it points at no defect`);
+    else
+      for (const defect of defects.filter((d) => !recorded.has(d)))
+        errors.push(`${file}: "${title}" points at ${defect}, which is not a defect KAAL records`);
   }
   assert.deepEqual(errors, []);
+});
+
+// A Tests: line is read as the case's own link, so it lives and dies with the case the trusted regression holds to running.
+// Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
+test("a case that says it tests a defect but does not run, such as one inside a block comment, is refused", () => {
+  const candidate = regressionCandidate("tested-ghost");
+  assert.deepEqual(testedDefects(candidate).tested, [
+    { file: "scripts/cases.test.ts", title: "ghost", defects: ["defects/adds-wrong"] },
+  ]);
+  assert.deepEqual(regressionErrors(regressionTrusted(), candidate, "b".repeat(64)), [
+    'as the next accepted regression, scripts/cases.test.ts: "ghost" is named but does not run',
+  ]);
 });

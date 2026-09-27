@@ -52,6 +52,12 @@ export type Case = { file: string; title: string; places: string[] };
 /** A line meant as a link, strictly written or not: any line comment that starts with "Why". */
 const LINK_LIKE = /^\s*\/\/\s*why\b/i;
 const LINK = /^\/\/ Why: (\S+)$/;
+/** A line meant to say its case tests a defect, strictly written or not: any line comment that starts with "Tests". */
+const TESTS_LIKE = /^\s*\/\/\s*tests\b/i;
+const TESTS = /^\/\/ Tests: (\S+)$/;
+
+/** A case that says which defects it tests, through `// Tests: <defect>` lines among the links directly above it. */
+export type Tested = { file: string; title: string; defects: string[] };
 
 /**
  * The cases a test file states, each with the places of the commitments it
@@ -59,9 +65,14 @@ const LINK = /^\/\/ Why: (\S+)$/;
  * looks like a link but belongs to no case. Only cases whose title is a
  * plain string literal are found.
  */
-function scan(file: string, source: string): { cases: Case[]; stray: number[] } {
+function scan(
+  file: string,
+  source: string,
+): { cases: Case[]; stray: number[]; tested: Tested[]; strayTests: number[] } {
   const cases: Case[] = [];
+  const tested: Tested[] = [];
   const owned = new Set<number>();
+  const ownedTests = new Set<number>();
   const lines = source.split(/\r?\n/);
   const text = lines.join("\n");
   for (const m of text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)) {
@@ -72,22 +83,47 @@ function scan(file: string, source: string): { cases: Case[]; stray: number[] } 
       continue; // an escape JSON does not know: a title that cannot be read, like one built at run time
     }
     const places: string[] = [];
+    const defects: string[] = [];
     let line = text.slice(0, m.index).split("\n").length - 2;
     for (; line >= 0; line--) {
       const why = LINK.exec(lines[line]!);
-      if (!why) break;
-      places.unshift(why[1]!);
-      owned.add(line);
+      const tests = TESTS.exec(lines[line]!);
+      if (why) {
+        places.unshift(why[1]!);
+        owned.add(line);
+      } else if (tests) {
+        defects.unshift(tests[1]!);
+        ownedTests.add(line);
+      } else break;
     }
     cases.push({ file, title, places });
+    if (defects.length) tested.push({ file, title, defects });
   }
   const stray = lines.flatMap((line, i) => (LINK_LIKE.test(line) && !owned.has(i) ? [i + 1] : []));
-  return { cases, stray };
+  const strayTests = lines.flatMap((line, i) => (TESTS_LIKE.test(line) && !ownedTests.has(i) ? [i + 1] : []));
+  return { cases, stray, tested, strayTests };
 }
 
 /** The cases a test file states, each with the places it points at. */
 export function fileCases(file: string, source: string): Case[] {
   return scan(file, source).cases;
+}
+
+/**
+ * The cases a repository runs that say which defects they test, read as every
+ * other link of a case is read, so a `Tests:` line belongs to the very case
+ * the trusted regression finds, runs and holds to running; and, as
+ * `file:line`, every line that looks like one but belongs to no case.
+ */
+export function testedDefects(repo: string): { tested: Tested[]; stray: string[] } {
+  const scans = caseFiles(repo).map((file) => ({
+    file,
+    ...scan(file, fs.readFileSync(path.join(repo, file), "utf8")),
+  }));
+  return {
+    tested: scans.flatMap((s) => s.tested),
+    stray: scans.flatMap((s) => s.strayTests.map((at) => `${s.file}:${at}`)),
+  };
 }
 
 /** The arguments of a repository's own `npm test` script, unquoted. */
