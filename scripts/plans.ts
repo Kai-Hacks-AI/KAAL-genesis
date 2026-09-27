@@ -105,8 +105,10 @@ export function readPlan(repo: string, plan: string): PlanReading {
   const read = parsed as Record<string, unknown>;
   for (const key of Object.keys(read))
     if (!["conditions", "proof", "data"].includes(key)) throw new Error(`${plan}: runs read no ${key} of a plan`);
-  const proof = read.proof ?? {};
-  if (typeof proof !== "object" || Array.isArray(proof)) throw new Error(`${plan}: proof: not proofs by name`);
+  // What a plan leaves out it does not require; what it says, even null, must be what runs read.
+  const proof = read.proof === undefined ? {} : read.proof;
+  if (typeof proof !== "object" || proof === null || Array.isArray(proof))
+    throw new Error(`${plan}: proof: not proofs by name`);
   if (read.data !== undefined && typeof read.data !== "string") throw new Error(`${plan}: data: not a place`);
   return {
     conditions: conditionSets(read.conditions, `${plan}: conditions`),
@@ -122,9 +124,13 @@ export function readPlan(repo: string, plan: string): PlanReading {
  * it is not: a directory inside the state, reached through no link.
  */
 export function planDataError(repo: string, plan: string, data: string): string | undefined {
+  // A place of its own: plain path segments, none of them . or .., so never the state itself nor anything above it.
+  const segments = data.replace(/\/+$/, "").split("/");
+  if (!data || path.isAbsolute(data) || segments.some((s) => !s || s === "." || s === ".."))
+    return `${plan}: data: ${data} is not a place of its own in the state`;
   const at = path.join(repo, data);
   const real = fs.existsSync(at) ? path.relative(fs.realpathSync(repo), fs.realpathSync(at)) : undefined;
-  if (real === undefined || !fs.statSync(at).isDirectory() || path.isAbsolute(data) || data.split("/").includes(".."))
+  if (real === undefined || !fs.statSync(at).isDirectory())
     return `${plan}: data: ${data} is no directory inside the state`;
   if (real.split(path.sep).join("/") !== data.replace(/\/+$/, ""))
     return `${plan}: data: ${data} is reached through a link`;

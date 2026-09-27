@@ -377,6 +377,16 @@ test("a plan that says how runs read it says it so they can, with its data insid
   assert.deepEqual(linkErrors(served("", "data: plan-data")), [
     `${PLAN}: data: plan-data is no directory inside the state`,
   ]);
+  // Nothing a plan says runs read is ever null, and its data is a place of its own in the state, never the state itself.
+  assert.deepEqual(linkErrors(served("", "proof: null")), [`${PLAN}: proof: not proofs by name`]);
+  for (const data of ['""', ".", "./", "src/.."])
+    assert.deepEqual(
+      linkErrors(served("", `data: ${data}`)),
+      [
+        `${PLAN}: data: ${JSON.parse(data.startsWith('"') ? data : JSON.stringify(data))} is not a place of its own in the state`,
+      ],
+      data,
+    );
   const checked = served("", "proof:\n  the seal checks:\n    - { platform: linux }");
   assert.deepEqual(linkErrors(checked), []);
   const unchecked = served("", "conditions: []");
