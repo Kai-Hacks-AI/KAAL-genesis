@@ -658,7 +658,9 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
     recordedModes(to);
   }
   // The state the accepted cases judge is the candidate itself, as it is, not the copy they are run in, which
-  // holds the accepted regression's cases, data and plan beside the candidate's code.
+  // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
+  // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
+  // its own, so no case sees more of it than the regression judges, or writes into it.
   return execute(code, files, scratchCopy(candidate, true));
 }
 

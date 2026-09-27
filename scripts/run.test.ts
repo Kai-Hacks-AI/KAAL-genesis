@@ -53,6 +53,10 @@ test("a case cancelled before it starts is not run, not failed, and its reported
     ["not run", "passed"],
   );
   assert.equal(twice.unaccounted.length, 1);
+  // One no case of the state names is kept apart once, as it was reported.
+  assert.deepEqual(testRun({ testing: runState("nameless") }).unaccounted, [
+    { file: "scripts/nameless.test.ts", title: "cancelled without a name", outcome: "failed" },
+  ]);
 });
 
 // Why: brain/learning/genesis/26/09/27/05/nodes/run.md

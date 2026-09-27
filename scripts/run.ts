@@ -91,12 +91,19 @@ export function testRun({
   const unexercised = (r: Positioned) =>
     r.outcome === "fail" &&
     (r.failureType === undefined || ["cancelledByParent", "hookFailed"].includes(r.failureType));
+  // An unexercised report still holds its case's place, so a later case at the same address gets its own report. It
+  // stands in for the report only there: the report itself is kept apart once, as it was, below.
+  const placeholders = new Set<Report>();
   const { observations, unaccounted } = observe(
     cases,
-    // An unexercised report still holds its case's place, so a later case at the same address gets its own report.
     results
       .filter((r) => !broken.has(r.file))
-      .map((r) => (unexercised(r) ? { ...report(r), outcome: "skipped" as const } : report(r))),
+      .map((r) => {
+        if (!unexercised(r)) return report(r);
+        const placeholder: Report = { ...report(r), outcome: "skipped" };
+        placeholders.add(placeholder);
+        return placeholder;
+      }),
   );
   return {
     testing: path.resolve(testing),
@@ -105,7 +112,7 @@ export function testRun({
     observations,
     // A file's own report is named by the file's address in the testing state, which the runner writes natively.
     unaccounted: [
-      ...unaccounted,
+      ...unaccounted.filter((r) => !placeholders.has(r)),
       ...results.filter((r) => !broken.has(r.file) && unexercised(r)).map(report),
       ...results.filter(whole).map((r) => ({ ...report(r), title: r.file })),
     ],

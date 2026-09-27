@@ -167,8 +167,9 @@ export function regressionCandidate(name: string): string {
  * holding a case cancelled before it starts beside one that fails; `hooked`,
  * whose hook before each case fails; `lineone`, declaring a case titled with
  * its own path on its first line; `unresolved`, declaring one there in a
- * file with an import that cannot be resolved; and `twice`, holding two cases
- * at one address, the first cancelled before it starts.
+ * file with an import that cannot be resolved; `twice`, holding two cases
+ * at one address, the first cancelled before it starts; and `nameless`,
+ * whose case, cancelled before it starts, has a title built while it runs.
  */
 export function runState(name: string): string {
   const to = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-state-")), name);
