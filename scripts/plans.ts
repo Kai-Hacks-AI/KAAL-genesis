@@ -69,6 +69,10 @@ export type PlanReading = {
   data?: string;
 };
 
+/** A plan's text as its sections are read: a section it begins with is read as any other. */
+const planText = (repo: string, plan: string) =>
+  `\n${fs.readFileSync(path.join(repo, plan), "utf8").replace(/\r\n/g, "\n")}`;
+
 const conditionSets = (value: unknown, what: string): Conditions[] => {
   if (value === undefined) return [];
   if (
@@ -91,8 +95,7 @@ const conditionSets = (value: unknown, what: string): Conditions[] => {
  * proof and provides no data. Refused when that block cannot be read so.
  */
 export function readPlan(repo: string, plan: string): PlanReading {
-  const text = fs.readFileSync(path.join(repo, plan), "utf8").replace(/\r\n/g, "\n");
-  const part = section(text, AS_RUNS_READ_IT);
+  const part = section(planText(repo, plan), AS_RUNS_READ_IT);
   if (!part) return { conditions: [], proof: {} };
   const block = /\n```yaml\n([\s\S]*?)\n```/.exec(part)?.[1];
   if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
@@ -150,7 +153,7 @@ export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "pr
  */
 export function planRequirements(repo: string, plan: string): PlanRequirement[] {
   const { conditions, proof } = readPlan(repo, plan);
-  const text = fs.readFileSync(path.join(repo, plan), "utf8");
+  const text = planText(repo, plan);
   return [
     ...planCommitments(text).map((name) => ({ name, kind: "commitment" as const, under: conditions })),
     ...suitePlans(repo)
@@ -194,7 +197,7 @@ export function planErrors(repo: string): string[] {
     }
     // Only the Regression Plan names commitments: the links of KAAL's cases are checked against its commitments alone,
     // so one another plan named would be checked by nothing. Another plan is carried by the suites that serve it.
-    if (plan !== PLAN && section(fs.readFileSync(path.join(repo, plan), "utf8").replace(/\r\n/g, "\n"), "Commitments"))
+    if (plan !== PLAN && section(planText(repo, plan), "Commitments"))
       errors.push(
         `${plan}: names commitments, which only the Regression Plan does; it is carried by the suites that serve it`,
       );
@@ -204,10 +207,8 @@ export function planErrors(repo: string): string[] {
       if (dataWrong) errors.push(dataWrong);
       // A plan that says how runs read it says it in full: every check it names as showing a commitment is proof it
       // requires. One that does not yet say how runs read it requires no proof of them.
-      const text = fs.readFileSync(path.join(repo, plan), "utf8");
-      const checks = section(text.replace(/\r\n/g, "\n"), AS_RUNS_READ_IT)
-        ? planEntries(text).flatMap((e) => e.shownBy ?? [])
-        : [];
+      const text = planText(repo, plan);
+      const checks = section(text, AS_RUNS_READ_IT) ? planEntries(text).flatMap((e) => e.shownBy ?? []) : [];
       for (const check of [...new Set(checks)].filter((c) => c !== "its cases" && !Object.hasOwn(proof, c)))
         errors.push(`${plan}: says ${check} show a commitment, but does not require them as proof`);
     } catch (e) {

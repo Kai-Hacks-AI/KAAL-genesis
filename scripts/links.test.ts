@@ -364,6 +364,16 @@ test("a suite says which plans it serves, strictly written, and only plans its s
     "plans/release.md: names commitments, which only the Regression Plan does; it is carried by the suites that serve it",
   ]);
   fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  // A section a plan begins with is read as any other.
+  fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## As runs read it\n\n```yaml\nconditions: linux\n```\n");
+  assert.deepEqual(linkErrors(forward), [
+    "plans/bare.md: conditions: not a list of sets of conditions, each naming its conditions' values",
+  ]);
+  fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## Commitments\n\n1. Adding. Stated in `src/add.ts`.\n");
+  assert.deepEqual(linkErrors(forward), [
+    "plans/bare.md: names commitments, which only the Regression Plan does; it is carried by the suites that serve it",
+  ]);
+  fs.rmSync(path.join(forward, "plans", "bare.md"));
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });
