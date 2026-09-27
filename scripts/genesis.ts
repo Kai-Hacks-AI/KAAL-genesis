@@ -12,7 +12,7 @@ export const ROOT_GUIDANCE = "# KAAL\n\nUse BRAIN for KAAL context, including wh
  * KAAL's Genesis: KAAL is born by composing the capabilities it chooses.
  * using-brain creates BRAIN, using-agents creates the repository's Agent entry
  * point from KAAL's guidance, and using-brain's birth path then births KAAL's
- * first knowledge into BRAIN, in order. KAAL's meaning lives here and in BRAIN,
+ * current understanding into BRAIN, in order. KAAL's meaning lives here and in BRAIN,
  * never in the skills, so the skills stay reusable by systems that are not
  * KAAL. Genesis creates no directory and writes no file itself. It is all
  * or nothing: if any step refuses or fails, what the steps before it created
@@ -31,12 +31,23 @@ export function genesis(repo = "."): void {
   }
 }
 
-/** KAAL's Genesis knowledge, born in order into the BRAIN at `root`. */
+/**
+ * The learning Genesis births: KAAL's understanding as it is now, as of this
+ * learning, which no node KAAL holds for a name born here may be newer than.
+ */
+export const LEARNING = "26/09/27/01";
+
+/**
+ * KAAL's current understanding, born in order into the BRAIN at `root`: each
+ * node says what KAAL's current node of that name says, without how KAAL came
+ * to it. What Genesis births is stated in
+ * brain/learning/genesis/26/09/27/01/nodes/genesis.md.
+ */
 function birth(root: string): void {
   createNode({
     root,
     lineage: "genesis",
-    learning: "26/09/25/01",
+    learning: LEARNING,
     slug: "using-brain",
     name: "using-brain",
     meaning: `# Using BRAIN
@@ -49,7 +60,7 @@ The details of how BRAIN works belong to the skill. This node records why KAAL u
   createNode({
     root,
     lineage: "genesis",
-    learning: "26/09/25/01",
+    learning: LEARNING,
     slug: "skill",
     name: "skill",
     meaning: `# Skill
@@ -64,7 +75,7 @@ When KAAL needs knowledge in order to use a skill, that knowledge is initialized
   createNode({
     root,
     lineage: "genesis",
-    learning: "26/09/25/01",
+    learning: LEARNING,
     slug: "using-skills",
     name: "using-skills",
     meaning: `# Using Skills
@@ -81,14 +92,14 @@ The skill explains how both rules are checked. This node records why KAAL uses i
   createNode({
     root,
     lineage: "genesis",
-    learning: "26/09/25/01",
+    learning: LEARNING,
     slug: "using-seals",
     name: "using-seals",
     meaning: `# Using Seals
 
 KAAL uses the **using-seals** skill so a learning, once closed, cannot change unnoticed: past understanding stays exactly as it was learned.
 
-KAAL seals BRAIN on every push to \`main\`. Each lineage is a chain and each learning a unit, oldest first; a learning is closed when it is sealed. Only sealing on \`main\` writes seal state; every change is checked against the seals of the branch it targets.
+Each lineage is a chain and each learning a unit, oldest first; a learning is closed when it is sealed. KAAL seals its accepted state, never a candidate: sealing closes the accepted state's learnings not yet sealed, and changes nothing but seal state, adding a seal to each learning it closes and advancing its chain's head. Only that sealing writes seal state. A candidate writes none: compared with the accepted state it would succeed, it adds, changes and removes no seal state, so what is closed stays closed as it was. Systems outside KAAL, such as a repository host, may arrange when sealing runs, such as after each acceptance; what sealing may write, and what a candidate may not, is decided from the files of the states alone.
 
 The skill explains how sealing and checking work. This node records why KAAL uses it.
 `,
@@ -96,7 +107,7 @@ The skill explains how sealing and checking work. This node records why KAAL use
   createNode({
     root,
     lineage: "genesis",
-    learning: "26/09/25/01",
+    learning: LEARNING,
     slug: "using-agents",
     name: "using-agents",
     meaning: `# Using Agents
@@ -109,7 +120,7 @@ The skill explains the generic mechanics of AGENTS.md. This node records why KAA
   createNode({
     root,
     lineage: "genesis",
-    learning: "26/09/25/01",
+    learning: LEARNING,
     slug: "bass",
     name: "bass",
     meaning: `# BASS
@@ -123,6 +134,25 @@ Forward, KAAL uses what it has: move toward the most deterministic capability av
 When something fails, that failure gives direction for improvement. Move back toward understanding far enough to find the responsible level, improve it, then use the ladder forward again.
 
 BASS is KAAL's understanding. Skills remain independent of BASS and can be reused by systems that organize agents differently.
+`,
+  });
+  createNode({
+    root,
+    lineage: "genesis",
+    learning: LEARNING,
+    slug: "testing",
+    name: "testing",
+    meaning: `# Testing
+
+KAAL uses the **testing** skill because Genesis showed that its testing had outgrown Bare.
+
+KAAL's testing has one anchor, \`test/\`, whose entry point the skill creates. Besides that entry point, \`test/\` holds only KAAL's Regression Plan; tests and their data stay with what they test.
+
+KAAL works on files. The accepted regression is a state of KAAL's files whose commitments every later change must keep. A candidate is a state of KAAL's files proposed to succeed it. A candidate names the accepted regression it derives from by that regression's own content, never by where its files are kept or how they are versioned. The accepted regression's commitments stay authoritative until the candidate is accepted; the candidate then becomes the accepted regression, and the commitments it proved join what every later candidate must keep. Systems outside KAAL, such as a repository host, may keep the states, choose which one is accepted and arrange when a candidate is judged; they hand KAAL the states, and KAAL judges them from their files alone.
+
+A commitment's meaning is stated once. A node never changes, so a commitment stated in BRAIN keeps one meaning in every generation, and a change that keeps its node retains it. Later understanding supersedes a node through a new node with the same name, and the old node stays as it was learned. Replacement and withdrawal supersede alike: a replacement's node states the commitment KAAL makes now; a withdrawal's node states that KAAL no longer makes the commitment, and why. A withdrawal succeeds the old meaning but establishes no commitment in its place. A commitment stated in code can change in place, so changing its statement changes the commitment. A candidate names every commitment of the accepted regression it replaces or withdraws, together with what supersedes it; whatever it does not name, it retains.
+
+The skill explains how a test is written. This node records why and how KAAL uses it.
 `,
   });
 }

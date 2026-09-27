@@ -98,6 +98,20 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
   assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 1);
 });
 
+// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and the new KAAL works without Git", () => {
+  const kaalState = plainCopy(REPO);
+  const newborn = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-newborn-"));
+  const born = kaal(newborn, path.join(kaalState, "scripts", "genesis.ts"));
+  assert.equal(born.status, 0, born.out);
+  assert.equal(fs.existsSync(path.join(newborn, ".git")), false);
+  // The new KAAL's BRAIN is valid, and its seals hold, checked in the new KAAL itself.
+  for (const script of ["skills/using-brain/scripts/validate.ts", "scripts/check-seals.ts"]) {
+    const run = kaal(newborn, path.join(kaalState, script));
+    assert.equal(run.status, 0, `${script}: ${run.out}`);
+  }
+});
+
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("copied out of Git, an accepted state judges a candidate state with its own checker, both plain directories", () => {
   // The accepted state carries KAAL's checker, as main does, and judges with it.

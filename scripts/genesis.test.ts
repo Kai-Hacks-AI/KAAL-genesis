@@ -5,13 +5,34 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { validate } from "../skills/using-brain/scripts/validate.js";
-import { genesis } from "./genesis.js";
+import { genesis, LEARNING } from "./genesis.js";
 
-// The committed repository is the expected result: this proves KAAL's initial
-// structure is exactly what Genesis produces through its capabilities, not
-// something placed by hand.
+// Genesis births KAAL as it understands itself now. KAAL's own BRAIN is the
+// measure: what Genesis births is checked against KAAL's current nodes, while
+// the history of how KAAL learned them stays in KAAL's BRAIN alone.
 const REPO = fileURLToPath(new URL("../", import.meta.url));
-const GENESIS = "brain/learning/genesis/26/09/25/01/nodes";
+/** What Genesis births: KAAL's current understanding of the skills it uses and of how it works. */
+const BORN = ["using-brain", "skill", "using-skills", "using-agents", "using-seals", "bass", "testing"];
+
+/** KAAL's current node of `name`: the one in its latest learning, which no later node supersedes. */
+function current(name: string): { file: string; learning: string } {
+  const [latest] = fs
+    .globSync(`brain/learning/genesis/*/*/*/*/nodes/${name}.md`, { cwd: REPO })
+    .map((file) => file.split(path.sep).join("/"))
+    .sort()
+    .reverse();
+  assert.ok(latest, `KAAL holds no node named ${name}`);
+  return { file: path.join(REPO, latest), learning: latest.split("/").slice(3, 7).join("/") };
+}
+
+/** The sentences of a node's meaning, and its headings, each as written. */
+function sentences(node: string): string[] {
+  return node
+    .replace(/^---\n[\s\S]*?\n---\n/, "")
+    .split(/\n\s*\n/)
+    .flatMap((paragraph) => paragraph.trim().split(/(?<=[.:;])\s+(?=[A-Z*`#])/))
+    .filter(Boolean);
+}
 
 /** Every file under `dir`, by posix path relative to `from`, with its bytes. */
 function files(from: string, dir = from): Record<string, string> {
@@ -31,28 +52,43 @@ function born(): string {
   return repo;
 }
 
-// Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
-test("Genesis produces exactly the root AGENTS.md, brain/AGENTS.md and the Genesis learning, nothing else", () => {
+// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+test("Genesis births the entry points and one learning of KAAL's current understanding, nothing else", () => {
+  const nodes = `brain/learning/genesis/${LEARNING}/nodes`;
   assert.deepEqual(Object.keys(files(born())), [
     "AGENTS.md",
     "brain/AGENTS.md",
-    ...Object.keys(files(REPO, path.join(REPO, GENESIS))),
+    ...BORN.map((name) => `${nodes}/${name}.md`).sort(),
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
-test("everything Genesis produces is byte-identical to what is committed", () => {
+// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+test("the entry points Genesis births are byte-identical to KAAL's own", () => {
   const produced = files(born());
-  const committed = Object.fromEntries(
-    Object.keys(produced).map((file) => [file, fs.readFileSync(path.join(REPO, file), "utf8")]),
-  );
-  assert.deepEqual(produced, committed);
+  for (const file of ["AGENTS.md", "brain/AGENTS.md"])
+    assert.equal(produced[file], fs.readFileSync(path.join(REPO, file), "utf8"), file);
 });
 
-// Why: brain/learning/genesis/26/09/26/03/nodes/genesis.md
-test("the committed Genesis learning holds exactly the nodes Genesis births", () => {
-  const repo = born();
-  assert.deepEqual(files(repo, path.join(repo, GENESIS)), files(REPO, path.join(REPO, GENESIS)));
+// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+test("every sentence Genesis births is one KAAL's current node of that name holds", () => {
+  const produced = files(born());
+  for (const name of BORN) {
+    const node = produced[`brain/learning/genesis/${LEARNING}/nodes/${name}.md`]!;
+    const now = fs.readFileSync(current(name).file, "utf8");
+    for (const sentence of sentences(node)) assert.ok(now.includes(sentence), `${name}: "${sentence}"`);
+  }
+});
+
+// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+test("Genesis is never behind KAAL: no node KAAL holds for a name it births is newer than what it births", () => {
+  for (const name of BORN)
+    assert.ok(current(name).learning <= LEARNING, `${name}: KAAL holds ${current(name).learning}`);
+});
+
+// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+test("nothing a KAAL born by Genesis holds states KAAL's meaning through a branch, a merge or a push", () => {
+  for (const [file, text] of Object.entries(files(born())))
+    assert.doesNotMatch(text, /`main`|\bbranch|\bmerg|\bpush|pull request|kaal\/<name>/i, file);
 });
 
 // Why: scripts/brain-seals.ts
