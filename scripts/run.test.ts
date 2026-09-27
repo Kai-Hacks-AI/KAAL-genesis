@@ -426,17 +426,28 @@ test("a plan's conditions are what it requires, and a run records the conditions
   );
   assert.equal(judged.verdict, "not demonstrated");
   // A commitment and a suite of the same name are two requirements: one's observations never stand for the other's.
+  // Only the Regression Plan names commitments, so the two meet there, in a state whose suite serves it.
   const alike = runState("plans");
+  fs.mkdirSync(path.join(alike, "test"));
+  fs.writeFileSync(
+    path.join(alike, PLAN),
+    "# Regression\n\n## Commitments\n\n1. Greeting. Stated in `suites/greeting.md`. Shown by its cases.\n",
+  );
+  fs.appendFileSync(path.join(alike, "suites", "greeting.md"), `\nServes: ${PLAN}\n`);
+  const both = planEvidence(alike, PLAN, [testRun({ testing: alike, plan: PLAN })]);
+  const verdictOf = (name: string) => both.requirements.find((r) => r.name === name)?.under[0]?.verdict;
+  assert.deepEqual(
+    [verdictOf("commitment: suites/greeting.md"), verdictOf("suite: suites/greeting.md")],
+    ["not demonstrated", "held"],
+  );
+  // A plan other than the Regression Plan that names commitments is refused before anything runs.
   fs.appendFileSync(
     path.join(alike, GREETING_PLAN),
     "\n## Commitments\n\n1. Greeting. Stated in `suites/greeting.md`. Shown by its cases.\n",
   );
-  const both = planEvidence(alike, GREETING_PLAN, [testRun({ testing: alike, plan: GREETING_PLAN })]);
-  const verdictHere = (name: string) =>
-    both.requirements.find((r) => r.name === name)?.under.find((u) => u.conditions.platform === here)?.verdict;
-  assert.deepEqual(
-    [verdictHere("commitment: suites/greeting.md"), verdictHere("suite: suites/greeting.md")],
-    ["not demonstrated", "held"],
+  assert.throws(
+    () => testRun({ testing: alike, plan: GREETING_PLAN }),
+    /names commitments, which only the Regression Plan does/,
   );
   assert.throws(() => planEvidence(state, GREETING_PLAN, [{ ...run, plan: "plans/naming.md" }]), /shows nothing of/);
   // Runs show a plan together only of one tested state, from one testing state, both named as the runs name them.
@@ -466,6 +477,10 @@ test("a run of a plan is refused for one its testing state does not state, or st
   // A junction, so a directory link can be made on every platform without special rights.
   fs.symlinkSync(path.join(linked, "stated"), path.join(linked, "plans"), "junction");
   assert.throws(() => testRun({ testing: linked, plan: GREETING_PLAN }), /a plan stated through a link/);
+  // A state whose plans its links check refuses is not run, such as one whose suite's line serves no plan as written.
+  const miswritten = runState("plans");
+  fs.appendFileSync(path.join(miswritten, "suites", "welsh.md"), "\nserves: plans/greeting.md\n");
+  assert.throws(() => testRun({ testing: miswritten, plan: GREETING_PLAN }), /a line that serves no plan/);
   // A suite that serves a plan is one its state states itself, never one reached through a link.
   const outside = runState("plans");
   fs.renameSync(path.join(outside, "suites"), path.join(outside, "elsewhere"));

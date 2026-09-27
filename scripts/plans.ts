@@ -69,6 +69,17 @@ export type PlanReading = {
   data?: string;
 };
 
+/**
+ * Why `plan` may not name the commitments it does, if it names any: only the
+ * Regression Plan does, since the links of KAAL's cases are checked against its
+ * commitments alone, so one another plan named would be checked by nothing.
+ */
+function commitmentsError(repo: string, plan: string): string | undefined {
+  return plan !== PLAN && section(planText(repo, plan), "Commitments")
+    ? `${plan}: names commitments, which only the Regression Plan does; it is carried by the suites that serve it`
+    : undefined;
+}
+
 /** A plan's text as its sections are read: a section it begins with is read as any other. */
 const planText = (repo: string, plan: string) =>
   `\n${fs.readFileSync(path.join(repo, plan), "utf8").replace(/\r\n/g, "\n")}`;
@@ -152,6 +163,11 @@ export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "pr
  * what the plan requires would be chosen by a file the state does not hold.
  */
 export function planRequirements(repo: string, plan: string): PlanRequirement[] {
+  // A run reads plans as the links check reads them, so what the check refuses of a state's plans, such as a plan
+  // naming commitments it may not, a check it names but does not require, or a suite's line that serves no plan, a
+  // run refuses too, before anything runs, rather than require less than the plan says.
+  const incoherent = planErrors(repo);
+  if (incoherent.length) throw new Error(incoherent.join("\n"));
   const { conditions, proof } = readPlan(repo, plan);
   const text = planText(repo, plan);
   return [
@@ -195,12 +211,8 @@ export function planErrors(repo: string): string[] {
       errors.push(wrong);
       continue;
     }
-    // Only the Regression Plan names commitments: the links of KAAL's cases are checked against its commitments alone,
-    // so one another plan named would be checked by nothing. Another plan is carried by the suites that serve it.
-    if (plan !== PLAN && section(planText(repo, plan), "Commitments"))
-      errors.push(
-        `${plan}: names commitments, which only the Regression Plan does; it is carried by the suites that serve it`,
-      );
+    const naming = commitmentsError(repo, plan);
+    if (naming) errors.push(naming);
     try {
       const { proof, data } = readPlan(repo, plan);
       const dataWrong = data === undefined ? undefined : planDataError(repo, plan, data);
