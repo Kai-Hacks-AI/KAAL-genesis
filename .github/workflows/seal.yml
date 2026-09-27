@@ -55,13 +55,12 @@ jobs:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           path: change
           persist-credentials: false
-      # The accepted state the change would succeed: its target as it is now.
+          # The merge and the target it was made with, its first parent.
+          fetch-depth: 2
+      # The accepted state the change would succeed: exactly the target the merge was made with, not
+      # the target's name resolved again, which may have moved on since the merge was made.
       - if: github.event_name == 'pull_request_target'
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.base_ref }}
-          path: accepted
-          persist-credentials: false
+        run: git -C change worktree add --detach ../accepted HEAD^1
       - uses: actions/setup-node@v7
         with:
           node-version: 22

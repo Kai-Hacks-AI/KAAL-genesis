@@ -528,6 +528,13 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
     unreplayable(local),
     "the accepted regression's install takes packages other than from the registry as its lockfile pins them (tsx), which its identity does not cover",
   );
+  // Without a lockfile nothing in the state pins the packages at all, so whatever is installed would judge.
+  const unlocked = regressionCandidate("kept");
+  fs.rmSync(path.join(unlocked, "package-lock.json"));
+  assert.equal(
+    unreplayable(unlocked),
+    "the accepted regression's install takes packages other than from the registry as its lockfile pins them (no lockfile), which its identity does not cover",
+  );
   // A lockfile can resolve a registry range to a local link on its own, so the lockfile is checked too.
   const relinked = regressionCandidate("kept");
   fs.writeFileSync(
@@ -558,6 +565,7 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   if (process.platform !== "win32") {
     const reentering = regressionCandidate("kept");
     fs.mkdirSync(path.join(reentering, "config"));
+    fs.rmSync(path.join(reentering, "package-lock.json"));
     fs.writeFileSync(
       path.join(reentering, "config", "package-lock.json"),
       '{ "lockfileVersion": 3, "packages": { "": {} } }\n',

@@ -358,8 +358,9 @@ function outsideLinks(repo: string): string[] {
  * The packages a repository's install would not take, as its lockfile pins
  * them, from the registry: anything named by a local spec in its manifest, a
  * workspace, or any lockfile entry that is a link or lacks a registry source
- * and integrity. Only the allowed form passes, so what the install puts in
- * place is fixed by files the identity covers.
+ * and integrity, or all of them when there is no lockfile at all. Only the
+ * allowed form passes, so what the install puts in place is fixed by files
+ * the identity covers.
  */
 function unpinnedPackages(repo: string): string[] {
   const manifest = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as Record<string, unknown>;
@@ -372,6 +373,8 @@ function unpinnedPackages(repo: string): string[] {
   // npm ci installs from npm-shrinkwrap.json when there is one, from package-lock.json otherwise.
   const lockfile = ["npm-shrinkwrap.json", "package-lock.json"].find((f) => fs.existsSync(path.join(repo, f)));
   const locked: string[] = [];
+  // Without one, nothing in the state pins what the install puts in place.
+  if (!lockfile) locked.push("no lockfile");
   if (lockfile) {
     const lock = JSON.parse(fs.readFileSync(path.join(repo, lockfile), "utf8")) as {
       packages?: Record<string, { link?: boolean; resolved?: string; integrity?: string }>;
