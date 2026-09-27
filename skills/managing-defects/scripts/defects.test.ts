@@ -95,6 +95,7 @@ test("a defects directory holds only complete defect records, and leaves the fil
       "no-record/notes.md: a defect holds only defect.md",
       "no-record/defect.md: missing",
       "not_a_name: not a defect; each defect is a directory named with lowercase letters, digits and single hyphens, never a name Windows reserves such as con or nul",
+      "stateful/defect.md: state is not a field of a defect, which records only holds and observed",
       "stray/notes.md: a defect holds only defect.md",
     ],
   );

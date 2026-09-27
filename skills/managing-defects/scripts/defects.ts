@@ -13,6 +13,8 @@ import YAML from "yaml";
  */
 
 export const DEFECT = "defect.md";
+/** The only fields a defect records. */
+const FIELDS = ["holds", "observed"];
 
 export type Defect = { name: string; holds: string; observed: string };
 
@@ -97,7 +99,8 @@ export function readDefects(dir: string): Defect[] {
  * Everything that keeps `dir` from being a directory of defect records: a
  * directory that is not named as a defect, a defect without its record, a
  * record without what should hold, where it was observed or what was
- * observed, and anything else in a defect's directory.
+ * observed, a record with any other field, such as a state, and anything
+ * else in a defect's directory.
  * Files beside the defects, such as guidance for working among them, are the
  * using system's and are left alone.
  */
@@ -123,9 +126,12 @@ export function defectErrors(dir: string): string[] {
       errors.push(`${target}: ${data}`);
       continue;
     }
-    for (const field of ["holds", "observed"])
+    for (const field of FIELDS)
       if (typeof data[field] !== "string" || !(data[field] as string).trim())
         errors.push(`${target}: ${field} is required`);
+    // A defect records only what was observed: no state, and nothing else, beside it.
+    for (const field of Object.keys(data).filter((f) => !FIELDS.includes(f)))
+      errors.push(`${target}: ${field} is not a field of a defect, which records only ${FIELDS.join(" and ")}`);
     if (
       !fs
         .readFileSync(target, "utf8")
