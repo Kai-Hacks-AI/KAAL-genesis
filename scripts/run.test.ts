@@ -268,15 +268,13 @@ test("a run of a suite hands its cases the tested state, and records the run's c
 });
 
 // Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
-test("a run of a suite is refused for one its testing state does not state, or states through a link, for one no case belongs to, and where a skill's case says it belongs", () => {
+test("a run of a suite is refused for one its testing state does not state, or states through a link, and where a skill's case says it belongs", () => {
   const state = runState("suites");
   assert.throws(
     () => testRun({ testing: state, suite: "suites/farewells.md" }),
     /suites\/farewells\.md: no suite is stated there/,
   );
   assert.throws(() => testRun({ testing: state, suite: "suites/../suites/names.md" }), /not a suite's place/);
-  fs.writeFileSync(path.join(state, "suites", "idle.md"), "# Idle\n\nTesting no case has joined.\n");
-  assert.throws(() => testRun({ testing: state, suite: "suites/idle.md" }), /suites\/idle\.md: no case belongs to it/);
   // A skill's case belongs to none of the state's suites, so a state where one says it does is refused, not run.
   const skilled = runState("suites");
   fs.mkdirSync(path.join(skilled, "skills", "demo", "scripts"), { recursive: true });
@@ -320,4 +318,12 @@ test("a case moved to another file and retitled stays in its suites, and cases m
     assert.equal(greeting[refactored], "passed", name);
     assert.equal(greeting["scripts/hello.test.ts: says hello in Welsh"], "not run", name);
   }
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a suite no case belongs to yet is still that suite: a run of it reaches nothing and observes nothing, which is no evidence", () => {
+  const run = testRun({ testing: runState("suites"), suite: "suites/welsh.md" });
+  assert.equal(run.suite, "suites/welsh.md");
+  assert.deepEqual(run.observations, []);
+  assert.deepEqual(run.unaccounted, []);
 });

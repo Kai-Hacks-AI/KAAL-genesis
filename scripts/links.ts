@@ -323,15 +323,14 @@ export function linkErrors(repo: string): string[] {
     }
   }
   errors.push(...unnamedCases(repo).map((at) => `${at}: a case whose title cannot be read, so no link can follow it`));
-  // A suite no case belongs to composes nothing: its cases left it, or it was stated where no case can find it.
-  const joined = new Set(caseSuites(repo).flatMap((c) => (ownedBySkill(c.file) ? [] : c.suites)));
+  // Every suite is stated in its own place. One no case belongs to yet is still that suite: its concern gives it its
+  // meaning, not its cases, and a run of it observes nothing, which is no evidence.
   const suiteFiles = fs.existsSync(path.join(repo, SUITES))
     ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
     : [];
   for (const suite of suiteFiles.sort()) {
     const wrong = suiteError(repo, suite);
     if (wrong) errors.push(wrong);
-    else if (!joined.has(suite)) errors.push(`${suite}: no case belongs to it, so a run of it would reach nothing`);
   }
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.

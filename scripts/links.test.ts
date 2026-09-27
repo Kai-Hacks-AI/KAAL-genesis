@@ -257,7 +257,6 @@ test("KAAL's own testing links hold from its files", () => {
 });
 
 const SUITED = `// Suite: suites/greeting.md\n${GREETS_LINK}`;
-const IDLE = "suites/greeting.md: no case belongs to it, so a run of it would reach nothing";
 
 /** A scratch copy of the trusted fixture whose greeting case belongs to a suite, with its cases rewritten by `change`. */
 function suited(change: (text: string) => string = (text) => text): string {
@@ -280,23 +279,23 @@ test("a case says beside it which suites it belongs to, apart from the commitmen
 });
 
 // Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
-test("a suite line that belongs to no case, or names no suite stated in its own place, and a suite no case belongs to, are refused", () => {
-  const stray = [`${CASES}:12: a suite line that belongs to no case, written as "// Suite: <place>"`, IDLE];
+test("a suite line that belongs to no case, or names no suite stated in its own place, is refused, while a suite no case belongs to yet is still that suite", () => {
+  const stray = [`${CASES}:12: a suite line that belongs to no case, written as "// Suite: <place>"`];
   assert.deepEqual(linkErrors(suited((text) => text.replace(SUITED, SUITED.replace("\n// Why", "\n\n// Why")))), stray);
   assert.deepEqual(linkErrors(suited((text) => text.replace("// Suite:", "//Suite:"))), stray);
   assert.deepEqual(linkErrors(suited((text) => text.replace("suites/greeting.md\n", "suites/farewell.md\n"))), [
     `${CASES}: "greets" belongs to suites/farewell.md: no suite is stated there`,
-    IDLE,
   ]);
   assert.deepEqual(
     linkErrors(suited((text) => text.replace("// Suite: suites/greeting.md", `// Suite: ${GREETING}`))),
-    [`${CASES}: "greets" belongs to ${GREETING}: not a suite's place, which is suites/<name>.md`, IDLE],
+    [`${CASES}: "greets" belongs to ${GREETING}: not a suite's place, which is suites/<name>.md`],
   );
   // A name Windows reserves for a device cannot be kept there, whatever its extension.
   assert.deepEqual(linkErrors(suited((text) => text.replace("suites/greeting.md\n", "suites/con.md\n"))), [
     `${CASES}: "greets" belongs to suites/con.md: a suite's name "con" is reserved on Windows`,
-    IDLE,
   ]);
+  // Its concern, not its cases, gives a suite its meaning: one whose last case left it is still stated, and holds.
+  assert.deepEqual(linkErrors(suited((text) => text.replace("// Suite: suites/greeting.md\n", ""))), []);
   const misnamed = suited();
   fs.writeFileSync(path.join(misnamed, "suites", "Farewell.md"), "# Farewell\n");
   assert.deepEqual(linkErrors(misnamed), ["suites/Farewell.md: not a suite's place, which is suites/<name>.md"]);

@@ -80,7 +80,8 @@ export function testRun({
     if (at !== path.normalize(file)) throw new Error(`${file}: a case file reached through a link`);
   }
   const cases = repoCases(testing).map(({ file, title }) => ({ file, title }));
-  // A suite is one the testing state states, and reaches the cases that say they belong to it there. Only their files
+  // A suite is one the testing state states, and reaches the cases that say they belong to it there, none if no case
+  // belongs to it yet. Only their files
   // are executed; what the state's other cases report there is theirs, and observes none of the suite's.
   const joined = caseSuites(testing);
   if (suite !== undefined) {
@@ -164,8 +165,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       const run = testRun({ testing, tested, suite: values.suite });
       console.log(JSON.stringify(run, null, 2));
       // A run fails when a case failed or something ran that no case accounts for; a case not run is not evidence, which
-      // is for whoever reads the run to judge, not a failure of the run.
+      // is for whoever reads the run to judge, not a failure of the run. A run that observed no case pass, such as one
+      // of a suite no case belongs to yet, is no evidence at all, so it is never reported as a success either.
       if (run.unaccounted.length || run.observations.some((o) => o.observed === "failed")) process.exitCode = 1;
+      else if (!run.observations.some((o) => o.observed === "passed")) {
+        console.error(`${run.suite ?? testing}: the run observed no case pass, so it is no evidence`);
+        process.exitCode = 1;
+      }
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exitCode = 1;

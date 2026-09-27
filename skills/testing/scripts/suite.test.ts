@@ -17,11 +17,11 @@ test("a run of a suite observes exactly the cases that say they belong to it, as
   }
 });
 
-test("a suite no case belongs to is refused, and so are observations that are not of the testing state's cases, one each in order", () => {
+test("a suite no case belongs to yet reaches nothing and observes nothing, and observations that are not of the testing state's cases, one each in order, are refused", () => {
   const cases = suiteData("cases") as Member[];
   const observations = suiteData("observations") as Observation[];
-  assert.throws(() => members("farewells", cases), /farewells: no case belongs to it/);
-  assert.throws(() => reached("farewells", cases, observations), /farewells: no case belongs to it/);
+  assert.deepEqual(members("farewells", cases), []);
+  assert.deepEqual(reached("farewells", cases, observations), []);
   assert.throws(() => reached("greeting", cases, observations.slice(1)), /not of these cases/);
   assert.throws(() => reached("greeting", cases, [...observations].reverse()), /not of these cases/);
 });
