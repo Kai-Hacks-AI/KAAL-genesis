@@ -7,14 +7,15 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
 import { judgeFiles } from "./regression.js";
-import { regressionCandidate, regressionTrusted } from "./test-data.js";
+import { kaal as kaalState, regressionCandidate, regressionTrusted } from "./test-data.js";
 
 // KAAL works on files. These cases copy KAAL out of Git, into plain
 // directories with no `.git`, and run its capabilities as their command lines
 // do, in processes that cannot find `git` and see no GitHub: nothing is
 // mocked, so each passes only because KAAL has no reason to ask either.
 
-const REPO = fileURLToPath(new URL("../", import.meta.url));
+/** The subject of this file's cases about KAAL itself. */
+const KAAL = kaalState();
 const TSX = fileURLToPath(import.meta.resolve("tsx/cli"));
 
 /** A copy of `from` as plain files, without `.git`; dependencies are linked, as an install would provide them. */
@@ -28,7 +29,7 @@ function plainCopy(from: string): string {
       return top !== ".git" && top !== "node_modules";
     },
   });
-  fs.symlinkSync(path.join(REPO, "node_modules"), path.join(to, "node_modules"), "junction");
+  fs.symlinkSync(path.join(KAAL, "node_modules"), path.join(to, "node_modules"), "junction");
   return to;
 }
 
@@ -59,7 +60,7 @@ test("the processes these cases run KAAL in cannot find git", () => {
 // Why: scripts/brain-seals.ts
 // Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
 test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and its testing links", () => {
-  const kaalState = plainCopy(REPO);
+  const kaalState = plainCopy(KAAL);
   assert.equal(fs.existsSync(path.join(kaalState, ".git")), false);
   for (const [script, ...args] of [
     ["skills/using-brain/scripts/validate.ts"],
@@ -76,8 +77,8 @@ test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and 
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
 test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote, and guards seal state against a candidate", () => {
-  const before = plainCopy(REPO);
-  const sealed = plainCopy(REPO);
+  const before = plainCopy(KAAL);
+  const sealed = plainCopy(KAAL);
   const sealing = kaal(sealed, "scripts/seal.ts");
   assert.equal(sealing.status, 0, sealing.out);
   assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 0, "sealing wrote only seal state");
@@ -102,7 +103,7 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
 
 // Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
 test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and the new KAAL works without Git", () => {
-  const kaalState = plainCopy(REPO);
+  const kaalState = plainCopy(KAAL);
   const newborn = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-newborn-"));
   const born = kaal(newborn, path.join(kaalState, "scripts", "genesis.ts"));
   assert.equal(born.status, 0, born.out);
@@ -118,9 +119,9 @@ test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and 
 test("copied out of Git, an accepted state judges a candidate state with its own checker, both plain directories", () => {
   // The accepted state carries KAAL's checker, as main does, and judges with it.
   const accepted = plainCopy(regressionTrusted());
-  for (const file of judgeFiles(REPO).filter((f) => fs.existsSync(path.join(REPO, f)) && f.endsWith(".ts"))) {
+  for (const file of judgeFiles(KAAL).filter((f) => fs.existsSync(path.join(KAAL, f)) && f.endsWith(".ts"))) {
     fs.mkdirSync(path.dirname(path.join(accepted, file)), { recursive: true });
-    fs.copyFileSync(path.join(REPO, file), path.join(accepted, file));
+    fs.copyFileSync(path.join(KAAL, file), path.join(accepted, file));
   }
   const identity = kaal(accepted, "scripts/check-regression.ts", "--identity");
   assert.equal(identity.status, 0, identity.out);

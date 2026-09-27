@@ -4,7 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { ROOT } from "../skills/using-brain/scripts/brain.js";
+import { fileURLToPath } from "node:url";
+import { nodeFiles, ROOT } from "../skills/using-brain/scripts/brain.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
 import {
   brainChains,
@@ -16,7 +17,25 @@ import {
   sealStateChanges,
   stateChanges,
 } from "./brain-seals.js";
-import { brainData, diffData, scratchBrain, sealingDiff, tree, withSealWriteFailure } from "./test-data.js";
+import {
+  brainData,
+  diffData,
+  elsewhere,
+  kaal,
+  scratchBrain,
+  sealingDiff,
+  tree,
+  withSealWriteFailure,
+} from "./test-data.js";
+
+const TSX = fileURLToPath(import.meta.resolve("tsx/cli"));
+
+/** KAAL's own BRAIN, the subject of the cases about it; it must be there, since nothing reports errors of a BRAIN that is not. */
+function kaalBrain(): string {
+  const root = path.join(kaal(), ROOT);
+  assert.ok(nodeFiles(root).length, `${root} holds no BRAIN`);
+  return root;
+}
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("one chain per lineage, named after it, with its learnings oldest first", () => {
@@ -111,12 +130,27 @@ test("reports a sealed lineage removed with its learnings", () => {
 
 // Why: scripts/brain-seals.ts
 test("the committed BRAIN is valid", () => {
-  assert.deepEqual(validate(ROOT), []);
+  assert.deepEqual(validate(kaalBrain()), []);
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 test("the committed BRAIN's seals are intact", () => {
-  assert.deepEqual(checkBrain(ROOT), []);
+  assert.deepEqual(checkBrain(kaalBrain()), []);
+});
+
+// Tests: defects/brain-cases-follow-the-working-directory
+// Why: scripts/brain-seals.ts
+// Why: brain/learning/genesis/26/09/27/03/nodes/case.md
+test("KAAL's cases about its own BRAIN judge KAAL's BRAIN wherever they are run from", () => {
+  // Run from a directory holding an invalid BRAIN where KAAL keeps its own: a case that took its subject from there would fail.
+  const run = spawnSync(
+    process.execPath,
+    [TSX, "--test", "--test-reporter=tap", "--test-name-pattern=^the committed BRAIN", fileURLToPath(import.meta.url)],
+    { cwd: elsewhere(), encoding: "utf8", env: { ...process.env, NODE_TEST_CONTEXT: undefined } },
+  );
+  // Both cases ran and passed: a pattern that matched nothing would pass too.
+  assert.match(run.stdout, /^# pass 2$/m, run.stdout);
+  assert.match(run.stdout, /^# fail 0$/m, run.stdout);
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md

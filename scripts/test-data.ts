@@ -6,8 +6,42 @@ import { fileURLToPath } from "node:url";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { type Change, sealBrain, stateChanges } from "./brain-seals.js";
 import { io } from "../skills/using-seals/scripts/seals.js";
+import { genesis } from "./genesis.js";
 
 const DATA = fileURLToPath(new URL("../test-data/", import.meta.url));
+
+/**
+ * KAAL's own state: the subject of every case that makes a claim about KAAL
+ * itself, such as that its links hold or its BRAIN is valid. It is the state
+ * these cases are kept in, found from here, never from the directory they are
+ * run from: that is part of a run's environment, not of what a case is about.
+ */
+export function kaal(): string {
+  return fileURLToPath(new URL("../", import.meta.url));
+}
+
+/**
+ * A scratch directory to run KAAL's cases from that is not KAAL: it holds an
+ * invalid BRAIN at KAAL's BRAIN root, from test-data/brains/invalid-learning,
+ * so a case that took its subject from where it runs would judge this BRAIN.
+ */
+export function elsewhere(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-elsewhere-"));
+  fs.cpSync(brainData("invalid-learning"), path.join(dir, ROOT), { recursive: true });
+  return dir;
+}
+
+/**
+ * A scratch repository where something Genesis would create is already there,
+ * and what that is: `born`, a KAAL Genesis has already born; `agents`, an Agent
+ * entry point, and `brain`, a BRAIN directory, each from test-data/genesis/occupied.
+ */
+export function occupied(name: "born" | "agents" | "brain"): { repo: string; there: string } {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-genesis-"));
+  if (name === "born") genesis(repo);
+  else fs.cpSync(path.join(DATA, "genesis", "occupied", name), repo, { recursive: true });
+  return { repo, there: name === "agents" ? "AGENTS.md" : "brain" };
+}
 
 /** Path to a read-only BRAIN in test-data/brains. */
 export function brainData(name: string): string {

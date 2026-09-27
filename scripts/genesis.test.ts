@@ -3,15 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import { learningOf, nodeFiles, parseNode } from "../skills/using-brain/scripts/brain.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
 import { genesis, LEARNING } from "./genesis.js";
+import { entries, kaal, occupied } from "./test-data.js";
 
 // Genesis births KAAL as it understands itself now. KAAL's own BRAIN is the
 // measure: what Genesis births is checked against KAAL's current nodes, while
 // the history of how KAAL learned them stays in KAAL's BRAIN alone.
-const REPO = fileURLToPath(new URL("../", import.meta.url));
 /** What Genesis births: KAAL's current understanding of the skills it uses and of how it works. */
 const BORN = ["using-brain", "skill", "using-skills", "using-agents", "using-seals", "bass", "testing"];
 
@@ -21,7 +20,7 @@ const BORN = ["using-brain", "skill", "using-skills", "using-agents", "using-sea
  * later node supersedes, whatever file it is kept in.
  */
 function current(name: string): { file: string; learning: string } {
-  const root = path.join(REPO, "brain/learning");
+  const root = path.join(kaal(), "brain/learning");
   const [latest] = nodeFiles(root)
     .map((file) => ({ file, ...learningOf(root, file), name: parseNode(file).name }))
     .filter((node) => node.lineage === "genesis" && node.name === name)
@@ -71,7 +70,7 @@ test("Genesis births the entry points and one learning of KAAL's current underst
 test("the entry points Genesis births are byte-identical to KAAL's own", () => {
   const produced = files(born());
   for (const file of ["AGENTS.md", "brain/AGENTS.md"])
-    assert.equal(produced[file], fs.readFileSync(path.join(REPO, file), "utf8"), file);
+    assert.equal(produced[file], fs.readFileSync(path.join(kaal(), file), "utf8"), file);
 });
 
 // Genesis may leave out of a node how KAAL came to its meaning, but may not add meaning KAAL does not hold.
@@ -103,21 +102,17 @@ test("the BRAIN Genesis produces is valid", () => {
 });
 
 // Why: scripts/genesis.ts
-test("Genesis refuses to run over an existing KAAL, changing nothing", () => {
-  const repo = born();
-  const before = files(repo);
-  assert.throws(() => genesis(repo), /already exists/);
-  assert.deepEqual(files(repo), before);
-});
-
-// Why: scripts/genesis.ts
-test("Genesis refuses when the repository already has an Agent entry point, leaving it as it was", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-genesis-"));
-  fs.cpSync(path.join(REPO, "AGENTS.md"), path.join(repo, "AGENTS.md"));
-  const before = files(repo);
-  assert.throws(() => genesis(repo), /AGENTS\.md: already exists/);
-  assert.deepEqual(files(repo), before);
-  assert.equal(fs.existsSync(path.join(repo, "brain")), false);
+test("Genesis refuses where anything it would create is already there, leaving the repository exactly as it was", () => {
+  for (const name of ["born", "agents", "brain"] as const) {
+    const { repo, there } = occupied(name);
+    const before = { entries: entries(repo), files: files(repo) };
+    assert.throws(
+      () => genesis(repo),
+      (e: Error) => e.message.startsWith(`${path.join(repo, there)}: already exists`),
+      name,
+    );
+    assert.deepEqual({ entries: entries(repo), files: files(repo) }, before, name);
+  }
 });
 
 // Why: scripts/genesis.ts
