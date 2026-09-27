@@ -586,16 +586,44 @@ function runFiles(code: string, files: string[]): Result[] {
 export function runTrusted(trusted: string, candidate: string): Result[] {
   const code = scratchCopy(candidate, false);
   const files = caseFiles(trusted);
-  fs.rmSync(path.join(code, PLAN), { force: true });
+  // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
+  // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
+  for (const rel of [...caseFiles(candidate), PLAN]) fs.rmSync(within(code, rel), { force: true });
   const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
   for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
-    fs.rmSync(path.join(code, rel), { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(path.join(code, rel)), { recursive: true });
-    fs.cpSync(path.join(trusted, rel), path.join(code, rel), { recursive: true, verbatimSymlinks: true });
+    const to = within(code, rel);
+    fs.rmSync(to, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.cpSync(path.join(trusted, rel), to, { recursive: true, verbatimSymlinks: true });
     // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
-    recordedModes(path.join(code, rel));
+    recordedModes(to);
   }
   return runFiles(code, files);
+}
+
+/**
+ * `rel` inside the scratch copy `code`, with every directory above it inside
+ * the copy too: one the candidate kept as a link leading out of the copy is
+ * made a real directory, so writing at `rel` can never write anywhere else.
+ */
+function within(code: string, rel: string): string {
+  const root = fs.realpathSync(code);
+  const parts = rel.split("/");
+  for (let i = 1; i < parts.length; i++) {
+    const at = path.join(code, ...parts.slice(0, i));
+    const stat = fs.lstatSync(at, { throwIfNoEntry: false });
+    if (!stat?.isSymbolicLink()) continue;
+    let real: string | undefined;
+    try {
+      real = fs.realpathSync(at);
+    } catch {
+      real = undefined; // A link to nothing leads nowhere inside the copy.
+    }
+    if (real && (real === root || real.startsWith(root + path.sep))) continue;
+    fs.unlinkSync(at);
+    fs.mkdirSync(at);
+  }
+  return path.join(code, ...parts);
 }
 
 /**

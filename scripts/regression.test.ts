@@ -510,6 +510,50 @@ test("the replay gives the accepted regression's cases its own plan, not the pla
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the replay holds only the accepted regression's cases, none the candidate adds of its own", () => {
+  const trusted = regressionCandidate("kept");
+  // A case that reads which cases there are, as a check of the regression's links does.
+  fs.writeFileSync(
+    path.join(trusted, "scripts", "listing.test.ts"),
+    [
+      'import assert from "node:assert/strict";',
+      'import fs from "node:fs";',
+      'import test from "node:test";',
+      'test("finds only the cases it was written with", () => {',
+      '  assert.equal(fs.existsSync("scripts/added.test.ts"), false);',
+      "});",
+      "",
+    ].join("\n"),
+  );
+  const candidate = regressionCandidate("kept");
+  fs.writeFileSync(
+    path.join(candidate, "scripts", "added.test.ts"),
+    'import test from "node:test";\ntest("added", () => {});\n',
+  );
+  const results = runTrusted(trusted, candidate);
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/listing.test.ts").map((r) => r.outcome),
+    ["pass"],
+  );
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test(
+  "the replay writes only inside its own copy, even where the candidate links a directory out of it",
+  { skip: process.platform === "win32" },
+  () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-"));
+    fs.writeFileSync(path.join(outside, "regression-plan.md"), "not the replay's\n");
+    const candidate = regressionCandidate("kept");
+    fs.rmSync(path.join(candidate, "test"), { recursive: true });
+    fs.symlinkSync(outside, path.join(candidate, "test"));
+    runTrusted(regressionTrusted(), candidate);
+    assert.deepEqual(fs.readdirSync(outside), ["regression-plan.md"]);
+    assert.equal(fs.readFileSync(path.join(outside, "regression-plan.md"), "utf8"), "not the replay's\n");
+  },
+);
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test(
   "the replay gives the accepted regression's cases only the permissions its identity records",
   { skip: process.platform === "win32" },
