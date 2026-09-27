@@ -268,7 +268,7 @@ test("a run of a suite hands its cases the tested state, and records the run's c
 });
 
 // Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
-test("a run of a suite is refused for one its testing state does not state, or states through a link, and for one no case belongs to", () => {
+test("a run of a suite is refused for one its testing state does not state, or states through a link, for one no case belongs to, and where a skill's case says it belongs", () => {
   const state = runState("suites");
   assert.throws(
     () => testRun({ testing: state, suite: "suites/farewells.md" }),
@@ -277,6 +277,22 @@ test("a run of a suite is refused for one its testing state does not state, or s
   assert.throws(() => testRun({ testing: state, suite: "suites/../suites/names.md" }), /not a suite's place/);
   fs.writeFileSync(path.join(state, "suites", "idle.md"), "# Idle\n\nTesting no case has joined.\n");
   assert.throws(() => testRun({ testing: state, suite: "suites/idle.md" }), /suites\/idle\.md: no case belongs to it/);
+  // A skill's case belongs to none of the state's suites, so a state where one says it does is refused, not run.
+  const skilled = runState("suites");
+  fs.mkdirSync(path.join(skilled, "skills", "demo", "scripts"), { recursive: true });
+  fs.writeFileSync(
+    path.join(skilled, "skills", "demo", "scripts", "demo.test.ts"),
+    'import test from "node:test";\n\n// Suite: suites/names.md\ntest("says hello", () => {});\n',
+  );
+  const pkg = path.join(skilled, "package.json");
+  fs.writeFileSync(
+    pkg,
+    fs.readFileSync(pkg, "utf8").replace("scripts/*.test.ts", "skills/*/scripts/*.test.ts scripts/*.test.ts"),
+  );
+  assert.throws(
+    () => testRun({ testing: skilled, suite: "suites/names.md" }),
+    /skills\/demo\/scripts\/demo\.test\.ts: "says hello" is a skill's case, so it belongs to none of the state's suites/,
+  );
   const linked = runState("suites");
   fs.renameSync(path.join(linked, "suites"), path.join(linked, "stated"));
   // A junction, so a directory link can be made on every platform without special rights.

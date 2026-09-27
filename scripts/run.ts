@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { type Observation, observe, type Report } from "../skills/testing/scripts/observe.js";
 import { members, reached } from "../skills/testing/scripts/suite.js";
-import { caseFiles, caseSuites, repoCases, suiteError } from "./links.js";
+import { caseFiles, caseSuites, ownedBySkill, repoCases, suiteError } from "./links.js";
 import { execute, type Positioned } from "./regression.js";
 
 /**
@@ -86,6 +86,10 @@ export function testRun({
   if (suite !== undefined) {
     const wrong = suiteError(testing, suite);
     if (wrong) throw new Error(wrong);
+    // A skill's case belongs to none of the state's suites, so the skill stays independent of it: a state where one says
+    // it does is refused before anything runs, as its links check refuses it, never run as if the suite held it.
+    for (const c of joined.filter((c) => ownedBySkill(c.file) && c.suites.length))
+      throw new Error(`${c.file}: "${c.title}" is a skill's case, so it belongs to none of the state's suites`);
   }
   const reaching = suite === undefined ? files : [...new Set(members(suite, joined).map((c) => c.file))];
   const results = execute(testing, reaching, tested, true);

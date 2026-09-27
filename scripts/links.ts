@@ -171,7 +171,8 @@ export function caseFiles(repo: string): string[] {
     .sort();
 }
 
-const ownedBySkill = (file: string) => file.startsWith("skills/");
+/** Whether a case file is a skill's: its cases prove the skill's SKILL.md, and point at nothing of KAAL's. */
+export const ownedBySkill = (file: string) => file.startsWith("skills/");
 
 /** Every case a repository keeps, with the commitments it helps prove: a skill's cases prove its SKILL.md. */
 export function repoCases(repo: string): Case[] {
