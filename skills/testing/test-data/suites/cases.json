@@ -1,0 +1,7 @@
+[
+  { "file": "a.test.ts", "title": "greets", "suites": ["greeting"] },
+  { "file": "a.test.ts", "title": "greets by name", "suites": ["greeting", "names"] },
+  { "file": "b.test.ts", "title": "says goodbye by name", "suites": ["names"] },
+  { "file": "b.test.ts", "title": "waves", "suites": [] },
+  { "file": "b.test.ts", "title": "greets in Welsh", "suites": ["greeting"] }
+]

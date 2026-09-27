@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { fileCases, linkErrors, PLAN, repoCases, testedDefects } from "./links.js";
+import { caseSuites, fileCases, linkErrors, PLAN, repoCases, testedDefects } from "./links.js";
 import { regressionErrors } from "./regression.js";
 import { kaal, regressionCandidate, regressionTrusted } from "./test-data.js";
 
@@ -254,4 +254,69 @@ test("npm run links:check checks a checkout's links by its command line, and fai
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("KAAL's own testing links hold from its files", () => {
   assert.deepEqual(linkErrors(KAAL), []);
+});
+
+const SUITED = `// Suite: suites/greeting.md\n${GREETS_LINK}`;
+const IDLE = "suites/greeting.md: no case belongs to it, so a run of it would reach nothing";
+
+/** A scratch copy of the trusted fixture whose greeting case belongs to a suite, with its cases rewritten by `change`. */
+function suited(change: (text: string) => string = (text) => text): string {
+  const repo = regressionCandidate("suited");
+  const at = path.join(repo, CASES);
+  fs.writeFileSync(at, change(fs.readFileSync(at, "utf8")));
+  return repo;
+}
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a case says beside it which suites it belongs to, apart from the commitments it helps prove, and a suite's cases are found from the cases", () => {
+  const repo = suited();
+  assert.deepEqual(linkErrors(repo), []);
+  assert.deepEqual(
+    caseSuites(repo).filter((c) => c.suites.length),
+    [{ file: CASES, title: "greets", suites: ["suites/greeting.md"] }],
+  );
+  // A suite line is no link to a commitment: the case's commitments are read as they were.
+  assert.deepEqual(repoCases(repo).find((c) => c.title === "greets")?.places, [GREETING]);
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a suite line that belongs to no case, or names no suite stated in its own place, and a suite no case belongs to, are refused", () => {
+  const stray = [`${CASES}:12: a suite line that belongs to no case, written as "// Suite: <place>"`, IDLE];
+  assert.deepEqual(linkErrors(suited((text) => text.replace(SUITED, SUITED.replace("\n// Why", "\n\n// Why")))), stray);
+  assert.deepEqual(linkErrors(suited((text) => text.replace("// Suite:", "//Suite:"))), stray);
+  assert.deepEqual(linkErrors(suited((text) => text.replace("suites/greeting.md\n", "suites/farewell.md\n"))), [
+    `${CASES}: "greets" belongs to suites/farewell.md: no suite is stated there`,
+    IDLE,
+  ]);
+  assert.deepEqual(
+    linkErrors(suited((text) => text.replace("// Suite: suites/greeting.md", `// Suite: ${GREETING}`))),
+    [`${CASES}: "greets" belongs to ${GREETING}: not a suite's place, which is suites/<name>.md`, IDLE],
+  );
+  const misnamed = suited();
+  fs.writeFileSync(path.join(misnamed, "suites", "Farewell.md"), "# Farewell\n");
+  assert.deepEqual(linkErrors(misnamed), ["suites/Farewell.md: not a suite's place, which is suites/<name>.md"]);
+  const linked = suited();
+  fs.renameSync(path.join(linked, "suites"), path.join(linked, "stated"));
+  // A junction, so a directory link can be made on every platform without special rights.
+  fs.symlinkSync(path.join(linked, "stated"), path.join(linked, "suites"), "junction");
+  assert.deepEqual(linkErrors(linked), [
+    `${CASES}: "greets" belongs to suites/greeting.md: a suite stated through a link`,
+    "suites/greeting.md: a suite stated through a link",
+  ]);
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a skill's case belongs to none of KAAL's suites, so the skill stays independent of KAAL", () => {
+  const joined = withSkill(
+    'import test from "node:test";\n\n// Suite: suites/greeting.md\ntest("says hello", () => {});\n',
+  );
+  assert.deepEqual(linkErrors(joined), [
+    `skills/demo/scripts/demo.test.ts: "says hello" is a skill's case, so it points at nothing outside its skill`,
+  ]);
+  const stray = withSkill(
+    'import test from "node:test";\n\n// Suite: suites/greeting.md\n\ntest("says hello", () => {});\n',
+  );
+  assert.deepEqual(linkErrors(stray), [
+    "skills/demo/scripts/demo.test.ts:3: a skill's case points at nothing outside its skill",
+  ]);
 });

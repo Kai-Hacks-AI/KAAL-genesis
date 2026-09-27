@@ -1,0 +1,17 @@
+---
+name: suite
+---
+
+# Suite
+
+A test suite is a reusable composition of cases; what a suite is, is the testing skill's. This node records how KAAL states its suites, how its cases join them, and how KAAL runs them.
+
+KAAL states each suite in a file of its own, `suites/<name>.md`, named in lowercase words joined by hyphens, which says what testing concern the suite serves and why its cases belong together. That place is the suite's identity: every plan that reuses the suite names it there. No plan holds it, so the Regression Plan does not own KAAL's suites, and another plan can name the same one. Moving, retitling or refactoring the suite's cases leaves it the same suite.
+
+A case of KAAL's says which suites it belongs to with a `// Suite: <place>` line among the links directly above it, as it says which commitments it helps prove with `// Why:` lines and which defects it tests with `// Tests:` lines, and `scripts/links.ts` reads them all in KAAL's one reading of its cases. A suite never lists its cases: a case's memberships move and are renamed with it, and a case belongs to several suites while kept once. A `Suite:` line is not a link to a commitment. A case's commitments say what it helps prove, and choose which of the accepted regression's cases judge a candidate; its suites say which reusable testing it is part of, and choose nothing in the regression. KAAL's first suites show why the two are kept apart: `suites/without-git.md` composes cases of many commitments for the one concern they share, that KAAL works on plain directories without Git; `suites/genesis.md` composes the cases of Genesis's two commitments and one of BRAIN's validity, which Genesis rests on; and the case that a KAAL born without Git works without Git belongs to both.
+
+The links check, `npm run links:check`, refuses a `Suite:` line that belongs to no case or is not strictly written; one naming a place that is not a suite's place, where no suite is stated, or reached through a link; and a suite no case belongs to, since a run of it would reach nothing. A skill's case belongs to none of KAAL's suites, so the skill stays independent of KAAL: testing of a skill joins one of KAAL's suites only through a case of KAAL's about KAAL's own use of the skill.
+
+KAAL runs a suite with `scripts/run.ts --suite <place> <testing-state> [tested-state]`. The run reaches every case of the testing state that belongs to the suite, and no other, and observes each as any run does, as `brain/learning/genesis/26/09/27/05/nodes/run.md` states. It executes the files that hold the suite's cases: what the state's other cases report there observes none of the suite's, while a report no case accounts for, or a failure that exercised nothing, still fails the run. A suite brings no conditions of its own: the plan that names it says under which conditions it must be shown, and each run records the conditions it had. A suite composes cases only; KAAL's other checks, such as the seal checks, belong to no suite, and a plan names them beside what it names. Runs of two suites that share a case each execute it; whether such executions may be shared is not decided here.
+
+Whether what a run of a suite observed is enough is for the plan that names the suite to say. KAAL's Regression Plan names commitments, not suites, and the accepted regression does not yet protect a suite's membership: a case leaving a suite is seen when it leaves the suite with no case, and otherwise only by review.

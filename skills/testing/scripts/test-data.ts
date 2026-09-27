@@ -20,3 +20,8 @@ export function scratch(): string {
 export function runData(name: "cases" | "reports" | "observed"): unknown {
   return JSON.parse(fs.readFileSync(path.join(DATA, "runs", `${name}.json`), "utf8"));
 }
+
+/** Named suite data from test-data/suites: `cases`, a testing state's cases with the suites each belongs to; `observations`, what a run observed of each; `reached`, what a run of each suite observed. */
+export function suiteData(name: "cases" | "observations" | "reached"): unknown {
+  return JSON.parse(fs.readFileSync(path.join(DATA, "suites", `${name}.json`), "utf8"));
+}

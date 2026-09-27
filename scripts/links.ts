@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { Member } from "../skills/testing/scripts/suite.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -56,6 +57,13 @@ const LINK = /^\/\/ Why: (\S+)$/;
 const TESTS_LIKE = /^\s*\/\/\s*tests\b/i;
 const TESTS = /^\/\/ Tests: (\S+)$/;
 
+/** A line meant to say its case belongs to a suite, strictly written or not: any line comment that starts with "Suite". */
+const SUITE_LIKE = /^\s*\/\/\s*suite\b/i;
+const SUITE = /^\/\/ Suite: (\S+)$/;
+/** Where KAAL states its suites: one file each, `suites/<name>.md`, whose place is the suite's identity. */
+export const SUITES = "suites";
+const SUITE_PLACE = /^suites\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+
 /** A case that says which defects it tests, through `// Tests: <defect>` lines among the links directly above it. */
 export type Tested = { file: string; title: string; defects: string[] };
 
@@ -68,11 +76,20 @@ export type Tested = { file: string; title: string; defects: string[] };
 function scan(
   file: string,
   source: string,
-): { cases: Case[]; stray: number[]; tested: Tested[]; strayTests: number[] } {
+): {
+  cases: Case[];
+  stray: number[];
+  tested: Tested[];
+  strayTests: number[];
+  suites: string[][];
+  straySuites: number[];
+} {
   const cases: Case[] = [];
   const tested: Tested[] = [];
+  const suites: string[][] = [];
   const owned = new Set<number>();
   const ownedTests = new Set<number>();
+  const ownedSuites = new Set<number>();
   const lines = source.split(/\r?\n/);
   const text = lines.join("\n");
   for (const m of text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)) {
@@ -84,24 +101,31 @@ function scan(
     }
     const places: string[] = [];
     const defects: string[] = [];
+    const joined: string[] = [];
     let line = text.slice(0, m.index).split("\n").length - 2;
     for (; line >= 0; line--) {
       const why = LINK.exec(lines[line]!);
       const tests = TESTS.exec(lines[line]!);
+      const suite = SUITE.exec(lines[line]!);
       if (why) {
         places.unshift(why[1]!);
         owned.add(line);
       } else if (tests) {
         defects.unshift(tests[1]!);
         ownedTests.add(line);
+      } else if (suite) {
+        joined.unshift(suite[1]!);
+        ownedSuites.add(line);
       } else break;
     }
     cases.push({ file, title, places });
+    suites.push(joined);
     if (defects.length) tested.push({ file, title, defects });
   }
   const stray = lines.flatMap((line, i) => (LINK_LIKE.test(line) && !owned.has(i) ? [i + 1] : []));
   const strayTests = lines.flatMap((line, i) => (TESTS_LIKE.test(line) && !ownedTests.has(i) ? [i + 1] : []));
-  return { cases, stray, tested, strayTests };
+  const straySuites = lines.flatMap((line, i) => (SUITE_LIKE.test(line) && !ownedSuites.has(i) ? [i + 1] : []));
+  return { cases, stray, tested, strayTests, suites, straySuites };
 }
 
 /** The cases a test file states, each with the places it points at. */
@@ -154,6 +178,33 @@ export function repoCases(repo: string): Case[] {
     const cases = fileCases(file, fs.readFileSync(path.join(repo, file), "utf8"));
     return ownedBySkill(file) ? cases.map((c) => ({ ...c, places: [SKILL_CASES] })) : cases;
   });
+}
+
+/**
+ * Every case a repository runs, in the order its cases are read, with the
+ * suites it says it belongs to through `// Suite: <place>` lines among the
+ * links directly above it, read as every other link of a case is read. A suite
+ * never lists its cases, so this is how KAAL finds a suite's cases.
+ */
+export function caseSuites(repo: string): Member[] {
+  return caseFiles(repo).flatMap((file) => {
+    const { cases, suites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
+    return cases.map(({ title }, i) => ({ file, title, suites: suites[i]! }));
+  });
+}
+
+/**
+ * Why `place` is not a suite `repo` states, if it is not: KAAL states each of
+ * its suites in a file of its own, `suites/<name>.md`, named in lowercase
+ * words joined by hyphens, which must really be a file there, not a link.
+ */
+export function suiteError(repo: string, place: string): string | undefined {
+  if (!SUITE_PLACE.test(place)) return `${place}: not a suite's place, which is ${SUITES}/<name>.md`;
+  const file = path.join(repo, place);
+  const real = fs.existsSync(file) ? path.relative(fs.realpathSync(repo), fs.realpathSync(file)) : undefined;
+  if (real === undefined || !fs.statSync(file).isFile()) return `${place}: no suite is stated there`;
+  if (real.split(path.sep).join("/") !== place) return `${place}: a suite stated through a link`;
+  return undefined;
 }
 
 /**
@@ -237,15 +288,29 @@ export function linkErrors(repo: string): string[] {
   }
   const stated = new Set(entries.flatMap((e) => (e.place ? [e.place] : [])));
   for (const file of caseFiles(repo)) {
-    const { cases, stray } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
+    const { cases, stray, suites, straySuites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
     if (ownedBySkill(file)) {
-      // A skill's cases prove its SKILL.md by where they are kept; a link from one would make the skill depend on KAAL.
-      const links = cases.flatMap((c) => (c.places.length ? [`"${c.title}"`] : []));
+      // A skill's cases prove its SKILL.md by where they are kept; a link from one would make the skill depend on KAAL,
+      // and so would joining one of KAAL's suites.
+      const links = cases.flatMap((c, i) => (c.places.length || suites[i]!.length ? [`"${c.title}"`] : []));
       errors.push(...links.map((c) => `${file}: ${c} is a skill's case, so it points at nothing outside its skill`));
-      errors.push(...stray.map((at) => `${file}:${at}: a skill's case points at nothing outside its skill`));
+      errors.push(
+        ...[...stray, ...straySuites]
+          .sort((a, b) => a - b)
+          .map((at) => `${file}:${at}: a skill's case points at nothing outside its skill`),
+      );
       continue;
     }
     errors.push(...stray.map((at) => `${file}:${at}: a link that belongs to no case, written as "// Why: <place>"`));
+    errors.push(
+      ...straySuites.map((at) => `${file}:${at}: a suite line that belongs to no case, written as "// Suite: <place>"`),
+    );
+    cases.forEach((c, i) => {
+      for (const suite of suites[i]!) {
+        const wrong = suiteError(repo, suite);
+        if (wrong) errors.push(`${file}: "${c.title}" belongs to ${wrong}`);
+      }
+    });
     for (const c of cases) {
       if (!c.places.length) errors.push(`${file}: "${c.title}" says no commitment it helps prove`);
       for (const place of c.places.filter((p) => !stated.has(p)))
@@ -253,6 +318,16 @@ export function linkErrors(repo: string): string[] {
     }
   }
   errors.push(...unnamedCases(repo).map((at) => `${at}: a case whose title cannot be read, so no link can follow it`));
+  // A suite no case belongs to composes nothing: its cases left it, or it was stated where no case can find it.
+  const joined = new Set(caseSuites(repo).flatMap((c) => (ownedBySkill(c.file) ? [] : c.suites)));
+  const suiteFiles = fs.existsSync(path.join(repo, SUITES))
+    ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
+    : [];
+  for (const suite of suiteFiles.sort()) {
+    const wrong = suiteError(repo, suite);
+    if (wrong) errors.push(wrong);
+    else if (!joined.has(suite)) errors.push(`${suite}: no case belongs to it, so a run of it would reach nothing`);
+  }
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
   const ownProof = new Set(
