@@ -6,9 +6,12 @@ skills/using-seals/test-data/
 skills/using-agents/test-data/
 skills/using-skills/test-data/
 skills/testing/test-data/
+skills/managing-defects/test-data/
 test-data/
 package-lock.json
 # Why: brain/learning/genesis/26/09/25/01/nodes/using-skills.md
 skills/*/SKILL.md
 # Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
 AGENTS.md
+# Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
+defects/
