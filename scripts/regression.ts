@@ -111,6 +111,9 @@ export function unreplayable(repo: string): string | undefined {
   });
   if (uncopied.length)
     return `the accepted regression's cases or test data link to what its replay does not copy (${uncopied.join(", ")})`;
+  // The replay copies the plan too, as it is: a plan that is a link would be copied as the link, and lead to the candidate's.
+  if (entryAt(path.join(repo, PLAN))?.kind === "link")
+    return `the accepted regression's plan is a link, so its replay would read the candidate's (${PLAN})`;
   // The checker's imports are followed from where its files are named; one reached through a link runs from elsewhere.
   const linked = [
     ...new Set([...CHECKER.filter((file) => fs.existsSync(path.join(repo, file))), ...checkerCode(repo).found]),

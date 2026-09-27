@@ -637,6 +637,14 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
       unreplayable(redirected),
       "the accepted regression's cases or test data link to what its replay does not copy (scripts/cases.test.ts)",
     );
+    // So would a plan that is a link: the replay would copy the link, and the case would read the candidate's plan.
+    const linkedPlan = regressionCandidate("kept");
+    fs.renameSync(path.join(linkedPlan, PLAN), path.join(linkedPlan, "test", "plan.md"));
+    fs.symlinkSync("plan.md", path.join(linkedPlan, PLAN));
+    assert.equal(
+      unreplayable(linkedPlan),
+      "the accepted regression's plan is a link, so its replay would read the candidate's (test/regression-plan.md)",
+    );
     // And checker code reached through a link runs, and imports, from where the link leads.
     const throughLink = regressionCandidate("kept");
     fs.mkdirSync(path.join(throughLink, "scripts"), { recursive: true });
