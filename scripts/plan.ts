@@ -138,17 +138,17 @@ export function planRun({
 }): PlanRun {
   const run = testRun({ testing, tested, conditions });
   const cases = givenCases ?? repoCases(testing);
-  // Map each Case's key to its commitment places (Suite identities), read from
-  // the testing state's files. Cases are not enumerated by the Plan; they are
-  // found here through the links they hold.
-  const placesByCase = new Map(cases.map((c) => [`${c.file}:${c.title}`, c.places]));
+  // `cases[i]` and `run.observations[i]` correspond to the same Case: `observe()`
+  // matches reports to cases in order, one-to-one, so positional indexing is correct
+  // even when two Cases share the same `file:title` address. A Map keyed by address
+  // would silently drop the first of any two Cases at the same address.
   return {
     plan,
     run,
     suites: plan.suites.map(({ place, shownBy }) => ({
       place,
       shownBy,
-      observations: run.observations.filter((obs) => placesByCase.get(`${obs.file}:${obs.title}`)?.includes(place)),
+      observations: run.observations.filter((_, i) => cases[i]?.places.includes(place)),
     })),
   };
 }
