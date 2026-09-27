@@ -56,7 +56,7 @@ test("a failed write leaves no partial Idea and its name remains recordable", (t
   assert.deepEqual(ideaErrors(dir), []);
 });
 
-test("a crash during writing leaves the Idea's name free and exposes only invalid staging", () => {
+test("a crash leaves the Idea's name free and its hidden staging directory reported", () => {
   const dir = emptyDir();
   const context = path.join(dir, "context.md");
   fs.writeFileSync(context, modular().context);
@@ -86,7 +86,7 @@ test("a crash during writing leaves the Idea's name free and exposes only invali
   ]);
 });
 
-test("checks complete records, refuses malformed ones, and leaves guidance beside Ideas alone", () => {
+test("allows only the Idea field without defining lifecycle state, and leaves guidance beside records alone", () => {
   const dir = emptyDir();
   fs.writeFileSync(path.join(dir, "AGENTS.md"), "Local guidance.\n");
   recordIdea(dir, "modular-system", modular());
