@@ -122,6 +122,20 @@ test("an init that does not finish in time is stopped and reported, even if it i
   ]);
 });
 
+test("a stopped init that still holds its scratch copy for a moment is reported, not an error of the check", (t) => {
+  // Windows can keep a killed process's working directory busy for a moment after it stops: removing it at once
+  // fails with EBUSY, so the scratch copy must be removed with retries, as Node's rmSync does when asked to.
+  const rmSync = fs.rmSync;
+  t.mock.method(fs, "rmSync", (target: fs.PathLike, options?: fs.RmOptions) => {
+    if (!options?.maxRetries)
+      throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${target}'`), { code: "EBUSY" });
+    return rmSync(target, options);
+  });
+  assert.deepEqual(birthErrors(stuckSkill("ignores-sigterm"), 1000), [
+    "ignores-sigterm: running scripts/init.ts did not finish within 1000 ms",
+  ]);
+});
+
 test("checking runs init in a scratch copy, never over the skill", () => {
   const before = fs.readFileSync(`${skill("hand-edited")}/SKILL.md`);
   birthErrors(skill("hand-edited"));
