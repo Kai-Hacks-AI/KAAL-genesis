@@ -1,4 +1,4 @@
 {
   "type": "module",
-  "scripts": { "dependencies": "node make-cases.js", "test": "tsx --test scripts/*.test.ts" }
+  "scripts": { "dependencies": "node make-cases.js", "test": "tsx --test scripts/*.test.ts", "regression:check": "tsx scripts/check-regression.ts" }
 }

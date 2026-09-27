@@ -87,9 +87,12 @@ export function unreplayable(repo: string): string | undefined {
   const escaping = outsideLinks(repo);
   if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
   // The checker is found from where it starts, so it must start where the command line that runs it says.
-  const command = (scripts as Record<string, string> | undefined)?.["regression:check"];
+  const command = checkCommand(repo);
   if (command !== undefined && command !== CHECK_COMMAND)
     return `the accepted regression's checker is run as "${command}", not "${CHECK_COMMAND}", so its code could not be found`;
+  const configured = typescriptConfig(repo).outside;
+  if (configured)
+    return `the accepted regression's TypeScript configuration extends one outside its state (${configured})`;
   // The replay copies its inputs by name, and a name that is not UTF-8 has none it could be copied by.
   // Nor has a link whose target is not UTF-8 a target that could be followed by name.
   const unnamed = [...regressionInputs(repo)]
@@ -229,13 +232,48 @@ export function classify(trusted: string, candidate: string, base: string): Clas
  */
 export function judgeFiles(repo: string): string[] {
   // Everything that decides what the install puts in place: the manifest, either lockfile, and npm's own settings.
-  return ["package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc", ...checkerCode(repo).found];
+  return [
+    "package.json",
+    "package-lock.json",
+    "npm-shrinkwrap.json",
+    ".npmrc",
+    // How the checker and the cases are compiled.
+    ...typescriptConfig(repo).files,
+    ...checkerCode(repo).found,
+  ];
 }
 
 /** Where the checker starts: the command line `regression:check` runs, and the reporter it hands the test runner. */
 export const CHECKER = ["scripts/check-regression.ts", "scripts/regression-reporter.ts"];
 /** The one command line a state may run its checker by, so the checker is always found where it starts. */
 const CHECK_COMMAND = `tsx ${CHECKER[0]}`;
+
+/** The command line a state runs its checker by, if it names one. */
+function checkCommand(repo: string): string | undefined {
+  const manifest = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  return manifest.scripts?.["regression:check"];
+}
+
+/**
+ * How TypeScript is compiled for the checker and the cases: a state's
+ * `tsconfig.json` and every local configuration it extends, in order, or the
+ * first `extends` that leads out of the state, which the identity cannot see.
+ */
+function typescriptConfig(repo: string): { files: string[]; outside?: string } {
+  const files: string[] = [];
+  let at = "tsconfig.json";
+  while (fs.existsSync(path.join(repo, at)) && !files.includes(at)) {
+    files.push(at);
+    const base = /"extends"\s*:\s*"(\.{1,2}\/[^"]+)"/.exec(fs.readFileSync(path.join(repo, at), "utf8"))?.[1];
+    if (!base) break;
+    const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
+    if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
+    at = fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`;
+  }
+  return { files };
+}
 
 type BuildError = { text: string; location?: { file: string } | null };
 
@@ -611,6 +649,12 @@ export function regressionErrors(trusted: string, candidate: string, base: strin
     ...(repoCases(candidate).length
       ? []
       : ["as the next accepted regression, its npm test would run no case it can name"]),
+    // Once accepted, its own checker judges every later candidate, so it must hold one, run as it is run.
+    ...(fs.existsSync(path.join(candidate, CHECKER[0])) && checkCommand(candidate) === CHECK_COMMAND
+      ? []
+      : [
+          `as the next accepted regression, it has no checker to judge the next candidate with: ${CHECKER[0]}, run by "regression:check": "${CHECK_COMMAND}"`,
+        ]),
     // Its links are what choose which of its cases protect which commitment, so they must hold from its files.
     ...linkErrors(candidate).map((error) => `as the next accepted regression, ${error}`),
   ];

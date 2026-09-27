@@ -517,6 +517,21 @@ test(
 );
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("a candidate that would leave no checker to judge the next candidate with is refused before it is accepted", () => {
+  const checkless = regressionCandidate("kept");
+  fs.rmSync(path.join(checkless, "scripts", "check-regression.ts"));
+  const manifest = path.join(checkless, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+  delete pkg.scripts["regression:check"];
+  fs.writeFileSync(manifest, JSON.stringify(pkg));
+  assert.ok(
+    regressionErrors(regressionTrusted(), checkless, BASE).includes(
+      'as the next accepted regression, it has no checker to judge the next candidate with: scripts/check-regression.ts, run by "regression:check": "tsx scripts/check-regression.ts"',
+    ),
+  );
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a state whose judging depends on files outside it cannot be replayed: local packages, links out of it, and checker code imported from outside it", () => {
   const local = regressionCandidate("kept");
   const pkg = path.join(local, "package.json");
@@ -601,6 +616,7 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
     const throughLink = regressionCandidate("kept");
     fs.mkdirSync(path.join(throughLink, "scripts"), { recursive: true });
     fs.writeFileSync(path.join(throughLink, "check.ts"), 'import "../change/evil.js";\n');
+    fs.rmSync(path.join(throughLink, "scripts", "check-regression.ts"));
     fs.symlinkSync("../check.ts", path.join(throughLink, "scripts", "check-regression.ts"));
     assert.equal(
       unreplayable(throughLink),
@@ -637,6 +653,19 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   assert.equal(
     unreplayable(moved),
     'the accepted regression\'s checker is run as "tsx judge/check.ts", not "tsx scripts/check-regression.ts", so its code could not be found',
+  );
+  // How TypeScript compiles the checker and the cases is part of how it judges, down to a local configuration it extends.
+  const configured = regressionCandidate("kept");
+  fs.writeFileSync(path.join(configured, "tsconfig.json"), '{ "extends": "./base.json" }\n');
+  fs.writeFileSync(path.join(configured, "base.json"), '{ "compilerOptions": { "jsx": "react" } }\n');
+  const beforeConfig = regressionIdentity(configured);
+  fs.writeFileSync(path.join(configured, "base.json"), '{ "compilerOptions": { "jsx": "preserve" } }\n');
+  assert.notEqual(regressionIdentity(configured), beforeConfig);
+  // One that extends a configuration outside the state is refused: the identity could not see it.
+  fs.writeFileSync(path.join(configured, "tsconfig.json"), '{ "extends": "../elsewhere/tsconfig.json" }\n');
+  assert.equal(
+    unreplayable(configured),
+    "the accepted regression's TypeScript configuration extends one outside its state (tsconfig.json: ../elsewhere/tsconfig.json)",
   );
   // And one that names no file the state holds is refused: whatever satisfied it, the identity would not see.
   fs.rmSync(path.join(policy, "scripts", "policy.mts"));
