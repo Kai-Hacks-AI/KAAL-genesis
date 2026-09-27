@@ -354,6 +354,16 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   const dangling = served(`Serves: ${PLAN}`);
   fs.symlinkSync("nowhere.md", path.join(dangling, "suites", "ghost.md"));
   assert.deepEqual(linkErrors(dangling), ["suites/ghost.md: no suite is stated there"]);
+  // Only the Regression Plan names commitments, whose cases say so through their links; another plan is carried by
+  // the suites that serve it, so a commitment it names would be checked by nothing.
+  fs.appendFileSync(
+    path.join(forward, "plans", "release.md"),
+    "\n## Commitments\n\n1. Adding. Stated as `src/add.ts`. Shown by the seal checks.\n",
+  );
+  assert.deepEqual(linkErrors(forward), [
+    "plans/release.md: names commitments, which only the Regression Plan does; it is carried by the suites that serve it",
+  ]);
+  fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });

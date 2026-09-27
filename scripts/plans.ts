@@ -192,6 +192,12 @@ export function planErrors(repo: string): string[] {
       errors.push(wrong);
       continue;
     }
+    // Only the Regression Plan names commitments: the links of KAAL's cases are checked against its commitments alone,
+    // so one another plan named would be checked by nothing. Another plan is carried by the suites that serve it.
+    if (plan !== PLAN && section(fs.readFileSync(path.join(repo, plan), "utf8").replace(/\r\n/g, "\n"), "Commitments"))
+      errors.push(
+        `${plan}: names commitments, which only the Regression Plan does; it is carried by the suites that serve it`,
+      );
     try {
       const { proof, data } = readPlan(repo, plan);
       const dataWrong = data === undefined ? undefined : planDataError(repo, plan, data);
