@@ -377,6 +377,14 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## As runs read it\n\n```yaml\n```\n");
   assert.deepEqual(linkErrors(forward), []);
   fs.rmSync(path.join(forward, "plans", "bare.md"));
+  // Where plans and suites are stated is a directory, or the state says it is not.
+  const flat = regressionCandidate("kept");
+  fs.writeFileSync(path.join(flat, "plans"), "not a directory\n");
+  fs.writeFileSync(path.join(flat, "suites"), "not a directory\n");
+  assert.deepEqual(linkErrors(flat), [
+    "suites: not a directory, where KAAL states its suites",
+    "plans: not a directory, where KAAL states its plans",
+  ]);
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });

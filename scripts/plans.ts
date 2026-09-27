@@ -45,7 +45,8 @@ export function planError(repo: string, place: string): string | undefined {
 /** Every suite `repo` states, by place, with the plans it says it serves and the lines that look like it but are not. */
 export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
   const dir = path.join(repo, SUITES);
-  if (!fs.existsSync(dir)) return [];
+  // What is not a directory states no suite; the links check says so.
+  if (!fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
   return (
     fs
       .readdirSync(dir)
@@ -203,9 +204,11 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
  */
 export function planErrors(repo: string): string[] {
   const errors: string[] = [];
+  const where = fs.statSync(path.join(repo, PLANS), { throwIfNoEntry: false });
+  if (where && !where.isDirectory()) errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
   const plans = [
     ...(fs.existsSync(path.join(repo, PLAN)) ? [PLAN] : []),
-    ...(fs.existsSync(path.join(repo, PLANS))
+    ...(where?.isDirectory()
       ? fs
           .readdirSync(path.join(repo, PLANS))
           .sort()
