@@ -6,19 +6,25 @@ import YAML from "yaml";
  * A defect is a persistent record that something intended to hold was
  * observed not to hold. Each defect is a directory in the defects directory,
  * named for the defect, holding `defect.md`: what was intended to hold, where
- * it was observed not to hold, the cases that test whether it holds, and what
- * was observed. It never changes once written. A defect records no state of
- * its own: whether it still fails is shown by running the cases that test it,
- * not by the record. The observation, the defect and any repair stay
- * distinct: a repair may intend to repair a defect, but only its cases show
- * whether it holds.
+ * it was observed not to hold, and what was observed. It never changes once
+ * written: what was observed stays observed. A defect records no state of its
+ * own and names nothing that tests it; what tests a defect points at it. The
+ * observation, the defect and any repair stay distinct.
  */
 
 export const DEFECT = "defect.md";
 
-export type Defect = { name: string; holds: string; observed: string; testedBy: string[] };
+export type Defect = { name: string; holds: string; observed: string };
 
 const NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** Names Windows reserves for devices, which no directory there can have. */
+const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
+const NAMED = "lowercase letters, digits and single hyphens, never a name Windows reserves such as con or nul";
+
+/** Whether `name` can name a defect's directory on every platform. */
+function named(name: string): boolean {
+  return NAME.test(name) && !RESERVED.test(name);
+}
 
 /** The fields of the record at `file`, or why it is not a record. */
 function fieldsOf(file: string): Record<string, unknown> | string {
@@ -38,39 +44,27 @@ function required(value: string, what: string): void {
   if (!value.trim()) throw new Error(`${what} is required`);
 }
 
-/** Whether `value` is a non-empty list of cases, each named. */
-function cases(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length > 0 && value.every((c) => typeof c === "string" && c.trim() !== "");
-}
-
 /**
  * Records the defect `name` in `dir`: `holds`, what was intended to hold;
- * `observed`, where it was observed not to hold; `testedBy`, the cases that
- * test whether it holds, each named as the using system addresses its cases;
- * and `observation`, what was observed. Refuses a name that is not lowercase
- * letters, digits and single hyphens, and a defect that is already recorded,
- * so a record is never overwritten. Returns the record's path.
+ * `observed`, where it was observed not to hold; and `observation`, what was
+ * observed. Refuses a name that is not lowercase letters, digits and single
+ * hyphens or that Windows reserves, and a defect that is already recorded, so
+ * a record is never overwritten. Returns the record's path.
  */
 export function recordDefect(
   dir: string,
   name: string,
-  {
-    holds,
-    observed,
-    testedBy,
-    observation,
-  }: { holds: string; observed: string; testedBy: string[]; observation: string },
+  { holds, observed, observation }: { holds: string; observed: string; observation: string },
 ): string {
-  if (!NAME.test(name)) throw new Error(`${name}: a defect's name is lowercase letters, digits and single hyphens`);
+  if (!named(name)) throw new Error(`${name}: a defect's name is ${NAMED}`);
   required(holds, "holds");
   required(observed, "observed");
-  if (!cases(testedBy)) throw new Error("tested-by is required: the cases that test whether it holds");
   required(observation, "the observation");
   const at = path.join(dir, name);
   if (fs.existsSync(at)) throw new Error(`${at}: already recorded; a defect's record never changes`);
   fs.mkdirSync(at, { recursive: true });
   const file = path.join(at, DEFECT);
-  const fields = YAML.stringify({ holds, observed, "tested-by": testedBy }).trimEnd();
+  const fields = YAML.stringify({ holds, observed }).trimEnd();
   fs.writeFileSync(file, `---\n${fields}\n---\n\n${observation.trim()}\n`, { flag: "wx" });
   return file;
 }
@@ -86,23 +80,15 @@ export function readDefects(dir: string): Defect[] {
     .flatMap((name) => {
       const defect = fieldsOf(path.join(dir, name, DEFECT));
       if (typeof defect === "string") return [];
-      const testedBy = defect["tested-by"];
-      return [
-        {
-          name,
-          holds: String(defect.holds),
-          observed: String(defect.observed),
-          testedBy: Array.isArray(testedBy) ? testedBy.map(String) : [],
-        },
-      ];
+      return [{ name, holds: String(defect.holds), observed: String(defect.observed) }];
     });
 }
 
 /**
  * Everything that keeps `dir` from being a directory of defect records: a
  * directory that is not named as a defect, a defect without its record, a
- * record without what should hold, where it was observed, the cases that
- * test it or what was observed, and anything else in a defect's directory.
+ * record without what should hold, where it was observed or what was
+ * observed, and anything else in a defect's directory.
  * Files beside the defects, such as guidance for working among them, are the
  * using system's and are left alone.
  */
@@ -112,10 +98,8 @@ export function defectErrors(dir: string): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
     if (!entry.isDirectory()) continue;
     const at = path.join(dir, entry.name);
-    if (!NAME.test(entry.name)) {
-      errors.push(
-        `${at}: not a defect; each defect is a directory named with lowercase letters, digits and single hyphens`,
-      );
+    if (!named(entry.name)) {
+      errors.push(`${at}: not a defect; each defect is a directory named with ${NAMED}`);
       continue;
     }
     for (const other of fs.readdirSync(at).filter((f) => f !== DEFECT))
@@ -133,8 +117,6 @@ export function defectErrors(dir: string): string[] {
     for (const field of ["holds", "observed"])
       if (typeof data[field] !== "string" || !(data[field] as string).trim())
         errors.push(`${target}: ${field} is required`);
-    if (!cases(data["tested-by"]))
-      errors.push(`${target}: tested-by is required: the cases that test whether it holds`);
     if (
       !fs
         .readFileSync(target, "utf8")

@@ -5,11 +5,6 @@ observed: the case "an init that does not finish in time is stopped and
   reported, even if it ignores SIGTERM" in
   skills/using-skills/scripts/skills.test.ts, run on Windows with Node 22
   (test-windows, commit f6599f2)
-tested-by:
-  - "`skills/using-skills/scripts/skills.test.ts`: an init that does not finish
-    in time is stopped and reported, even if it ignores SIGTERM"
-  - "`skills/using-skills/scripts/skills.test.ts`: a stopped init that still
-    holds its scratch copy for a moment is reported, not an error of the check"
 ---
 
 Checking a skill whose init ignores SIGTERM and does not finish in time failed instead of reporting it:
