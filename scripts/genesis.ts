@@ -40,7 +40,7 @@ export const LEARNING = "26/09/27/01";
 /**
  * KAAL's current understanding, born in order into the BRAIN at `root`: each
  * node says what KAAL's current node of that name says, without how KAAL came
- * to it. What Genesis births is stated in
+ * to it, such as what taught this KAAL a meaning: a new KAAL lived none of it. What Genesis births is stated in
  * brain/learning/genesis/26/09/27/01/nodes/genesis.md.
  */
 function birth(root: string): void {
@@ -143,8 +143,6 @@ BASS is KAAL's understanding. Skills remain independent of BASS and can be reuse
     slug: "testing",
     name: "testing",
     meaning: `# Testing
-
-KAAL uses the **testing** skill because Genesis showed that its testing had outgrown Bare.
 
 KAAL's testing has one anchor, \`test/\`, whose entry point the skill creates. Besides that entry point, \`test/\` holds only KAAL's Regression Plan; tests and their data stay with what they test.
 

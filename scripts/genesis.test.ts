@@ -74,8 +74,9 @@ test("the entry points Genesis births are byte-identical to KAAL's own", () => {
     assert.equal(produced[file], fs.readFileSync(path.join(REPO, file), "utf8"), file);
 });
 
+// Genesis may leave out of a node how KAAL came to its meaning, but may not add meaning KAAL does not hold.
 // Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
-test("every sentence Genesis births is one KAAL's current node of that name holds", () => {
+test("Genesis adds nothing KAAL does not hold: every sentence it births is one KAAL's current node of that name holds", () => {
   const produced = files(born());
   for (const name of BORN) {
     const node = produced[`brain/learning/genesis/${LEARNING}/nodes/${name}.md`]!;
