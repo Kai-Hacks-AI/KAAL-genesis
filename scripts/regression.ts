@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildSync } from "esbuild";
 import { learningOf, nodeFiles, parseNode, relativeIdentity } from "../skills/using-brain/scripts/brain.js";
 import {
   type Case,
@@ -85,6 +86,10 @@ export function unreplayable(repo: string): string | undefined {
     return `the accepted regression's install takes packages other than from the registry as its lockfile pins them (${unpinned.join(", ")}), which its identity does not cover`;
   const escaping = outsideLinks(repo);
   if (escaping.length) return `the accepted regression's inputs link outside its state (${escaping.join(", ")})`;
+  // The checker is found from where it starts, so it must start where the command line that runs it says.
+  const command = (scripts as Record<string, string> | undefined)?.["regression:check"];
+  if (command !== undefined && command !== CHECK_COMMAND)
+    return `the accepted regression's checker is run as "${command}", not "${CHECK_COMMAND}", so its code could not be found`;
   // The replay copies its inputs by name, and a name that is not UTF-8 has none it could be copied by.
   // Nor has a link whose target is not UTF-8 a target that could be followed by name.
   const unnamed = [...regressionInputs(repo)]
@@ -104,7 +109,9 @@ export function unreplayable(repo: string): string | undefined {
   if (uncopied.length)
     return `the accepted regression's cases or test data link to what its replay does not copy (${uncopied.join(", ")})`;
   // The checker's imports are followed from where its files are named; one reached through a link runs from elsewhere.
-  const linked = checkerCode(repo).found.filter((file) =>
+  const linked = [
+    ...new Set([...CHECKER.filter((file) => fs.existsSync(path.join(repo, file))), ...checkerCode(repo).found]),
+  ].filter((file) =>
     file.split("/").some((_, i, parts) => entryAt(path.join(repo, ...parts.slice(0, i + 1)))?.kind === "link"),
   );
   if (linked.length) return `the accepted regression's checker code is reached through a link (${linked.join(", ")})`;
@@ -225,47 +232,75 @@ export function judgeFiles(repo: string): string[] {
   return ["package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc", ...checkerCode(repo).found];
 }
 
-/** The TypeScript sources an emitted name can stand for, as tsx resolves a relative import. */
-const TS_SOURCES: [string, string[]][] = [
-  [".js", [".ts", ".tsx"]],
-  [".jsx", [".tsx"]],
-  [".mjs", [".mts"]],
-  [".cjs", [".cts"]],
-];
+/** Where the checker starts: the command line `regression:check` runs, and the reporter it hands the test runner. */
+export const CHECKER = ["scripts/check-regression.ts", "scripts/regression-reporter.ts"];
+/** The one command line a state may run its checker by, so the checker is always found where it starts. */
+const CHECK_COMMAND = `tsx ${CHECKER[0]}`;
+
+type BuildError = { text: string; location?: { file: string } | null };
 
 /**
- * The checker's own code, found from its entry points through their relative
- * imports, and every such import that leads out of the state or names no file
- * the state holds, as `file: specifier`: code either way would run as part of
- * the checker, but is no part of the state it judges with.
+ * The checker's own code: every file the checker loads from its entry points,
+ * as esbuild, which tsx runs on, resolves their imports (comments, extensions
+ * and all), and every file one of them names by a relative URL built from
+ * its own module URL. Also every import, as `file: specifier`, that leads out of the
+ * state, and every one that names nothing the state holds: code either way
+ * would run as part of the checker, but is no part of the state it judges with.
  */
 function checkerCode(repo: string): { found: string[]; escaping: string[]; unresolved: string[] } {
   const found = new Set<string>();
   const escaping: string[] = [];
   const unresolved: string[] = [];
-  const visit = (rel: string) => {
-    if (found.has(rel) || !fs.existsSync(path.join(repo, rel))) return;
-    found.add(rel);
-    const source = fs.readFileSync(path.join(repo, rel), "utf8");
-    for (const m of source.matchAll(/(?:from\s+|import\s*\(?\s*|new URL\(\s*)["'](\.{1,2}\/[^"']+)["']/g)) {
-      const target = path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[1]!));
-      if (target === ".." || target.startsWith("../")) {
-        escaping.push(`${rel}: ${m[1]}`);
-        continue;
-      }
-      // As tsx resolves it: the file named, or the TypeScript file an emitted name stands for.
-      const found = [
-        target,
-        ...TS_SOURCES.flatMap(([js, ts]) =>
-          target.endsWith(js) ? ts.map((t) => target.slice(0, -js.length) + t) : [],
-        ),
-      ].find((file) => fs.statSync(path.join(repo, file), { throwIfNoEntry: false })?.isFile());
-      if (found) visit(found);
-      else unresolved.push(`${rel}: ${m[1]}`);
-    }
+  const leaves = (from: string, specifier: string) => {
+    const target = path.posix.normalize(path.posix.join(path.posix.dirname(from), specifier));
+    return target === ".." || target.startsWith("../");
   };
-  for (const entry of ["scripts/check-regression.ts", "scripts/regression-reporter.ts"]) visit(entry);
-  return { found: [...found].sort(), escaping, unresolved };
+  let entries = CHECKER.filter((file) => fs.existsSync(path.join(repo, file)));
+  while (entries.length) {
+    let inputs: Record<string, { imports: { path: string; original?: string }[] }>;
+    try {
+      inputs = buildSync({
+        entryPoints: entries,
+        absWorkingDir: path.resolve(repo),
+        bundle: true,
+        write: false,
+        outdir: "checker",
+        metafile: true,
+        platform: "node",
+        format: "esm",
+        packages: "external",
+        preserveSymlinks: true,
+        treeShaking: false,
+        logLevel: "silent",
+      }).metafile.inputs;
+    } catch (error) {
+      for (const { text, location } of (error as { errors?: BuildError[] }).errors ?? [{ text: String(error) }]) {
+        const specifier = /Could not resolve "([^"]+)"/.exec(text)?.[1];
+        const from = location?.file ?? "?";
+        if (specifier && leaves(from, specifier)) escaping.push(`${from}: ${specifier}`);
+        else unresolved.push(specifier ? `${from}: ${specifier}` : `${from}: ${text}`);
+      }
+      break;
+    }
+    for (const [input, { imports }] of Object.entries(inputs)) {
+      if (input.startsWith("../") || path.isAbsolute(input)) continue;
+      found.add(input);
+      for (const { path: to, original } of imports)
+        if (original && (to.startsWith("../") || path.isAbsolute(to))) escaping.push(`${input}: ${original}`);
+    }
+    // A file the checker hands on by URL, as it hands the reporter to the test runner, is its code too.
+    entries = [...found].flatMap((file) =>
+      [...fs.readFileSync(path.join(repo, file), "utf8").matchAll(/new URL\(\s*["'](\.{1,2}\/[^"']+)["']/g)].flatMap(
+        ([, specifier]) => {
+          const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier!));
+          if (leaves(file, specifier!)) return (escaping.push(`${file}: ${specifier}`), []);
+          if (!fs.existsSync(path.join(repo, target))) return (unresolved.push(`${file}: ${specifier}`), []);
+          return found.has(target) ? [] : [target];
+        },
+      ),
+    );
+  }
+  return { found: [...found].sort(), escaping: [...new Set(escaping)], unresolved: [...new Set(unresolved)] };
 }
 
 /**

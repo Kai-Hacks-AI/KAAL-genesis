@@ -614,6 +614,30 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   fs.writeFileSync(path.join(policy, "scripts", "policy.mts"), "export const rule = 1;\n");
   assert.ok(judgeFiles(policy).includes("scripts/policy.mts"));
   assert.equal(unreplayable(policy), undefined);
+  // However the import is written: a comment inside it hides nothing, as the checker's own module loader sees it.
+  const commented = regressionCandidate("kept");
+  fs.mkdirSync(path.join(commented, "scripts"), { recursive: true });
+  fs.writeFileSync(
+    path.join(commented, "scripts", "check-regression.ts"),
+    'import policy from /* why */ "./policy.js";\nconsole.log(policy);\n',
+  );
+  fs.writeFileSync(path.join(commented, "scripts", "policy.ts"), "export default 1;\n");
+  assert.ok(judgeFiles(commented).includes("scripts/policy.ts"));
+  const beforePolicy = regressionIdentity(commented);
+  fs.writeFileSync(path.join(commented, "scripts", "policy.ts"), "export default 2;\n");
+  assert.notEqual(regressionIdentity(commented), beforePolicy);
+  // And the checker is found only where it starts, so a state that runs it from anywhere else is refused.
+  const moved = regressionCandidate("kept");
+  const manifest = path.join(moved, "package.json");
+  const movedPkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+  fs.writeFileSync(
+    manifest,
+    JSON.stringify({ ...movedPkg, scripts: { ...movedPkg.scripts, "regression:check": "tsx judge/check.ts" } }),
+  );
+  assert.equal(
+    unreplayable(moved),
+    'the accepted regression\'s checker is run as "tsx judge/check.ts", not "tsx scripts/check-regression.ts", so its code could not be found',
+  );
   // And one that names no file the state holds is refused: whatever satisfied it, the identity would not see.
   fs.rmSync(path.join(policy, "scripts", "policy.mts"));
   assert.equal(
