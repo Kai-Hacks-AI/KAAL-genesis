@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { learningOf, nodeFiles, parseNode } from "../skills/using-brain/scripts/brain.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
 import { genesis, LEARNING } from "./genesis.js";
 
@@ -14,15 +15,19 @@ const REPO = fileURLToPath(new URL("../", import.meta.url));
 /** What Genesis births: KAAL's current understanding of the skills it uses and of how it works. */
 const BORN = ["using-brain", "skill", "using-skills", "using-agents", "using-seals", "bass", "testing"];
 
-/** KAAL's current node of `name`: the one in its latest learning, which no later node supersedes. */
+/**
+ * KAAL's current node of `name` in its Genesis lineage: the node of that name,
+ * by its own frontmatter as BRAIN reads it, in the latest learning, which no
+ * later node supersedes, whatever file it is kept in.
+ */
 function current(name: string): { file: string; learning: string } {
-  const [latest] = fs
-    .globSync(`brain/learning/genesis/*/*/*/*/nodes/${name}.md`, { cwd: REPO })
-    .map((file) => file.split(path.sep).join("/"))
-    .sort()
-    .reverse();
+  const root = path.join(REPO, "brain/learning");
+  const [latest] = nodeFiles(root)
+    .map((file) => ({ file, ...learningOf(root, file), name: parseNode(file).name }))
+    .filter((node) => node.lineage === "genesis" && node.name === name)
+    .sort((a, b) => b.key.localeCompare(a.key));
   assert.ok(latest, `KAAL holds no node named ${name}`);
-  return { file: path.join(REPO, latest), learning: latest.split("/").slice(3, 7).join("/") };
+  return { file: latest.file, learning: latest.key };
 }
 
 /** The sentences of a node's meaning, and its headings, each as written. */
