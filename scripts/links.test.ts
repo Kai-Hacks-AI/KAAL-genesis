@@ -5,11 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { fileCases, linkErrors, PLAN } from "./links.js";
+import { fileCases, linkErrors, PLAN, repoCases, testedDefects } from "./links.js";
 import { regressionErrors } from "./regression.js";
-import { regressionCandidate, regressionTrusted } from "./test-data.js";
+import { kaal, regressionCandidate, regressionTrusted } from "./test-data.js";
 
-const REPO = fileURLToPath(new URL("../", import.meta.url));
+/** The subject of this file's cases about KAAL itself. */
+const KAAL = kaal();
 const CASES = "scripts/cases.test.ts";
 const GREETING = "brain/learning/k/26/01/01/01/nodes/greeting.md";
 const GREETS_LINK = `// Why: ${GREETING}\ntest("greets"`;
@@ -41,6 +42,32 @@ test("a case may point at several commitments, one link each", () => {
   assert.deepEqual(linkErrors(repo), []);
   const greets = fileCases(CASES, fs.readFileSync(path.join(repo, CASES), "utf8")).find((c) => c.title === "greets");
   assert.deepEqual(greets?.places, ["src/add.ts", GREETING]);
+});
+
+/** Where the greeting's case is kept, and what it relates to: the commitments it helps prove and the defects it tests. */
+function greetingCase(repo: string): { file: string; title: string; places: string[]; defects: string[] } {
+  const [found, ...more] = repoCases(repo).filter((c) => c.places.includes(GREETING));
+  assert.ok(found && !more.length, "exactly one case proves the greeting");
+  const tested = testedDefects(repo).tested.find((t) => t.file === found.file && t.title === found.title);
+  return { ...found, defects: tested?.defects ?? [] };
+}
+
+// Why: brain/learning/genesis/26/09/27/03/nodes/case.md
+test("a case moved to another file and retitled keeps every relation it states: nothing finds them by its address", () => {
+  const before = greetingCase(regressionCandidate("tested"));
+  const after = greetingCase(regressionCandidate("moved"));
+  assert.deepEqual(
+    [before, after].map(({ file, title }) => `${file}: ${title}`),
+    ["scripts/cases.test.ts: greets", "scripts/greetings.test.ts: greets whoever it is given"],
+  );
+  assert.deepEqual(
+    [before, after].map(({ places, defects }) => ({ places, defects })),
+    [
+      { places: [GREETING], defects: ["defects/greets-no-one"] },
+      { places: [GREETING], defects: ["defects/greets-no-one"] },
+    ],
+  );
+  assert.deepEqual(linkErrors(regressionCandidate("moved")), []);
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
@@ -207,13 +234,13 @@ test("a candidate that would leave the next accepted regression with links it ca
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("npm run links:check checks a checkout's links by its command line, and fails when they do not hold", () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")) as {
+  const pkg = JSON.parse(fs.readFileSync(path.join(KAAL, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
   };
   assert.equal(pkg.scripts["links:check"], "tsx scripts/check-links.ts");
   const tsx = fileURLToPath(import.meta.resolve("tsx/cli"));
   const run = (repo: string) =>
-    spawnSync(process.execPath, [tsx, path.join(REPO, "scripts", "check-links.ts"), repo], {
+    spawnSync(process.execPath, [tsx, path.join(KAAL, "scripts", "check-links.ts"), repo], {
       encoding: "utf8",
       env: { ...process.env, NODE_TEST_CONTEXT: undefined },
     });
@@ -226,5 +253,5 @@ test("npm run links:check checks a checkout's links by its command line, and fai
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("KAAL's own testing links hold from its files", () => {
-  assert.deepEqual(linkErrors(REPO), []);
+  assert.deepEqual(linkErrors(KAAL), []);
 });

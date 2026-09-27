@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import { birthErrors, checkSkills } from "../skills/using-skills/scripts/skills.js";
+import { kaal } from "./test-data.js";
 
-const SKILLS = fileURLToPath(new URL("../skills/", import.meta.url));
+/** KAAL's skills, the subject of this file's cases. */
+const SKILLS = path.join(kaal(), "skills");
 
 // Why: brain/learning/genesis/26/09/25/01/nodes/skill.md
 test("no skill imports another skill", () => {

@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import { type Case, caseFiles, fileCases, PLAN, planCommitments, unnamedCases } from "./links.js";
 import {
   classify,
@@ -16,9 +15,10 @@ import {
   unreplayable,
   type Result,
 } from "./regression.js";
-import { regressionCandidate, regressionTrusted } from "./test-data.js";
+import { kaal, regressionCandidate, regressionTrusted } from "./test-data.js";
 
-const REPO = fileURLToPath(new URL("../", import.meta.url));
+/** The subject of this file's cases about KAAL itself. */
+const KAAL = kaal();
 /** The trusted regression's identity, as the candidates in test-data/regression name it. */
 const BASE = "b".repeat(64);
 const GREETING = "brain/learning/k/26/01/01/01/nodes/greeting.md";
@@ -843,13 +843,13 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("KAAL's own plan states a place for every commitment and the accepted regression it was derived from, and its npm test can be replayed and names every case", () => {
-  const plan = fs.readFileSync(path.join(REPO, PLAN), "utf8");
+  const plan = fs.readFileSync(path.join(KAAL, PLAN), "utf8");
   assert.equal(planCommitments(plan).length, [...plan.matchAll(/^\d+\. /gm)].length);
   assert.match(planLedger(plan).base ?? "", /^[0-9a-f]{64}$/);
-  assert.equal(unreplayable(REPO), undefined);
+  assert.equal(unreplayable(KAAL), undefined);
   // What judges includes everything the checker imports, such as how BRAIN is read.
-  assert.ok(judgeFiles(REPO).includes("skills/using-brain/scripts/brain.ts"));
-  assert.deepEqual(unnamedCases(REPO), []);
+  assert.ok(judgeFiles(KAAL).includes("skills/using-brain/scripts/brain.ts"));
+  assert.deepEqual(unnamedCases(KAAL), []);
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
