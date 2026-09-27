@@ -538,6 +538,55 @@ test("the replay holds only the accepted regression's cases, none the candidate 
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the replay shows the accepted cases what the accepted regression knew: its case selection, and none of the candidate's additions its places reach", () => {
+  const trusted = regressionCandidate("kept");
+  const plan = path.join(trusted, PLAN);
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace(/^(2\. Greeting\..*)$/m, "$1\n3. Parts. Stated in each `parts/*/PART.md`. Shown by its cases."),
+  );
+  fs.mkdirSync(path.join(trusted, "parts", "one"), { recursive: true });
+  fs.writeFileSync(path.join(trusted, "parts", "one", "PART.md"), "one\n");
+  const selection = (
+    JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts: { test: string } }
+  ).scripts.test;
+  // A case that looks at the state as a whole, as a check of the regression's links does.
+  fs.writeFileSync(
+    path.join(trusted, "scripts", "view.test.ts"),
+    [
+      'import assert from "node:assert/strict";',
+      'import fs from "node:fs";',
+      'import test from "node:test";',
+      'test("sees the state as it was written against", () => {',
+      '  assert.deepEqual(fs.readdirSync("parts"), ["one"]);',
+      `  assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).scripts.test, ${JSON.stringify(selection)});`,
+      "});",
+      "",
+    ].join("\n"),
+  );
+  // The candidate adds a part, which its own cases prove, and selects its cases differently.
+  const candidate = regressionCandidate("kept");
+  fs.cpSync(path.join(trusted, "parts"), path.join(candidate, "parts"), { recursive: true });
+  fs.mkdirSync(path.join(candidate, "parts", "two"), { recursive: true });
+  fs.writeFileSync(path.join(candidate, "parts", "two", "PART.md"), "two\n");
+  const manifest = path.join(candidate, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+  fs.writeFileSync(manifest, JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, test: "tsx --test src/*.test.ts" } }));
+  const results = runTrusted(trusted, candidate);
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/view.test.ts").map((r) => r.outcome),
+    ["pass"],
+  );
+  // A candidate with a file where the accepted plan's directory belongs is judged, not crashed on.
+  const blocked = regressionCandidate("kept");
+  fs.rmSync(path.join(blocked, "test"), { recursive: true });
+  fs.writeFileSync(path.join(blocked, "test"), "not a directory\n");
+  assert.ok(runTrusted(regressionTrusted(), blocked).length > 0);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test(
   "the replay writes only inside its own copy, even where the candidate links a directory out of it",
   { skip: process.platform === "win32" },

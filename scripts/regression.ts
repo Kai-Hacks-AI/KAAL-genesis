@@ -593,6 +593,31 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
   for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
     fs.rmSync(within(code, rel), { force: true });
   const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
+  if (plan.length) {
+    // What a place of the accepted plan reaches by a wildcard, it knew by that place: anything there the accepted
+    // state does not have is the candidate's addition, which its own cases prove, so the accepted cases do not see it.
+    for (const place of planCommitments(fs.readFileSync(path.join(trusted, PLAN), "utf8")).filter((p) =>
+      p.includes("*"),
+    )) {
+      const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
+      for (const match of fs.globSync(place, { cwd: code })) {
+        const at = match.split(path.sep).slice(0, depth).join("/");
+        if (!fs.existsSync(path.join(trusted, at)) && inside(code, at))
+          fs.rmSync(within(code, at), { recursive: true, force: true });
+      }
+    }
+  }
+  // Which cases the regression has is the accepted regression's own selection, not the candidate's.
+  // The manifest is written afresh, never through a link the candidate may have made of it.
+  const manifest = within(code, "package.json");
+  const test = (
+    JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts?: { test?: string } }
+  ).scripts?.test;
+  const own = (
+    fs.statSync(manifest, { throwIfNoEntry: false })?.isFile() ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {}
+  ) as { scripts?: Record<string, string> };
+  fs.rmSync(manifest, { recursive: true, force: true });
+  fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
   for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
     const to = within(code, rel);
     fs.rmSync(to, { recursive: true, force: true });
@@ -622,6 +647,12 @@ function within(code: string, rel: string): string {
   for (let i = 1; i < parts.length; i++) {
     const at = path.join(code, ...parts.slice(0, i));
     const stat = fs.lstatSync(at, { throwIfNoEntry: false });
+    // Anything but a directory in the way, such as a file the candidate put there, is made one.
+    if (stat && !stat.isDirectory() && !stat.isSymbolicLink()) {
+      fs.rmSync(at, { force: true });
+      fs.mkdirSync(at);
+      continue;
+    }
     if (!stat?.isSymbolicLink()) continue;
     let real: string | undefined;
     try {
