@@ -340,8 +340,8 @@ export function linkErrors(repo: string): string[] {
   errors.push(...unnamedCases(repo).map((at) => `${at}: a case whose title cannot be read, so no link can follow it`));
   // Every suite is stated in its own place. One no case belongs to yet is still that suite: its concern gives it its
   // meaning, not its cases, and a run of it observes nothing, which is no evidence.
+  // Where suites are stated is no directory: said among the plans' errors, which runs of plans refuse too.
   const where = fs.statSync(path.join(repo, SUITES), { throwIfNoEntry: false });
-  if (where && !where.isDirectory()) errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
   const suiteFiles = where?.isDirectory()
     ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
     : [];

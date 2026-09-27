@@ -204,6 +204,9 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
  */
 export function planErrors(repo: string): string[] {
   const errors: string[] = [];
+  // What is not a directory states no suite and no plan, so no suite or plan a run should require goes unread.
+  const suites = fs.statSync(path.join(repo, SUITES), { throwIfNoEntry: false });
+  if (suites && !suites.isDirectory()) errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
   const where = fs.statSync(path.join(repo, PLANS), { throwIfNoEntry: false });
   if (where && !where.isDirectory()) errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
   const plans = [

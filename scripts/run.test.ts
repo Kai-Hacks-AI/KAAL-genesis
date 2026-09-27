@@ -498,6 +498,11 @@ test("a run of a plan is refused for one its testing state does not state, or st
   const miswritten = runState("plans");
   fs.appendFileSync(path.join(miswritten, "suites", "welsh.md"), "\nserves: plans/greeting.md\n");
   assert.throws(() => testRun({ testing: miswritten, plan: GREETING_PLAN }), /a line that serves no plan/);
+  // Nor one whose suites are stated where no directory is: no suite is then dropped from what the plan requires.
+  const flat = runState("plans");
+  fs.rmSync(path.join(flat, "suites"), { recursive: true });
+  fs.writeFileSync(path.join(flat, "suites"), "not a directory\n");
+  assert.throws(() => testRun({ testing: flat, plan: GREETING_PLAN }), /suites: not a directory/);
   // A suite that serves a plan is one its state states itself, never one reached through a link.
   const outside = runState("plans");
   fs.renameSync(path.join(outside, "suites"), path.join(outside, "elsewhere"));
