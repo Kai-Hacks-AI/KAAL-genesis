@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
 
 /**
@@ -196,10 +197,13 @@ export function caseSuites(repo: string): Member[] {
 /**
  * Why `place` is not a suite `repo` states, if it is not: KAAL states each of
  * its suites in a file of its own, `suites/<name>.md`, named in lowercase
- * words joined by hyphens, which must really be a file there, not a link.
+ * words joined by hyphens, as every system it runs on can keep it, which must
+ * really be a file there, not a link.
  */
 export function suiteError(repo: string, place: string): string | undefined {
   if (!SUITE_PLACE.test(place)) return `${place}: not a suite's place, which is ${SUITES}/<name>.md`;
+  const portable = portableNameError(path.posix.basename(place, ".md"), "a suite's name");
+  if (portable) return `${place}: ${portable}`;
   const file = path.join(repo, place);
   const real = fs.existsSync(file) ? path.relative(fs.realpathSync(repo), fs.realpathSync(file)) : undefined;
   if (real === undefined || !fs.statSync(file).isFile()) return `${place}: no suite is stated there`;

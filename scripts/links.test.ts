@@ -292,6 +292,11 @@ test("a suite line that belongs to no case, or names no suite stated in its own 
     linkErrors(suited((text) => text.replace("// Suite: suites/greeting.md", `// Suite: ${GREETING}`))),
     [`${CASES}: "greets" belongs to ${GREETING}: not a suite's place, which is suites/<name>.md`, IDLE],
   );
+  // A name Windows reserves for a device cannot be kept there, whatever its extension.
+  assert.deepEqual(linkErrors(suited((text) => text.replace("suites/greeting.md\n", "suites/con.md\n"))), [
+    `${CASES}: "greets" belongs to suites/con.md: a suite's name "con" is reserved on Windows`,
+    IDLE,
+  ]);
   const misnamed = suited();
   fs.writeFileSync(path.join(misnamed, "suites", "Farewell.md"), "# Farewell\n");
   assert.deepEqual(linkErrors(misnamed), ["suites/Farewell.md: not a suite's place, which is suites/<name>.md"]);
