@@ -158,6 +158,11 @@ test("the trusted replay hands the accepted cases the candidate itself as their 
     results.filter((r) => r.file === "scripts/subject.test.ts"),
     [{ file: "scripts/subject.test.ts", name: "judges the candidate itself", outcome: "pass" }],
   );
+  // As a run does, the replay takes a case marked todo as it went: its body ran and held.
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/todo.test.ts"),
+    [{ file: "scripts/todo.test.ts", name: "holds, though marked todo", outcome: "pass" }],
+  );
 });
 
 // Why: brain/learning/genesis/26/09/27/05/nodes/run.md

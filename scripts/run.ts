@@ -82,8 +82,7 @@ export function testRun({
   const report = (r: Positioned): Report => ({
     file: r.file,
     title: r.name,
-    // A todo case's body runs: reported as a skip, it held.
-    outcome: r.outcome === "fail" ? "failed" : r.outcome === "pass" || r.todo ? "passed" : "skipped",
+    outcome: r.outcome === "fail" ? "failed" : r.outcome === "pass" ? "passed" : "skipped",
   });
   // A failure the runner does not say came from executing the case, such as one cancelled before it started, or a hook
   // around it failing, did not exercise its claim: the case was not run, and the failure is kept apart, so it still

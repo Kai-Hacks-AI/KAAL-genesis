@@ -472,10 +472,9 @@ function unpinnedPackages(repo: string): string[] {
 export type Result = { file: string; name: string; outcome: "pass" | "fail" | "skip" };
 /**
  * A result with where the runner reported it, a case where it is declared and a file that did not run as a whole
- * at 1:1, whether it was marked todo, since its body ran, so a todo reported as a skip held, and for a failure,
- * how the runner says it failed.
+ * at 1:1, and for a failure, how the runner says it failed.
  */
-export type Positioned = Result & { line?: number; column?: number; todo?: boolean; failureType?: string };
+export type Positioned = Result & { line?: number; column?: number; failureType?: string };
 
 /**
  * Judges the trusted cases' results against the candidate. A case that did not
@@ -598,9 +597,9 @@ export function execute(code: string, files: string[], tested: string, positions
   // The runner reports where each file really is, so reports are read against where the cases really are.
   const root = fs.realpathSync(code);
   return lines.slice(0, -1).map((line) => {
-    const { file, name, outcome, line: at, column, todo, failureType } = JSON.parse(line) as Positioned;
+    const { file, name, outcome, line: at, column, failureType } = JSON.parse(line) as Positioned;
     const result = { file: path.relative(root, file).split(path.sep).join("/"), name, outcome };
-    return positions ? { ...result, line: at, column, todo, failureType } : result;
+    return positions ? { ...result, line: at, column, failureType } : result;
   });
 }
 

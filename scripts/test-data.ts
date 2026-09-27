@@ -178,9 +178,9 @@ export function runState(name: string): string {
 }
 
 /**
- * The trusted regression from test-data/regression with one more case, from
- * test-data/runs/replay, which passes only when the state it is handed is a
- * candidate itself, holding its own cases.
+ * The trusted regression from test-data/regression with cases from
+ * test-data/runs/replay: one that passes only when the state it is handed is
+ * a candidate itself, holding its own cases, and one marked todo that holds.
  */
 export function replayTrusted(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-trusted-"));
