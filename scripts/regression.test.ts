@@ -549,6 +549,8 @@ test("the replay shows the accepted cases what the accepted regression knew: its
   );
   fs.mkdirSync(path.join(trusted, "parts", "one"), { recursive: true });
   fs.writeFileSync(path.join(trusted, "parts", "one", "PART.md"), "one\n");
+  fs.mkdirSync(path.join(trusted, "parts", "three"), { recursive: true });
+  fs.writeFileSync(path.join(trusted, "parts", "three", "README"), "not yet a part\n");
   const selection = (
     JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts: { test: string } }
   ).scripts.test;
@@ -560,7 +562,7 @@ test("the replay shows the accepted cases what the accepted regression knew: its
       'import fs from "node:fs";',
       'import test from "node:test";',
       'test("sees the state as it was written against", () => {',
-      '  assert.deepEqual(fs.readdirSync("parts"), ["one"]);',
+      '  assert.deepEqual(fs.globSync("parts/*/PART.md").sort(), ["parts/one/PART.md"]);',
       `  assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).scripts.test, ${JSON.stringify(selection)});`,
       "});",
       "",
@@ -571,6 +573,8 @@ test("the replay shows the accepted cases what the accepted regression knew: its
   fs.cpSync(path.join(trusted, "parts"), path.join(candidate, "parts"), { recursive: true });
   fs.mkdirSync(path.join(candidate, "parts", "two"), { recursive: true });
   fs.writeFileSync(path.join(candidate, "parts", "two", "PART.md"), "two\n");
+  // Including where the accepted state already had the directory, but not the part.
+  fs.writeFileSync(path.join(candidate, "parts", "three", "PART.md"), "three\n");
   const manifest = path.join(candidate, "package.json");
   const pkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
   fs.writeFileSync(manifest, JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, test: "tsx --test src/*.test.ts" } }));

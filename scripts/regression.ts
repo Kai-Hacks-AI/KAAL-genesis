@@ -600,10 +600,12 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
       p.includes("*"),
     )) {
       const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
-      for (const match of fs.globSync(place, { cwd: code })) {
-        const at = match.split(path.sep).slice(0, depth).join("/");
-        if (!fs.existsSync(path.join(trusted, at)) && inside(code, at))
-          fs.rmSync(within(code, at), { recursive: true, force: true });
+      for (const match of fs.globSync(place, { cwd: code }).map((m) => m.split(path.sep).join("/"))) {
+        if (fs.existsSync(path.join(trusted, match))) continue;
+        // A match the accepted state lacks: all of it that is new, the wildcard's directory if that is new too.
+        const top = match.split("/").slice(0, depth).join("/");
+        const at = fs.existsSync(path.join(trusted, top)) ? match : top;
+        if (inside(code, at)) fs.rmSync(within(code, at), { recursive: true, force: true });
       }
     }
   }
