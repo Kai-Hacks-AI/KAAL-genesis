@@ -4,7 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { runTrusted, TESTED_STATE, TESTING_STATE } from "./regression.js";
-import { type Run, testRun } from "./run.js";
+import { PLAN, planCommitments } from "./links.js";
+import { planRequirements } from "./plans.js";
+import { planEvidence, type Run, testRun } from "./run.js";
 import { escapingState, kaal, regressionCandidate, replayTrusted, runState } from "./test-data.js";
 
 const RUN = "brain/learning/genesis/26/09/27/05/nodes/run.md";
@@ -326,4 +328,126 @@ test("a suite no case belongs to yet is still that suite: a run of it reaches no
   assert.equal(run.suite, "suites/welsh.md");
   assert.deepEqual(run.observations, []);
   assert.deepEqual(run.unaccounted, []);
+});
+
+const GREETING_PLAN = "plans/greeting.md";
+const HELLO = "scripts/hello.test.ts: says hello";
+const GOODBYE_BY_NAME = "scripts/farewell.test.ts: says goodbye to whoever it is given, by name";
+
+/** What a run of a plan observed of each requirement, by name, for reading. */
+function shown(run: Run): Record<string, string[]> {
+  return Object.fromEntries(
+    (run.requirements ?? []).map((r) => [r.name, r.observations.map((o) => `${o.file}: ${o.title}: ${o.observed}`)]),
+  );
+}
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a run of a plan reaches only the cases of the suites that say they serve it, each once, and records what it observed of each", () => {
+  const run = testRun({ testing: runState("plans"), plan: GREETING_PLAN });
+  assert.equal(run.plan, GREETING_PLAN);
+  // Not the case that belongs to no suite, which fails, nor the Welsh one, whose suite serves another plan.
+  assert.deepEqual(observed(run), {
+    [GOODBYE_BY_NAME]: "passed",
+    [HELLO]: "passed",
+    [HELLO_BY_NAME]: "passed",
+  });
+  assert.deepEqual(shown(run), {
+    "suites/greeting.md": [`${HELLO}: passed`, `${HELLO_BY_NAME}: passed`],
+    "suites/names.md": [`${GOODBYE_BY_NAME}: passed`, `${HELLO_BY_NAME}: passed`],
+  });
+  assert.deepEqual(run.unaccounted, []);
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("one suite serves several plans, and a plan keeps its purpose, unchanged, while the suites that carry it are replaced beneath it", () => {
+  assert.deepEqual(shown(testRun({ testing: runState("plans"), plan: "plans/naming.md" })), {
+    "suites/names.md": [`${GOODBYE_BY_NAME}: passed`, `${HELLO_BY_NAME}: passed`],
+  });
+  const [before, after] = [runState("plans"), runState("plans-decomposed")];
+  assert.equal(
+    fs.readFileSync(path.join(after, GREETING_PLAN), "utf8"),
+    fs.readFileSync(path.join(before, GREETING_PLAN), "utf8"),
+  );
+  assert.deepEqual(shown(testRun({ testing: after, plan: GREETING_PLAN })), {
+    "suites/names.md": [`${GOODBYE_BY_NAME}: passed`, `${HELLO_BY_NAME}: passed`],
+    "suites/plain-hello.md": [`${HELLO}: passed`],
+  });
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a plan stated before any suite serves it, or served only by testing that did not run, shows no positive evidence", () => {
+  const state = runState("plans");
+  const farewell = testRun({ testing: state, plan: "plans/farewell.md" });
+  assert.deepEqual([farewell.observations, farewell.requirements], [[], []]);
+  assert.equal(planEvidence(state, "plans/farewell.md", [farewell]).verdict, "not demonstrated");
+  const welsh = testRun({ testing: state, plan: "plans/welsh.md" });
+  assert.deepEqual(shown(welsh), { "suites/welsh.md": ["scripts/welsh.test.ts: says hello in Welsh: not run"] });
+  assert.equal(planEvidence(state, "plans/welsh.md", [welsh]).verdict, "not demonstrated");
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a plan's data is handed to the cases its run reaches, through whichever suite, and only they know how to use it", () => {
+  const state = runState("plans");
+  fs.writeFileSync(path.join(state, "plan-data", "greeting", "word.txt"), "hi\n");
+  // The same plan, other data: both cases that use it, reached through different suites, now observe it; the one that
+  // does not use it is observed as before.
+  assert.deepEqual(observed(testRun({ testing: state, plan: GREETING_PLAN })), {
+    [GOODBYE_BY_NAME]: "passed",
+    [HELLO]: "failed",
+    [HELLO_BY_NAME]: "failed",
+  });
+  // The data is the plan's: a run of the suite alone hands none, and the cases use their own.
+  assert.equal(observed(testRun({ testing: state, suite: "suites/greeting.md" }))[HELLO], "passed");
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a plan's conditions are what it requires, and a run records the conditions it had: one run demonstrates a plan only under its own", () => {
+  const state = runState("plans");
+  const run = testRun({ testing: state, plan: GREETING_PLAN });
+  const here = process.platform === "win32" ? "win32" : "linux";
+  const judged = planEvidence(state, GREETING_PLAN, [run]);
+  assert.deepEqual(
+    judged.requirements.map((r) => r.under.map((u) => `${u.conditions.platform}: ${u.verdict}`)),
+    [0, 1].map(() =>
+      ["linux", "win32"].map((platform) => `${platform}: ${platform === here ? "held" : "not demonstrated"}`),
+    ),
+  );
+  assert.equal(judged.verdict, "not demonstrated");
+  assert.throws(() => planEvidence(state, GREETING_PLAN, [{ ...run, plan: "plans/naming.md" }]), /shows nothing of/);
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a run of a plan is refused for one its testing state does not state, or states through a link, and for one it cannot read", () => {
+  const state = runState("plans");
+  assert.throws(
+    () => testRun({ testing: state, plan: "plans/unknown.md" }),
+    /plans\/unknown\.md: no plan is stated there/,
+  );
+  assert.throws(() => testRun({ testing: state, plan: "suites/names.md" }), /not a plan's place/);
+  assert.throws(() => testRun({ testing: state, suite: "suites/names.md", plan: "plans/naming.md" }), /not of both/);
+  fs.appendFileSync(
+    path.join(state, "plans", "naming.md"),
+    "\n## As runs read it\n\n```yaml\nsuites: [suites/names.md]\n```\n",
+  );
+  assert.throws(() => testRun({ testing: state, plan: "plans/naming.md" }), /runs read no suites of a plan/);
+  const linked = runState("plans");
+  fs.renameSync(path.join(linked, "plans"), path.join(linked, "stated"));
+  // A junction, so a directory link can be made on every platform without special rights.
+  fs.symlinkSync(path.join(linked, "stated"), path.join(linked, "plans"), "junction");
+  assert.throws(() => testRun({ testing: linked, plan: GREETING_PLAN }), /a plan stated through a link/);
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("KAAL's Regression Plan requires its commitments, the suites that serve it and the seal checks, under the conditions it states, and names no case", () => {
+  const requirements = planRequirements(kaal(), PLAN);
+  const kinds = (kind: string) => requirements.filter((r) => r.kind === kind);
+  const places = planCommitments(fs.readFileSync(path.join(kaal(), PLAN), "utf8"));
+  assert.deepEqual(
+    kinds("commitment").map((r) => r.name),
+    places,
+  );
+  assert.ok(kinds("suite").some((r) => r.name === "suites/without-git.md"));
+  assert.deepEqual(kinds("proof"), [{ name: "the seal checks", kind: "proof", under: [{ platform: "linux" }] }]);
+  for (const r of [...kinds("commitment"), ...kinds("suite")])
+    assert.deepEqual(r.under.map((c) => c.platform).sort(), ["linux", "win32"], r.name);
 });

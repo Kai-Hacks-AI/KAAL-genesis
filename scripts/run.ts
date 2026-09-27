@@ -3,26 +3,32 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { type Observation, observe, type Report } from "../skills/testing/scripts/observe.js";
-import { members, reached } from "../skills/testing/scripts/suite.js";
+import { type Conditions, evidence, type PlanRun } from "../skills/testing/scripts/plan.js";
+import { reached } from "../skills/testing/scripts/suite.js";
 import { caseFiles, caseSuites, ownedBySkill, repoCases, suiteError } from "./links.js";
+import { planDataError, planError, type PlanRequirement, planRequirements, readPlan } from "./plans.js";
 import { execute, type Positioned } from "./regression.js";
 
 /**
  * KAAL's runs of cases. A test run executes something testing can run, a
  * case, a suite or a plan; what a test run is, is the testing skill's. KAAL
- * runs cases, every case a state selects or a suite of them, and this is how
- * it does so, from files alone: both states are directories, and nothing here
- * asks Git or GitHub. What it means for KAAL is stated in
- * brain/learning/genesis/26/09/27/05/nodes/run.md, and what KAAL's suites are
- * in brain/learning/genesis/26/09/27/06/nodes/suite.md.
+ * runs cases, every case a state selects, a suite of them or what a plan
+ * requires, and this is how it does so, from files alone: both states are
+ * directories, and nothing here asks Git or GitHub. What it means for KAAL is
+ * stated in brain/learning/genesis/26/09/27/05/nodes/run.md, what KAAL's
+ * suites are in brain/learning/genesis/26/09/27/06/nodes/suite.md, and what
+ * its plans are in brain/learning/genesis/26/09/27/07/nodes/plan.md.
  *
- * A run of cases executes the cases a testing state selects, or those that
- * belong to one of its suites, found and addressed as KAAL reads its cases,
+ * A run of cases executes the cases a testing state selects, those that belong
+ * to one of its suites, or those a plan requires, found and addressed as KAAL reads its cases,
  * where they are kept, so they reach the code they import there; the tested
  * state is handed to them, so a case about a state judges that one. A run
  * keeps no record of itself: it is returned, and whoever started it may keep
  * or report it.
  */
+
+/** How a run hands the cases it reaches the test data their plan provides: a directory, by its absolute path. */
+export const PLAN_DATA = "KAAL_PLAN_DATA";
 
 export type Run = {
   /** The state that supplied what was run: here, its cases and their test data. */
@@ -31,19 +37,43 @@ export type Run = {
   tested: string;
   /** The suite run, by its place in the testing state, if the run was of a suite rather than of every case the state selects. */
   suite?: string;
+  /** The plan run, by its place in the testing state, if the run was of a plan. */
+  plan?: string;
+  /** For a run of a plan, what it observed of each requirement: the cases it reached for it, none for proof it did not reach. */
+  requirements?: { name: string; kind: PlanRequirement["kind"]; observations: Observation[] }[];
   /** What the run was executed under, where it can change what is observed: measured, and given by whoever started it. */
   conditions: Record<string, string>;
-  /** One observation for each case the run was to reach, every case the testing state selects or every case of its suite: passed, failed, or not run. */
+  /** One observation for each case the run was to reach, every case the testing state selects, of its suite or its plan requires: passed, failed, or not run. */
   observations: Observation[];
   /** What the executor reported that no case of the testing state accounts for, such as a file that did not run as a whole. */
   unaccounted: Report[];
 };
 
 /**
+ * What `runs` of `plan`, in the testing state `testing`, demonstrate of it, as
+ * the plan judges: each requirement under each set of conditions it states.
+ */
+export function planEvidence(testing: string, plan: string, runs: Run[]): ReturnType<typeof evidence> {
+  const shown = (run: Run): PlanRun => {
+    if (run.plan !== plan) throw new Error(`a run of ${run.plan ?? "no plan"} shows nothing of ${plan}`);
+    return {
+      conditions: run.conditions as Conditions,
+      unaccounted: run.unaccounted.length,
+      shown: Object.fromEntries((run.requirements ?? []).map((r) => [r.name, r.observations.map((o) => o.observed)])),
+    };
+  };
+  return evidence(
+    planRequirements(testing, plan).map(({ name, under }) => ({ name, under })),
+    runs.map(shown),
+  );
+}
+
+/**
  * Carries out a run of `testing`'s cases against `tested`, by default the
  * testing state itself; given a `suite`, by its place in the testing state, a
  * run of that suite, which reaches every case that belongs to it and no
- * other. `conditions` are those whoever starts the run knows and the run
+ * other; given a `plan`, a run of that plan, which reaches only what it
+ * requires, each case once, and hands its cases the data it provides. `conditions` are those whoever starts the run knows and the run
  * cannot measure, such as how the files were checked out; the platform and
  * runtime are measured, and refused if given.
  */
@@ -51,13 +81,16 @@ export function testRun({
   testing,
   tested = testing,
   suite,
+  plan,
   conditions = {},
 }: {
   testing: string;
   tested?: string;
   suite?: string;
+  plan?: string;
   conditions?: Record<string, string>;
 }): Run {
+  if (suite !== undefined && plan !== undefined) throw new Error("a run is of a suite or of a plan, not of both");
   const measured = { platform: process.platform, runtime: `node ${process.version}` };
   for (const key of Object.keys(conditions).filter((k) => Object.hasOwn(measured, k)))
     throw new Error(`${key}: a run measures it, so it cannot be given`);
@@ -79,21 +112,48 @@ export function testRun({
     // Reached through a link, a case file is reported where the link leads, not at its address in the testing state.
     if (at !== path.normalize(file)) throw new Error(`${file}: a case file reached through a link`);
   }
-  const cases = repoCases(testing).map(({ file, title }) => ({ file, title }));
+  const stated = repoCases(testing);
+  const cases = stated.map(({ file, title }) => ({ file, title }));
   // A suite is one the testing state states, and reaches the cases that say they belong to it there, none if no case
-  // belongs to it yet. Only their files
-  // are executed; what the state's other cases report there is theirs, and observes none of the suite's.
+  // belongs to it yet. A plan is one the testing state states, and reaches what it requires there: the cases of the
+  // suites that say they serve it and of the commitments it names, each once, and its proof other than cases, which a
+  // run of cases does not reach. Only the files of the cases reached are executed; what the state's other cases report
+  // there is theirs, and observes none of those reached.
   const joined = caseSuites(testing);
+  let requirements: PlanRequirement[] = [];
+  const handed: Record<string, string> = {};
   if (suite !== undefined) {
     const wrong = suiteError(testing, suite);
     if (wrong) throw new Error(wrong);
-    // A skill's case belongs to none of the state's suites, so the skill stays independent of it: a state where one says
-    // it does is refused before anything runs, as its links check refuses it, never run as if the suite held it.
+  }
+  if (plan !== undefined) {
+    const wrong = planError(testing, plan);
+    if (wrong) throw new Error(wrong);
+    const { data } = readPlan(testing, plan);
+    if (data !== undefined) {
+      const dataWrong = planDataError(testing, plan, data);
+      if (dataWrong) throw new Error(dataWrong);
+      handed[PLAN_DATA] = path.resolve(testing, data);
+    }
+    requirements = planRequirements(testing, plan);
+  }
+  // A skill's case belongs to none of the state's suites, so the skill stays independent of it: a state where one says
+  // it does is refused before anything runs, as its links check refuses it, never run as if a suite held it.
+  if (suite !== undefined || requirements.some((r) => r.kind === "suite"))
     for (const c of joined.filter((c) => ownedBySkill(c.file) && c.suites.length))
       throw new Error(`${c.file}: "${c.title}" is a skill's case, so it belongs to none of the state's suites`);
-  }
-  const reaching = suite === undefined ? files : [...new Set(members(suite, joined).map((c) => c.file))];
-  const results = execute(testing, reaching, tested, true);
+  const reaches = (r: PlanRequirement, i: number) =>
+    r.kind === "suite"
+      ? joined[i]!.suites.includes(r.name)
+      : r.kind === "commitment" && stated[i]!.places.includes(r.name);
+  const selected =
+    plan !== undefined
+      ? cases.map((_, i) => requirements.some((r) => reaches(r, i)))
+      : suite !== undefined
+        ? joined.map((c) => c.suites.includes(suite))
+        : undefined;
+  const reaching = selected ? [...new Set(cases.filter((_, i) => selected[i]).map((c) => c.file))] : files;
+  const results = execute(testing, reaching, tested, true, handed);
   // A file that does not run as a whole is reported under its own path, at its first line and column; a case titled
   // with its file's path is reported where it is declared, which is there too only when the file declares a case on its
   // first line, as the testing state's source shows. None of such a file's cases' reports can be relied on, so none is
@@ -137,8 +197,23 @@ export function testRun({
     testing: path.resolve(testing),
     tested: path.resolve(tested),
     ...(suite === undefined ? {} : { suite }),
+    ...(plan === undefined ? {} : { plan }),
     conditions: { ...measured, ...conditions },
-    observations: suite === undefined ? observations : reached(suite, joined, observations),
+    observations:
+      suite !== undefined
+        ? reached(suite, joined, observations)
+        : selected
+          ? observations.filter((_, i) => selected[i])
+          : observations,
+    ...(plan === undefined
+      ? {}
+      : {
+          requirements: requirements.map(({ name, kind }) => ({
+            name,
+            kind,
+            observations: observations.filter((_, i) => reaches({ name, kind, under: [] }, i)),
+          })),
+        }),
     // A file's own report is named by the file's address in the testing state, which the runner writes natively.
     unaccounted: [
       ...unaccounted.filter((r) => !placeholders.has(r)),
@@ -149,21 +224,28 @@ export function testRun({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  let args: { values: { suite?: string }; positionals: string[] } | undefined;
+  let args: { values: { suite?: string; plan?: string }; positionals: string[] } | undefined;
   try {
-    args = parseArgs({ allowPositionals: true, options: { suite: { type: "string" } } });
+    args = parseArgs({ allowPositionals: true, options: { suite: { type: "string" }, plan: { type: "string" } } });
   } catch {
     args = undefined; // An option it does not know, or --suite without a place.
   }
   const [testing, tested, ...rest] = args?.positionals ?? [];
   const values = args?.values ?? {};
   if (!args || !testing || rest.length) {
-    console.error("usage: run.ts [--suite <place>] <testing-state> [tested-state]");
+    console.error("usage: run.ts [--suite <place> | --plan <place>] <testing-state> [tested-state]");
     process.exitCode = 2;
   } else {
     try {
-      const run = testRun({ testing, tested, suite: values.suite });
-      console.log(JSON.stringify(run, null, 2));
+      const run = testRun({ testing, tested, suite: values.suite, plan: values.plan });
+      // A run of a plan is printed beside what it demonstrates of the plan, which is the plan's to judge, not the run's.
+      console.log(
+        JSON.stringify(
+          run.plan === undefined ? run : { run, evidence: planEvidence(run.testing, run.plan, [run]) },
+          null,
+          2,
+        ),
+      );
       // A run fails when a case failed or something ran that no case accounts for; a case not run is not evidence, which
       // is for whoever reads the run to judge, not a failure of the run. A run that observed no case pass, such as one
       // of a suite no case belongs to yet, is no evidence at all, so it is never reported as a success either.

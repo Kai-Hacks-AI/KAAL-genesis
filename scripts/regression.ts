@@ -567,8 +567,20 @@ export const TESTING_STATE = "KAAL_TESTING_STATE";
  * complete is refused, never read as having nothing more to report.
  */
 export function execute(code: string, files: string[], tested: string): Result[];
-export function execute(code: string, files: string[], tested: string, positions: true): Positioned[];
-export function execute(code: string, files: string[], tested: string, positions = false): Positioned[] {
+export function execute(
+  code: string,
+  files: string[],
+  tested: string,
+  positions: true,
+  handed?: Record<string, string>,
+): Positioned[];
+export function execute(
+  code: string,
+  files: string[],
+  tested: string,
+  positions = false,
+  handed: Record<string, string> = {},
+): Positioned[] {
   // With no files to run, the test runner would look for cases of its own, which no state named: run nothing.
   if (!files.length) return [];
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-")), "results.jsonl");
@@ -583,6 +595,8 @@ export function execute(code: string, files: string[], tested: string, positions
       NODE_TEST_CONTEXT: undefined,
       NODE_OPTIONS: undefined,
       KAAL_REGRESSION_RESULTS: out,
+      // What else the run hands its cases, such as the test data a plan provides.
+      ...handed,
       [TESTING_STATE]: path.resolve(code),
       [TESTED_STATE]: path.resolve(tested),
     },

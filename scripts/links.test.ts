@@ -324,3 +324,57 @@ test("a skill's case belongs to none of KAAL's suites, so the skill stays indepe
     "skills/demo/scripts/demo.test.ts:3: a skill's case points at nothing outside its skill",
   ]);
 });
+
+/** The suited fixture with `lines` added to its suite, and `section` to its plan. */
+function served(lines: string, section = ""): string {
+  const repo = suited();
+  fs.appendFileSync(path.join(repo, "suites", "greeting.md"), `\n${lines}\n`);
+  if (section) fs.appendFileSync(path.join(repo, PLAN), `\n## As runs read it\n\n\`\`\`yaml\n${section}\n\`\`\`\n`);
+  return repo;
+}
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a suite says which plans it serves, strictly written, and only plans its state states in their own places", () => {
+  assert.deepEqual(linkErrors(served(`Serves: ${PLAN}`)), []);
+  assert.deepEqual(linkErrors(served(`serves: ${PLAN}`)), [
+    `suites/greeting.md:5: a line that serves no plan, written as "Serves: <place>"`,
+  ]);
+  assert.deepEqual(linkErrors(served("Serves: plans/release.md")), [
+    "suites/greeting.md: serves plans/release.md: no plan is stated there",
+  ]);
+  assert.deepEqual(linkErrors(served("Serves: suites/greeting.md")), [
+    "suites/greeting.md: serves suites/greeting.md: not a plan's place, which is plans/<name>.md",
+  ]);
+  // A plan stated before anything serves it is a plan all the same.
+  const forward = suited();
+  fs.mkdirSync(path.join(forward, "plans"));
+  fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  assert.deepEqual(linkErrors(forward), []);
+  fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
+  assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a plan that says how runs read it says it so they can, with its data inside its state, and requires as proof every check it says shows a commitment", () => {
+  assert.deepEqual(linkErrors(served("", "conditions:\n  - { platform: linux }\n  - { platform: win32 }")), []);
+  assert.deepEqual(linkErrors(served("", "conditions: linux")), [
+    `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
+  ]);
+  assert.deepEqual(linkErrors(served("", "suites: [suites/greeting.md]")), [`${PLAN}: runs read no suites of a plan`]);
+  assert.deepEqual(linkErrors(served("", "data: plan-data")), [
+    `${PLAN}: data: plan-data is no directory inside the state`,
+  ]);
+  const checked = served("", "proof:\n  the seal checks:\n    - { platform: linux }");
+  assert.deepEqual(linkErrors(checked), []);
+  const unchecked = served("", "conditions: []");
+  const plan = path.join(unchecked, PLAN);
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`. Shown by its cases and the seal checks."),
+  );
+  assert.deepEqual(linkErrors(unchecked), [
+    `${PLAN}: says the seal checks show a commitment, but does not require them as proof`,
+  ]);
+});

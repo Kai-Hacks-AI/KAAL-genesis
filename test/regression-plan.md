@@ -20,16 +20,17 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 12. KAAL's test runs. Owned by KAAL's testing; stated in `brain/learning/genesis/26/09/27/05/nodes/run.md`. Shown by its cases.
 13. KAAL's suites. Owned by KAAL's testing; stated in `brain/learning/genesis/26/09/27/06/nodes/suite.md`. Shown by its cases.
 14. KAAL's Requirements. Owned by KAAL's use of `managing-requirements`; stated in `brain/learning/genesis/26/09/28/01/nodes/managing-requirements.md`. Shown by its cases.
+15. KAAL's plans. Owned by KAAL's testing; stated in `brain/learning/genesis/26/09/27/07/nodes/plan.md`. Shown by its cases.
 
 ## How this regression differs from the one it was derived from
 
-Derived from: the accepted regression `faeb10d942c7b158f7a545462ae95faa78b6b716fdfff39ec80ab2b3ac25b55a`.
+Derived from: the accepted regression `ee568a9403653d6626cfb60093609e4b02662e5b3aa578b3eb73d185e18cb203`.
 
 This section names the regression a plan was derived from and what the plan does not retain of it, each with what supersedes it; every commitment of that regression it does not name is retained. A regression is named by its identity, taken from its own content: its plan, the places its commitments are stated, its case files, its test data, and what fixes how it judges: everything that decides what its install puts in place, how its TypeScript is compiled, and all of its checker's own code. The accepted regression's own checker prints it: `npm run regression:check -- --identity`, run in the accepted state. It is taken from the files byte for byte, so it is the same wherever the files are, as long as their bytes are: a checkout that rewrites line endings has another. Of a file's permissions it records only whether its owner may execute it, as a checkout does, and the replay gives the regression's cases no other permission, so none can depend on one. A regression is judged only from its own files, so one without a lockfile, or whose install takes packages from local files, whose inputs link outside its state, as the link reads wherever the state is kept, or have names or link targets that are not UTF-8, or whose cases or test data link to what its replay does not copy, or whose plan is a link or is reached through one, or whose checker is run by any other command line than `tsx scripts/check-regression.ts`, is reached through a link, imports code from outside it, or imports code it does not hold, is refused. The checker's code is found as its module loader finds it. A candidate must hold that checker, run by `regression:check` as `tsx scripts/check-regression.ts`, since once accepted it judges every later candidate. On a candidate, it must be the identity of the accepted regression as it is now; once the candidate is accepted, the section stays as the record of how this regression came to be, and the next candidate replaces it with its own. Changes made within a candidate before it is accepted are not changes to the regression. How a commitment is replaced or withdrawn is stated in `brain/learning/genesis/26/09/26/03/nodes/testing.md`.
 
 - Replaces: nothing.
 - Withdraws: nothing.
-- Adds: commitment 14, KAAL's Requirements, which the accepted regression does not have.
+- Adds: commitment 15, KAAL's plans, which the accepted regression does not have.
 
 ## How a commitment's cases are found
 
@@ -40,7 +41,7 @@ This plan names commitments, never cases. A case says which commitments it helps
 
 The case owns the link; a commitment never lists its cases. A case may point at several commitments, and several cases may point at one. The links hold from the repository's files alone, and `npm run links:check` checks them in any checkout, as one of KAAL's cases also does: every case KAAL keeps outside its skills points at least at one commitment, and only at places this plan states; every place this plan states exists inside the repository; every commitment this plan says its cases show has a case pointing at it, and for commitment 7, every skill has a case of its own; and no link is left belonging to no case, nor a case whose title cannot be read, since a link lost that way would go unnoticed when its case changes or moves. A candidate that would leave the next accepted regression with links that do not hold is refused before it is accepted.
 
-A case may also say which of KAAL's suites it belongs to, with a `// Suite: <place>` line among its links. That is not a link to a commitment, and this plan names no suite: a suite groups cases around a shared testing concern any plan may name, stated in its own place, as `brain/learning/genesis/26/09/27/06/nodes/suite.md` says. `npm run links:check` checks those lines as it checks links: each belongs to a case and names a suite stated in its own place, and no skill's case names one.
+A case may also say which of KAAL's suites it belongs to, with a `// Suite: <place>` line among its links. That is not a link to a commitment, and this plan names no suite: a suite groups cases around a shared testing concern, stated in its own place, as `brain/learning/genesis/26/09/27/06/nodes/suite.md` says, and a suite that serves this plan says so itself, as `brain/learning/genesis/26/09/27/07/nodes/plan.md` says. `npm run links:check` checks those lines as it checks links: each belongs to a case and names a suite stated in its own place, and no skill's case names one.
 
 Some commitments rest on others: Genesis (1, 2) composes skills whose own creation is all or nothing (7), and KAAL's sealing (3) uses the `using-seals` skill's mechanism (7). Such a commitment's own cases prove only what KAAL adds.
 
@@ -53,6 +54,19 @@ Some commitments rest on others: Genesis (1, 2) composes skills whose own creati
 
 - Every commitment is shown on Linux and on Windows, with Node 22, in a checkout made with `core.autocrlf=true`.
 - The seal checks run on Linux.
+
+## As runs read it
+
+A run of this plan reads what it requires from its own files: the commitments above; the suites that say they serve it, which this plan does not list, such as `suites/without-git.md`, since its checks must need neither Git nor GitHub; and, from here, the conditions above as runs record them, and the seal checks, which must hold on Linux. How KAAL reads and runs a plan is stated in `brain/learning/genesis/26/09/27/07/nodes/plan.md`.
+
+```yaml
+conditions:
+  - { platform: linux, runtime: node v22, checkout: core.autocrlf=true }
+  - { platform: win32, runtime: node v22, checkout: core.autocrlf=true }
+proof:
+  the seal checks:
+    - { platform: linux }
+```
 
 ## Which checks judge a change
 
@@ -69,6 +83,7 @@ Some commitments rest on others: Genesis (1, 2) composes skills whose own creati
 - The accepted regression's cases are run on Linux only, with Node 22, and so are the candidate's cases that prove a replacement: a case that skips itself on Windows, or under `npm test`'s own environment, proves the replacement there without anything noticing, since `test-linux` and `test-windows` report `npm test`, which counts a skip as a pass. A run of KAAL's observes a skipped case as not run, but the workflows do not yet carry out KAAL's runs. What a replacement is proven under is the accepted regression's replay: Linux, Node 22, and no npm environment.
 - A case whose title is not a plain double-quoted string at the top of its file, such as one built in a loop, cannot be expected by its title. A candidate that would bring one into the accepted regression is refused, but the accepted regression today still has two such cases until this candidate is accepted: if they fail they are held, but if they never run, nothing notices.
 - A link redirected from one commitment to another that this plan states is seen only when it leaves the first without a case: which commitment a case's claim is about is judged by review, not read from the files. The accepted regression's own links keep choosing which of its cases judge a candidate, so a redirect in the candidate cannot weaken that.
+- The accepted regression does not protect which suites serve this plan: a suite that stops serving it is seen only by review. A run of this plan does not reach the seal checks, which only `seal-linux` shows, and the accepted regression's checker, not a run of the plan, judges a candidate.
 - The accepted regression does not protect a suite's membership: a case that leaves a suite is seen only by review, even its last, since a suite no case belongs to yet is valid, and nothing here runs a suite.
 - A link says which commitment a case helps prove, not how much of it: a commitment with one case pointing at it passes the links check however little of it that case proves.
 - Two messages of the seal checks still speak of sealing on `main` and of what sealing commits: the accepted regression's cases pin their words and point at no commitment, so no succession can excuse a change to them. This candidate's cases link them to `brain/learning/genesis/26/09/26/03/nodes/using-seals.md`, so once it is accepted, a later candidate can reword them by superseding that node.

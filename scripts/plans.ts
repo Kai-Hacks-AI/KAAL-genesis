@@ -1,0 +1,198 @@
+import fs from "node:fs";
+import path from "node:path";
+import YAML from "yaml";
+import type { Conditions, Requirement } from "../skills/testing/scripts/plan.js";
+import { portableNameError } from "../skills/using-brain/scripts/brain.js";
+import { PLAN, planCommitments, planEntries, section, SUITES } from "./links.js";
+
+/**
+ * KAAL's test plans, read from a state's files alone. A plan states a testing
+ * purpose in a file of its own, whose place is its identity: KAAL's Regression
+ * Plan, and any other in `plans/<name>.md`. What carries a plan out is stated
+ * beneath it: each suite says which plans it serves with a `Serves: <place>`
+ * line, as each case says which suites it belongs to, so a plan never lists
+ * its suites or its cases. A plan says how runs read what it requires in a
+ * `yaml` block under `## As runs read it`: the sets of conditions its testing
+ * must be shown under, the proof other than cases it requires and under which
+ * of them, and the test data it provides. What KAAL's plans are is stated in
+ * brain/learning/genesis/26/09/27/07/nodes/plan.md.
+ */
+
+export const PLANS = "plans";
+const PLAN_PLACE = /^plans\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+/** A line meant to say its suite serves a plan, strictly written or not: any line that starts with "Serves". */
+const SERVES_LIKE = /^\s*serves\b/i;
+const SERVES = /^Serves: (\S+)$/;
+/** The section of a plan that says how runs read what it requires. */
+export const AS_RUNS_READ_IT = "As runs read it";
+
+/**
+ * Why `place` is not a plan `repo` states, if it is not: the Regression Plan,
+ * or a file of its own in `plans/`, with a portable name, that is really a
+ * file there, not a link.
+ */
+export function planError(repo: string, place: string): string | undefined {
+  if (place !== PLAN && !PLAN_PLACE.test(place)) return `${place}: not a plan's place, which is ${PLANS}/<name>.md`;
+  const portable = place === PLAN ? undefined : portableNameError(path.posix.basename(place, ".md"), "a plan's name");
+  if (portable) return `${place}: ${portable}`;
+  const file = path.join(repo, place);
+  const real = fs.existsSync(file) ? path.relative(fs.realpathSync(repo), fs.realpathSync(file)) : undefined;
+  if (real === undefined || !fs.statSync(file).isFile()) return `${place}: no plan is stated there`;
+  if (real.split(path.sep).join("/") !== place) return `${place}: a plan stated through a link`;
+  return undefined;
+}
+
+/** Every suite `repo` states, by place, with the plans it says it serves and the lines that look like it but are not. */
+export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
+  const dir = path.join(repo, SUITES);
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir)
+    .sort()
+    .map((name) => `${SUITES}/${name}`)
+    .filter((suite) => fs.statSync(path.join(repo, suite)).isFile())
+    .map((suite) => {
+      const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
+      const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
+      const stray = lines.flatMap((line, i) => (SERVES_LIKE.test(line) && !SERVES.test(line) ? [i + 1] : []));
+      return { suite, serves, stray };
+    });
+}
+
+/** What a plan says runs read of it: its sets of conditions, the proof other than cases it requires, and its data. */
+export type PlanReading = {
+  conditions: Conditions[];
+  proof: Record<string, Conditions[]>;
+  data?: string;
+};
+
+const conditionSets = (value: unknown, what: string): Conditions[] => {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    !value.every(
+      (set) =>
+        set &&
+        typeof set === "object" &&
+        !Array.isArray(set) &&
+        Object.values(set as object).every((v) => typeof v === "string"),
+    )
+  )
+    throw new Error(`${what}: not a list of sets of conditions, each naming its conditions' values`);
+  return value as Conditions[];
+};
+
+/**
+ * What `plan`, in `repo`, says runs read of it, from the `yaml` block under its
+ * `## As runs read it`; a plan without one requires no conditions, no other
+ * proof and provides no data. Refused when that block cannot be read so.
+ */
+export function readPlan(repo: string, plan: string): PlanReading {
+  const text = fs.readFileSync(path.join(repo, plan), "utf8").replace(/\r\n/g, "\n");
+  const part = section(text, AS_RUNS_READ_IT);
+  if (!part) return { conditions: [], proof: {} };
+  const block = /\n```yaml\n([\s\S]*?)\n```/.exec(part)?.[1];
+  if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
+  const read = (YAML.parse(block) ?? {}) as Record<string, unknown>;
+  for (const key of Object.keys(read))
+    if (!["conditions", "proof", "data"].includes(key)) throw new Error(`${plan}: runs read no ${key} of a plan`);
+  const proof = read.proof ?? {};
+  if (typeof proof !== "object" || Array.isArray(proof)) throw new Error(`${plan}: proof: not proofs by name`);
+  if (read.data !== undefined && typeof read.data !== "string") throw new Error(`${plan}: data: not a place`);
+  return {
+    conditions: conditionSets(read.conditions, `${plan}: conditions`),
+    proof: Object.fromEntries(
+      Object.entries(proof).map(([name, under]) => [name, conditionSets(under, `${plan}: proof: ${name}`)]),
+    ),
+    ...(read.data === undefined ? {} : { data: read.data as string }),
+  };
+}
+
+/**
+ * Why the data `plan` provides is not a place its runs can hand its cases, if
+ * it is not: a directory inside the state, reached through no link.
+ */
+export function planDataError(repo: string, plan: string, data: string): string | undefined {
+  const at = path.join(repo, data);
+  const real = fs.existsSync(at) ? path.relative(fs.realpathSync(repo), fs.realpathSync(at)) : undefined;
+  if (real === undefined || !fs.statSync(at).isDirectory() || path.isAbsolute(data) || data.split("/").includes(".."))
+    return `${plan}: data: ${data} is no directory inside the state`;
+  if (real.split(path.sep).join("/") !== data.replace(/\/+$/, ""))
+    return `${plan}: data: ${data} is reached through a link`;
+  return undefined;
+}
+
+/** What a plan requires, as KAAL reads it: each requirement with what kind it is, and under which sets of conditions. */
+export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "proof" };
+
+/**
+ * What `plan` requires shown, read from `repo`'s files: the commitments it
+ * names, the suites that say they serve it, both under the plan's sets of
+ * conditions, and the proof other than cases it names, each under the sets
+ * it states for it or else the plan's.
+ */
+export function planRequirements(repo: string, plan: string): PlanRequirement[] {
+  const { conditions, proof } = readPlan(repo, plan);
+  const text = fs.readFileSync(path.join(repo, plan), "utf8");
+  return [
+    ...planCommitments(text).map((name) => ({ name, kind: "commitment" as const, under: conditions })),
+    ...suitePlans(repo)
+      .filter((s) => s.serves.includes(plan))
+      .map(({ suite }) => ({ name: suite, kind: "suite" as const, under: conditions })),
+    ...Object.entries(proof).map(([name, under]) => ({
+      name,
+      kind: "proof" as const,
+      under: under.length ? under : conditions,
+    })),
+  ];
+}
+
+/**
+ * Everything that makes `repo`'s plans incoherent, read from its files: every
+ * file in `plans/` is a plan's place; every suite's `Serves:` line is strictly
+ * written and names a plan the state states; and every plan says how runs read
+ * it in a way they can, with data they can hand, and names, as proof it
+ * requires, every check other than cases it says shows a commitment.
+ */
+export function planErrors(repo: string): string[] {
+  const errors: string[] = [];
+  const plans = [
+    ...(fs.existsSync(path.join(repo, PLAN)) ? [PLAN] : []),
+    ...(fs.existsSync(path.join(repo, PLANS))
+      ? fs
+          .readdirSync(path.join(repo, PLANS))
+          .sort()
+          .map((name) => `${PLANS}/${name}`)
+      : []),
+  ];
+  for (const plan of plans) {
+    const wrong = planError(repo, plan);
+    if (wrong) {
+      errors.push(wrong);
+      continue;
+    }
+    try {
+      const { proof, data } = readPlan(repo, plan);
+      const dataWrong = data === undefined ? undefined : planDataError(repo, plan, data);
+      if (dataWrong) errors.push(dataWrong);
+      // A plan that says how runs read it says it in full: every check it names as showing a commitment is proof it
+      // requires. One that does not yet say how runs read it requires no proof of them.
+      const text = fs.readFileSync(path.join(repo, plan), "utf8");
+      const checks = section(text.replace(/\r\n/g, "\n"), AS_RUNS_READ_IT)
+        ? planEntries(text).flatMap((e) => e.shownBy ?? [])
+        : [];
+      for (const check of [...new Set(checks)].filter((c) => c !== "its cases" && !Object.hasOwn(proof, c)))
+        errors.push(`${plan}: says ${check} show a commitment, but does not require them as proof`);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  for (const { suite, serves, stray } of suitePlans(repo)) {
+    errors.push(...stray.map((at) => `${suite}:${at}: a line that serves no plan, written as "Serves: <place>"`));
+    for (const plan of serves) {
+      const wrong = planError(repo, plan);
+      if (wrong) errors.push(`${suite}: serves ${wrong}`);
+    }
+  }
+  return errors;
+}

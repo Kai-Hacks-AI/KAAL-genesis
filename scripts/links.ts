@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
+import { planErrors } from "./plans.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -332,6 +333,8 @@ export function linkErrors(repo: string): string[] {
     const wrong = suiteError(repo, suite);
     if (wrong) errors.push(wrong);
   }
+  // Plans, and the suites that say they serve them, are read as KAAL reads its plans.
+  errors.push(...planErrors(repo));
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
   const ownProof = new Set(
