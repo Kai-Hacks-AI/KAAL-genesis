@@ -122,26 +122,19 @@ export function planRun({
   testing,
   tested = testing,
   conditions = {},
-  cases: givenCases,
 }: {
   plan: Plan;
   testing: string;
   tested?: string;
   conditions?: Record<string, string>;
-  /**
-   * Cases pre-read from the testing state, if already available. When
-   * omitted, `repoCases(testing)` is called here. Providing it avoids a
-   * second traversal when the caller has already read the cases (e.g. to
-   * validate links before running).
-   */
-  cases?: ReturnType<typeof repoCases>;
 }): PlanRun {
   const run = testRun({ testing, tested, conditions });
-  const cases = givenCases ?? repoCases(testing);
-  // `cases[i]` and `run.observations[i]` correspond to the same Case: `observe()`
-  // matches reports to cases in order, one-to-one, so positional indexing is correct
-  // even when two Cases share the same `file:title` address. A Map keyed by address
-  // would silently drop the first of any two Cases at the same address.
+  // Read cases after the run so the order matches what testRun used internally:
+  // `cases[i]` and `run.observations[i]` correspond to the same Case because
+  // `observe()` (called inside testRun) matches reports to cases in order, and
+  // `repoCases` is deterministic for a given state. Positional indexing is
+  // correct even when two Cases share the same `file:title` address.
+  const cases = repoCases(testing);
   return {
     plan,
     run,
