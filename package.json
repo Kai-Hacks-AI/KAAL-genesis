@@ -17,6 +17,8 @@
     "testing:create-anchor": "tsx skills/testing/scripts/create-anchor.ts",
     "defects:record": "tsx skills/managing-defects/scripts/record.ts defects",
     "defects:check": "tsx skills/managing-defects/scripts/check.ts defects",
+    "ideas:record": "tsx skills/managing-ideas/scripts/record.ts ideas",
+    "ideas:check": "tsx skills/managing-ideas/scripts/check.ts ideas",
     "seal": "tsx scripts/seal.ts",
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",

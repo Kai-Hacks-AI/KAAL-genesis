@@ -16,16 +16,17 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 8. BRAIN's validity. Owned by KAAL's sealing policy; stated in `scripts/brain-seals.ts`. Shown by its cases and the seal checks.
 9. KAAL's defects. Owned by KAAL's use of `managing-defects`; stated in `brain/learning/genesis/26/09/27/02/nodes/managing-defects.md`. Shown by its cases.
 10. KAAL's cases. Owned by KAAL's testing; stated in `brain/learning/genesis/26/09/27/03/nodes/case.md`. Shown by its cases.
+11. KAAL's Ideas. Owned by KAAL's use of `managing-ideas`; stated in `brain/learning/genesis/26/09/27/04/nodes/managing-ideas.md`. Shown by its cases.
 
 ## How this regression differs from the one it was derived from
 
-Derived from: the accepted regression `b5ceae66de40e0b3c4fc3217060eb59183a3f7d260b79a55c99e997b71cfe8d7`.
+Derived from: the accepted regression `58bdfe66970a666de9cd3cb592f1af7327d28f8e85b9006383ecac4ffd62474c`.
 
 This section names the regression a plan was derived from and what the plan does not retain of it, each with what supersedes it; every commitment of that regression it does not name is retained. A regression is named by its identity, taken from its own content: its plan, the places its commitments are stated, its case files, its test data, and what fixes how it judges: everything that decides what its install puts in place, how its TypeScript is compiled, and all of its checker's own code. The accepted regression's own checker prints it: `npm run regression:check -- --identity`, run in the accepted state. It is taken from the files byte for byte, so it is the same wherever the files are, as long as their bytes are: a checkout that rewrites line endings has another. Of a file's permissions it records only whether its owner may execute it, as a checkout does, and the replay gives the regression's cases no other permission, so none can depend on one. A regression is judged only from its own files, so one without a lockfile, or whose install takes packages from local files, whose inputs link outside its state, as the link reads wherever the state is kept, or have names or link targets that are not UTF-8, or whose cases or test data link to what its replay does not copy, or whose plan is a link or is reached through one, or whose checker is run by any other command line than `tsx scripts/check-regression.ts`, is reached through a link, imports code from outside it, or imports code it does not hold, is refused. The checker's code is found as its module loader finds it. A candidate must hold that checker, run by `regression:check` as `tsx scripts/check-regression.ts`, since once accepted it judges every later candidate. On a candidate, it must be the identity of the accepted regression as it is now; once the candidate is accepted, the section stays as the record of how this regression came to be, and the next candidate replaces it with its own. Changes made within a candidate before it is accepted are not changes to the regression. How a commitment is replaced or withdrawn is stated in `brain/learning/genesis/26/09/26/03/nodes/testing.md`.
 
 - Replaces: nothing.
 - Withdraws: nothing.
-- Adds: commitment 10, KAAL's cases, which the accepted regression does not have.
+- Adds: commitment 11, KAAL's Ideas, which the accepted regression does not have.
 
 ## How a commitment's cases are found
 
