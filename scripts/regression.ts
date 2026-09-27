@@ -303,6 +303,12 @@ function regressionInputs(repo: string): Map<string, Entry> {
   const entries = new Map<string, Entry>();
   // Each entry is read at its path as bytes, so a name that is not UTF-8 is read, and known, as it is.
   const add = (rel: string, at: string | Buffer = path.join(repo, rel)) => {
+    // An entry reached through a link above it is read through that link, so the link is part of it too.
+    const parts = rel.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const above = parts.slice(0, i).join("/");
+      if (entryAt(path.join(repo, above))?.kind === "link") add(above);
+    }
     const entry = entryAt(at);
     if (!entry || entries.has(rel)) return;
     entries.set(rel, entry);

@@ -579,6 +579,15 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
       "the accepted regression's inputs link outside its state (package-lock.json)",
     );
   }
+  // Nor may an input be reached through a directory that is such a link: the link is followed as much as a link to the file.
+  if (process.platform !== "win32") {
+    const through = regressionCandidate("kept");
+    fs.mkdirSync(path.join(through, "real"));
+    fs.renameSync(path.join(through, "package-lock.json"), path.join(through, "real", "package-lock.json"));
+    fs.symlinkSync(`../${path.basename(through)}/real`, path.join(through, "config"));
+    fs.symlinkSync("config/package-lock.json", path.join(through, "package-lock.json"));
+    assert.equal(unreplayable(through), "the accepted regression's inputs link outside its state (config)");
+  }
   // The replay copies only cases and test data, so a case that is a link to other code would run the candidate's.
   if (process.platform !== "win32") {
     const redirected = regressionCandidate("kept");
