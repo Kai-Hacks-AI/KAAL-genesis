@@ -449,6 +449,11 @@ test("a run of a plan is refused for one its testing state does not state, or st
   // A junction, so a directory link can be made on every platform without special rights.
   fs.symlinkSync(path.join(linked, "stated"), path.join(linked, "plans"), "junction");
   assert.throws(() => testRun({ testing: linked, plan: GREETING_PLAN }), /a plan stated through a link/);
+  // A suite that serves a plan is one its state states itself, never one reached through a link.
+  const outside = runState("plans");
+  fs.renameSync(path.join(outside, "suites"), path.join(outside, "elsewhere"));
+  fs.symlinkSync(path.join(outside, "elsewhere"), path.join(outside, "suites"), "junction");
+  assert.throws(() => testRun({ testing: outside, plan: GREETING_PLAN }), /a suite stated through a link/);
 });
 
 // Why: brain/learning/genesis/26/09/27/07/nodes/plan.md

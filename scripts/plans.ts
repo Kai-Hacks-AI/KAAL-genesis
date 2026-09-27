@@ -3,7 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import type { Conditions, Requirement } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planCommitments, planEntries, section, SUITES } from "./links.js";
+import { PLAN, planCommitments, planEntries, section, SUITES, suiteError } from "./links.js";
 
 /**
  * KAAL's test plans, read from a state's files alone. A plan states a testing
@@ -129,7 +129,9 @@ export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "pr
  * What `plan` requires shown, read from `repo`'s files: the commitments it
  * names, the suites that say they serve it, both under the plan's sets of
  * conditions, and the proof other than cases it names, each under the sets
- * it states for it or else the plan's.
+ * it states for it or else the plan's. A suite that says it serves the plan
+ * must be one the state states in its own place, never through a link, or
+ * what the plan requires would be chosen by a file the state does not hold.
  */
 export function planRequirements(repo: string, plan: string): PlanRequirement[] {
   const { conditions, proof } = readPlan(repo, plan);
@@ -138,7 +140,11 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
     ...planCommitments(text).map((name) => ({ name, kind: "commitment" as const, under: conditions })),
     ...suitePlans(repo)
       .filter((s) => s.serves.includes(plan))
-      .map(({ suite }) => ({ name: suite, kind: "suite" as const, under: conditions })),
+      .map(({ suite }) => {
+        const wrong = suiteError(repo, suite);
+        if (wrong) throw new Error(wrong);
+        return { name: suite, kind: "suite" as const, under: conditions };
+      }),
     ...Object.entries(proof).map(([name, under]) => ({
       name,
       kind: "proof" as const,
