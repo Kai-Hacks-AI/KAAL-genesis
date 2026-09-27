@@ -562,7 +562,7 @@ test("the replay shows the accepted cases what the accepted regression knew: its
       'import fs from "node:fs";',
       'import test from "node:test";',
       'test("sees the state as it was written against", () => {',
-      '  assert.deepEqual(fs.globSync("parts/*/PART.md").sort(), ["parts/one/PART.md"]);',
+      '  assert.deepEqual(["one", "two", "three"].map((part) => fs.existsSync(`parts/${part}/PART.md`)), [true, false, false]);',
       `  assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).scripts.test, ${JSON.stringify(selection)});`,
       "});",
       "",
