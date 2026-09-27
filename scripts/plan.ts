@@ -122,14 +122,22 @@ export function planRun({
   testing,
   tested = testing,
   conditions = {},
+  cases: givenCases,
 }: {
   plan: Plan;
   testing: string;
   tested?: string;
   conditions?: Record<string, string>;
+  /**
+   * Cases pre-read from the testing state, if already available. When
+   * omitted, `repoCases(testing)` is called here. Providing it avoids a
+   * second traversal when the caller has already read the cases (e.g. to
+   * validate links before running).
+   */
+  cases?: ReturnType<typeof repoCases>;
 }): PlanRun {
   const run = testRun({ testing, tested, conditions });
-  const cases = repoCases(testing);
+  const cases = givenCases ?? repoCases(testing);
   // Map each Case's key to its commitment places (Suite identities), read from
   // the testing state's files. Cases are not enumerated by the Plan; they are
   // found here through the links they hold.
