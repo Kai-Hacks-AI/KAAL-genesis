@@ -49,12 +49,14 @@ function kaal(cwd: string, script: string, ...args: string[]) {
   return { status: run.status, out: `${run.stdout}${run.stderr}` };
 }
 
+// Suite: suites/without-git.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("the processes these cases run KAAL in cannot find git", () => {
   const run = spawnSync("git", ["--version"], { env: withoutGit() });
   assert.equal((run.error as NodeJS.ErrnoException | undefined)?.code, "ENOENT");
 });
 
+// Suite: suites/without-git.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
@@ -76,6 +78,7 @@ test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and 
   }
 });
 
+// Suite: suites/without-git.md
 // Tests: defects/seal-guard-case-rewrites-nothing
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
@@ -110,6 +113,8 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
   assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 1);
 });
 
+// Suite: suites/genesis.md
+// Suite: suites/without-git.md
 // Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
 test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and the new KAAL works without Git", () => {
   const kaalState = plainCopy(KAAL);
@@ -124,6 +129,7 @@ test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and 
   }
 });
 
+// Suite: suites/without-git.md
 // Why: brain/learning/genesis/26/09/27/05/nodes/run.md
 test("copied out of Git, KAAL runs one state's cases against another, both plain directories, and says what it observed", () => {
   const kaalState = plainCopy(KAAL);
@@ -140,6 +146,28 @@ test("copied out of Git, KAAL runs one state's cases against another, both plain
   assert.equal(observedIn(other.out), "failed");
 });
 
+// Suite: suites/without-git.md
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("copied out of Git, KAAL runs a suite of a plain directory's cases, reaching exactly the cases that belong to it, and never reports reaching none as a success", () => {
+  const kaalState = plainCopy(KAAL);
+  const suites = runState("suites");
+  const names = kaal(kaalState, "scripts/run.ts", "--suite", "suites/names.md", suites);
+  assert.equal(names.status, 0, names.out);
+  const run = JSON.parse(names.out) as { suite: string; observations: { title: string; observed: string }[] };
+  assert.equal(run.suite, "suites/names.md");
+  assert.deepEqual(
+    run.observations.map((o) => `${o.title}: ${o.observed}`),
+    ["says goodbye to whoever it is given, by name: passed", "says hello to whoever it is given, by name: passed"],
+  );
+  // The state's case that belongs to no suite fails, so a run of every case it selects fails.
+  assert.equal(kaal(kaalState, "scripts/run.ts", suites).status, 1);
+  // A suite no case belongs to yet reaches nothing: its run is no evidence, and never reported as a success.
+  const welsh = kaal(kaalState, "scripts/run.ts", "--suite", "suites/welsh.md", suites);
+  assert.equal(welsh.status, 1, welsh.out);
+  assert.match(welsh.out, /suites\/welsh\.md: the run observed no case pass, so it is no evidence/);
+});
+
+// Suite: suites/without-git.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("copied out of Git, an accepted state judges a candidate state with its own checker, both plain directories", () => {
   // The accepted state carries KAAL's checker, as main does, and judges with it.

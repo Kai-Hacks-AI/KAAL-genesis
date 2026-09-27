@@ -224,3 +224,106 @@ test("KAAL's cases about KAAL take the tested state their run names, refuse one 
     set(saved.tested, saved.testing);
   }
 });
+
+const HELLO_BY_NAME = "scripts/hello.test.ts: says hello to whoever it is given, by name";
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a run of a suite reaches every case that belongs to it and no other, and a case in two suites is reached by the run of each", () => {
+  const state = runState("suites");
+  const greeting = testRun({ testing: state, suite: "suites/greeting.md" });
+  assert.equal(greeting.suite, "suites/greeting.md");
+  assert.deepEqual(observed(greeting), {
+    "scripts/hello.test.ts: says hello": "passed",
+    [HELLO_BY_NAME]: "passed",
+    "scripts/hello.test.ts: says hello in Welsh": "not run",
+  });
+  assert.deepEqual(greeting.unaccounted, []);
+  const names = testRun({ testing: state, suite: "suites/names.md" });
+  assert.deepEqual(observed(names), {
+    [HELLO_BY_NAME]: "passed",
+    "scripts/farewell.test.ts: says goodbye to whoever it is given, by name": "passed",
+  });
+  assert.deepEqual(names.unaccounted, []);
+  // The case that belongs to neither fails: a run of every case the state selects observes it, neither suite's run does.
+  const every = testRun({ testing: state });
+  assert.equal(every.suite, undefined);
+  assert.equal(observed(every)["scripts/farewell.test.ts: waves"], "failed");
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a run of a suite hands its cases the tested state, and records the run's conditions: a suite brings none of its own", () => {
+  const farewells = runState("suites");
+  fs.writeFileSync(path.join(farewells, "goodbye-name.txt"), "farewell, %s\n");
+  const run = testRun({
+    testing: runState("suites"),
+    tested: farewells,
+    suite: "suites/names.md",
+    conditions: { checkout: "plain" },
+  });
+  assert.deepEqual(observed(run), {
+    [HELLO_BY_NAME]: "passed",
+    "scripts/farewell.test.ts: says goodbye to whoever it is given, by name": "failed",
+  });
+  assert.deepEqual(Object.keys(run.conditions).sort(), ["checkout", "platform", "runtime"]);
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a run of a suite is refused for one its testing state does not state, or states through a link, and where a skill's case says it belongs", () => {
+  const state = runState("suites");
+  assert.throws(
+    () => testRun({ testing: state, suite: "suites/farewells.md" }),
+    /suites\/farewells\.md: no suite is stated there/,
+  );
+  assert.throws(() => testRun({ testing: state, suite: "suites/../suites/names.md" }), /not a suite's place/);
+  // A skill's case belongs to none of the state's suites, so a state where one says it does is refused, not run.
+  const skilled = runState("suites");
+  fs.mkdirSync(path.join(skilled, "skills", "demo", "scripts"), { recursive: true });
+  fs.writeFileSync(
+    path.join(skilled, "skills", "demo", "scripts", "demo.test.ts"),
+    'import test from "node:test";\n\n// Suite: suites/names.md\ntest("says hello", () => {});\n',
+  );
+  const pkg = path.join(skilled, "package.json");
+  fs.writeFileSync(
+    pkg,
+    fs.readFileSync(pkg, "utf8").replace("scripts/*.test.ts", "skills/*/scripts/*.test.ts scripts/*.test.ts"),
+  );
+  assert.throws(
+    () => testRun({ testing: skilled, suite: "suites/names.md" }),
+    /skills\/demo\/scripts\/demo\.test\.ts: "says hello" is a skill's case, so it belongs to none of the state's suites/,
+  );
+  const linked = runState("suites");
+  fs.renameSync(path.join(linked, "suites"), path.join(linked, "stated"));
+  // A junction, so a directory link can be made on every platform without special rights.
+  fs.symlinkSync(path.join(linked, "stated"), path.join(linked, "suites"), "junction");
+  assert.throws(
+    () => testRun({ testing: linked, suite: "suites/names.md" }),
+    /suites\/names\.md: a suite stated through a link/,
+  );
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a case moved to another file and retitled stays in its suites, and cases merged into one case over their data stay in every suite they belonged to", () => {
+  const byName = {
+    "suites-moved": "scripts/by-name.test.ts: greets by name whoever it is given",
+    "suites-merged": "scripts/hello.test.ts: says hello, by name to whoever it is given one",
+  };
+  for (const [name, refactored] of Object.entries(byName)) {
+    const state = runState(name);
+    assert.deepEqual(
+      Object.keys(observed(testRun({ testing: state, suite: "suites/names.md" }))).sort(),
+      [refactored, "scripts/farewell.test.ts: says goodbye to whoever it is given, by name"].sort(),
+      name,
+    );
+    const greeting = observed(testRun({ testing: state, suite: "suites/greeting.md" }));
+    assert.equal(greeting[refactored], "passed", name);
+    assert.equal(greeting["scripts/hello.test.ts: says hello in Welsh"], "not run", name);
+  }
+});
+
+// Why: brain/learning/genesis/26/09/27/06/nodes/suite.md
+test("a suite no case belongs to yet is still that suite: a run of it reaches nothing and observes nothing, which is no evidence", () => {
+  const run = testRun({ testing: runState("suites"), suite: "suites/welsh.md" });
+  assert.equal(run.suite, "suites/welsh.md");
+  assert.deepEqual(run.observations, []);
+  assert.deepEqual(run.unaccounted, []);
+});
