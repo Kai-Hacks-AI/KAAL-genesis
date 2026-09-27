@@ -449,6 +449,14 @@ test("a plan's conditions are what it requires, and a run records the conditions
     unreadable,
     fs.readFileSync(unreadable, "utf8").replace("2. Farewell, somewhere. Shown by its cases.\n", ""),
   );
+  // Also when the Regression Plan begins with its commitments.
+  const bare = fs.readFileSync(unreadable, "utf8");
+  fs.writeFileSync(
+    unreadable,
+    bare.slice(bare.indexOf("## Commitments")).replace("1. Greeting. Stated in", "1. Greeting, in"),
+  );
+  assert.throws(() => testRun({ testing: alike, plan: PLAN }), /does not say where it is stated/);
+  fs.writeFileSync(unreadable, bare);
   // A plan other than the Regression Plan that names commitments is refused before anything runs.
   fs.appendFileSync(
     path.join(alike, GREETING_PLAN),

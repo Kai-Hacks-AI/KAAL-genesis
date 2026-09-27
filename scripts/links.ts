@@ -266,7 +266,8 @@ export function placeError(repo: string, place: string): string | undefined {
  * not looked for.
  */
 export function planEntryErrors(repo: string): { errors: string[]; unplaced: Set<string> } {
-  const entries = planEntries(fs.readFileSync(path.join(repo, PLAN), "utf8"));
+  // Read as if it began on a new line, so a plan that begins with its commitments is read as any other.
+  const entries = planEntries(`\n${fs.readFileSync(path.join(repo, PLAN), "utf8")}`);
   const errors: string[] = [];
   const unplaced = new Set<string>();
   for (const { line, place, shownBy } of entries) {
@@ -303,7 +304,7 @@ export function planEntryErrors(repo: string): { errors: string[]; unplaced: Set
  */
 export function linkErrors(repo: string): string[] {
   if (!fs.existsSync(path.join(repo, PLAN))) return [`${PLAN}: there is no plan, so no link can be read`];
-  const entries = planEntries(fs.readFileSync(path.join(repo, PLAN), "utf8"));
+  const entries = planEntries(`\n${fs.readFileSync(path.join(repo, PLAN), "utf8")}`);
   const { errors, unplaced } = planEntryErrors(repo);
   const stated = new Set(entries.flatMap((e) => (e.place ? [e.place] : [])));
   for (const file of caseFiles(repo)) {
