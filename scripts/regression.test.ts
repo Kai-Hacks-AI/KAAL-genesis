@@ -485,6 +485,145 @@ test("a regression's identity changes with what it consists of, a link as a link
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the replay gives the accepted regression's cases its own plan, not the plan of a candidate that replaces a commitment", () => {
+  const trusted = regressionCandidate("kept");
+  const plan = path.join(trusted, PLAN);
+  fs.appendFileSync(plan, "\nThe accepted regression's own plan.\n");
+  // A case that reads the plan, as a check of the regression's own links does, reads what its links were written against.
+  fs.writeFileSync(
+    path.join(trusted, "scripts", "plan.test.ts"),
+    [
+      'import assert from "node:assert/strict";',
+      'import fs from "node:fs";',
+      'import test from "node:test";',
+      'test("reads the plan it was written against", () => {',
+      '  assert.match(fs.readFileSync("test/regression-plan.md", "utf8"), /The accepted regression\'s own plan\./);',
+      "});",
+      "",
+    ].join("\n"),
+  );
+  const results = runTrusted(trusted, regressionCandidate("replaced"));
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/plan.test.ts").map((r) => r.outcome),
+    ["pass"],
+  );
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the replay holds only the accepted regression's cases, none the candidate adds of its own", () => {
+  const trusted = regressionCandidate("kept");
+  // A case that reads which cases there are, as a check of the regression's links does.
+  fs.writeFileSync(
+    path.join(trusted, "scripts", "listing.test.ts"),
+    [
+      'import assert from "node:assert/strict";',
+      'import fs from "node:fs";',
+      'import test from "node:test";',
+      'test("finds only the cases it was written with", () => {',
+      '  assert.equal(fs.existsSync("scripts/added.test.ts"), false);',
+      "});",
+      "",
+    ].join("\n"),
+  );
+  const candidate = regressionCandidate("kept");
+  fs.writeFileSync(
+    path.join(candidate, "scripts", "added.test.ts"),
+    'import test from "node:test";\ntest("added", () => {});\n',
+  );
+  const results = runTrusted(trusted, candidate);
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/listing.test.ts").map((r) => r.outcome),
+    ["pass"],
+  );
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test("the replay shows the accepted cases what the accepted regression knew: its case selection, and none of the candidate's additions its places reach", () => {
+  const trusted = regressionCandidate("kept");
+  const plan = path.join(trusted, PLAN);
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace(/^(2\. Greeting\..*)$/m, "$1\n3. Parts. Stated in each `parts/*/PART.md`. Shown by its cases."),
+  );
+  fs.mkdirSync(path.join(trusted, "parts", "one"), { recursive: true });
+  fs.writeFileSync(path.join(trusted, "parts", "one", "PART.md"), "one\n");
+  fs.mkdirSync(path.join(trusted, "parts", "three"), { recursive: true });
+  fs.writeFileSync(path.join(trusted, "parts", "three", "README"), "not yet a part\n");
+  const selection = (
+    JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts: { test: string } }
+  ).scripts.test;
+  // A case that looks at the state as a whole, as a check of the regression's links does.
+  fs.writeFileSync(
+    path.join(trusted, "scripts", "view.test.ts"),
+    [
+      'import assert from "node:assert/strict";',
+      'import fs from "node:fs";',
+      'import test from "node:test";',
+      'test("sees the state as it was written against", () => {',
+      '  assert.deepEqual(["one", "two", "three"].map((part) => fs.existsSync(`parts/${part}/PART.md`)), [true, false, false]);',
+      `  assert.equal(JSON.parse(fs.readFileSync("package.json", "utf8")).scripts.test, ${JSON.stringify(selection)});`,
+      "});",
+      "",
+    ].join("\n"),
+  );
+  // The candidate adds a part, which its own cases prove, and selects its cases differently.
+  const candidate = regressionCandidate("kept");
+  fs.cpSync(path.join(trusted, "parts"), path.join(candidate, "parts"), { recursive: true });
+  fs.mkdirSync(path.join(candidate, "parts", "two"), { recursive: true });
+  fs.writeFileSync(path.join(candidate, "parts", "two", "PART.md"), "two\n");
+  // Including where the accepted state already had the directory, but not the part.
+  fs.writeFileSync(path.join(candidate, "parts", "three", "PART.md"), "three\n");
+  const manifest = path.join(candidate, "package.json");
+  const pkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+  fs.writeFileSync(manifest, JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, test: "tsx --test src/*.test.ts" } }));
+  const results = runTrusted(trusted, candidate);
+  assert.deepEqual(
+    results.filter((r) => r.file === "scripts/view.test.ts").map((r) => r.outcome),
+    ["pass"],
+  );
+  // A candidate with a file where the accepted plan's directory belongs is judged, not crashed on.
+  const blocked = regressionCandidate("kept");
+  fs.rmSync(path.join(blocked, "test"), { recursive: true });
+  fs.writeFileSync(path.join(blocked, "test"), "not a directory\n");
+  assert.ok(runTrusted(regressionTrusted(), blocked).length > 0);
+});
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+test(
+  "the replay writes only inside its own copy, even where the candidate links a directory out of it",
+  { skip: process.platform === "win32" },
+  () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-"));
+    fs.writeFileSync(path.join(outside, "regression-plan.md"), "not the replay's\n");
+    const candidate = regressionCandidate("kept");
+    fs.rmSync(path.join(candidate, "test"), { recursive: true });
+    fs.symlinkSync(outside, path.join(candidate, "test"));
+    runTrusted(regressionTrusted(), candidate);
+    assert.deepEqual(fs.readdirSync(outside), ["regression-plan.md"]);
+    assert.equal(fs.readFileSync(path.join(outside, "regression-plan.md"), "utf8"), "not the replay's\n");
+    // Nor where the candidate's npm test names a case by a path that climbs out of it, such as into the accepted state.
+    const beside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-beside-"));
+    fs.mkdirSync(path.join(beside, "scripts"));
+    fs.writeFileSync(path.join(beside, "scripts", "kept.test.ts"), "// the accepted state's\n");
+    // The candidate kept as deep as the replay's copy, so one path reaches the same file from both.
+    const climbing = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-climbing-")), "repo");
+    fs.cpSync(regressionCandidate("kept"), climbing, { recursive: true });
+    const manifest = path.join(climbing, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+    pkg.scripts.test = `${pkg.scripts.test} ../../${path.basename(beside)}/scripts/kept.test.ts`;
+    fs.writeFileSync(manifest, JSON.stringify(pkg));
+    assert.ok(
+      caseFiles(climbing).some((file) => file.endsWith("kept.test.ts")),
+      "the candidate names the case",
+    );
+    runTrusted(regressionTrusted(), climbing);
+    assert.equal(fs.readFileSync(path.join(beside, "scripts", "kept.test.ts"), "utf8"), "// the accepted state's\n");
+  },
+);
+
+// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test(
   "the replay gives the accepted regression's cases only the permissions its identity records",
   { skip: process.platform === "win32" },
@@ -611,6 +750,22 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
     assert.equal(
       unreplayable(redirected),
       "the accepted regression's cases or test data link to what its replay does not copy (scripts/cases.test.ts)",
+    );
+    // So would a plan that is a link: the replay would copy the link, and the case would read the candidate's plan.
+    const linkedPlan = regressionCandidate("kept");
+    fs.renameSync(path.join(linkedPlan, PLAN), path.join(linkedPlan, "test", "plan.md"));
+    fs.symlinkSync("plan.md", path.join(linkedPlan, PLAN));
+    assert.equal(
+      unreplayable(linkedPlan),
+      "the accepted regression's plan is a link, so its replay would read the candidate's (test/regression-plan.md)",
+    );
+    // Or a plan reached through a directory that is a link, which the replay would not reproduce.
+    const linkedDir = regressionCandidate("kept");
+    fs.renameSync(path.join(linkedDir, "test"), path.join(linkedDir, "config"));
+    fs.symlinkSync("config", path.join(linkedDir, "test"));
+    assert.equal(
+      unreplayable(linkedDir),
+      "the accepted regression's plan is a link, so its replay would read the candidate's (test/regression-plan.md)",
     );
     // And checker code reached through a link runs, and imports, from where the link leads.
     const throughLink = regressionCandidate("kept");

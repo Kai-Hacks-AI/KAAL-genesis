@@ -111,6 +111,10 @@ export function unreplayable(repo: string): string | undefined {
   });
   if (uncopied.length)
     return `the accepted regression's cases or test data link to what its replay does not copy (${uncopied.join(", ")})`;
+  // The replay copies the plan too, as it is: a plan that is a link, or is reached through one, would lead to the candidate's.
+  const planParts = PLAN.split("/");
+  if (planParts.some((_, i) => entryAt(path.join(repo, ...planParts.slice(0, i + 1)))?.kind === "link"))
+    return `the accepted regression's plan is a link, so its replay would read the candidate's (${PLAN})`;
   // The checker's imports are followed from where its files are named; one reached through a link runs from elsewhere.
   const linked = [
     ...new Set([...CHECKER.filter((file) => fs.existsSync(path.join(repo, file))), ...checkerCode(repo).found]),
@@ -573,21 +577,96 @@ function runFiles(code: string, files: string[]): Result[] {
 }
 
 /**
- * Runs the trusted cases, with the trusted test data, against a copy of the
- * candidate's code, using the trusted test runner and reporter, never the
- * candidate's. Returns what each case did.
+ * Runs the trusted cases, with the trusted test data and the trusted plan,
+ * against a copy of the candidate's code, using the trusted test runner and
+ * reporter, never the candidate's. Returns what each case did. The plan is
+ * the accepted regression's own, as its identity says, so a case that reads
+ * it reads what its links were written against, not a plan that has since
+ * replaced or withdrawn what they point at.
  */
 export function runTrusted(trusted: string, candidate: string): Result[] {
   const code = scratchCopy(candidate, false);
   const files = caseFiles(trusted);
-  for (const rel of [...files, ...dataOf(trusted).map(([rel]) => rel)]) {
-    fs.rmSync(path.join(code, rel), { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(path.join(code, rel)), { recursive: true });
-    fs.cpSync(path.join(trusted, rel), path.join(code, rel), { recursive: true, verbatimSymlinks: true });
+  // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
+  // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
+  // A path that climbs out of the copy names none of its files, so nothing is removed for it.
+  for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
+    fs.rmSync(within(code, rel), { force: true });
+  const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
+  if (plan.length) {
+    // What a place of the accepted plan reaches by a wildcard, it knew by that place: anything there the accepted
+    // state does not have is the candidate's addition, which its own cases prove, so the accepted cases do not see it.
+    for (const place of planCommitments(fs.readFileSync(path.join(trusted, PLAN), "utf8")).filter((p) =>
+      p.includes("*"),
+    )) {
+      const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
+      for (const match of fs.globSync(place, { cwd: code }).map((m) => m.split(path.sep).join("/"))) {
+        if (fs.existsSync(path.join(trusted, match))) continue;
+        // A match the accepted state lacks: all of it that is new, the wildcard's directory if that is new too.
+        const top = match.split("/").slice(0, depth).join("/");
+        const at = fs.existsSync(path.join(trusted, top)) ? match : top;
+        if (inside(code, at)) fs.rmSync(within(code, at), { recursive: true, force: true });
+      }
+    }
+  }
+  // Which cases the regression has is the accepted regression's own selection, not the candidate's.
+  // The manifest is written afresh, never through a link the candidate may have made of it.
+  const manifest = within(code, "package.json");
+  const test = (
+    JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts?: { test?: string } }
+  ).scripts?.test;
+  const own = (
+    fs.statSync(manifest, { throwIfNoEntry: false })?.isFile() ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {}
+  ) as { scripts?: Record<string, string> };
+  fs.rmSync(manifest, { recursive: true, force: true });
+  fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
+  for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
+    const to = within(code, rel);
+    fs.rmSync(to, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.cpSync(path.join(trusted, rel), to, { recursive: true, verbatimSymlinks: true });
     // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
-    recordedModes(path.join(code, rel));
+    recordedModes(to);
   }
   return runFiles(code, files);
+}
+
+/** Whether `rel`, read as a path, stays inside `code` rather than climbing out of it. */
+function inside(code: string, rel: string): boolean {
+  const at = path.relative(path.resolve(code), path.resolve(code, rel));
+  return !!at && at !== ".." && !at.startsWith(`..${path.sep}`) && !path.isAbsolute(at);
+}
+
+/**
+ * `rel` inside the scratch copy `code`, with every directory above it inside
+ * the copy too: one the candidate kept as a link leading out of the copy is
+ * made a real directory, so writing at `rel` can never write anywhere else.
+ */
+function within(code: string, rel: string): string {
+  if (!inside(code, rel)) throw new Error(`${rel}: climbs out of the replay's copy`);
+  const root = fs.realpathSync(code);
+  const parts = rel.split("/");
+  for (let i = 1; i < parts.length; i++) {
+    const at = path.join(code, ...parts.slice(0, i));
+    const stat = fs.lstatSync(at, { throwIfNoEntry: false });
+    // Anything but a directory in the way, such as a file the candidate put there, is made one.
+    if (stat && !stat.isDirectory() && !stat.isSymbolicLink()) {
+      fs.rmSync(at, { force: true });
+      fs.mkdirSync(at);
+      continue;
+    }
+    if (!stat?.isSymbolicLink()) continue;
+    let real: string | undefined;
+    try {
+      real = fs.realpathSync(at);
+    } catch {
+      real = undefined; // A link to nothing leads nowhere inside the copy.
+    }
+    if (real && (real === root || real.startsWith(root + path.sep))) continue;
+    fs.unlinkSync(at);
+    fs.mkdirSync(at);
+  }
+  return path.join(code, ...parts);
 }
 
 /**
