@@ -7,17 +7,30 @@ import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { type Change, sealBrain, stateChanges } from "./brain-seals.js";
 import { io } from "../skills/using-seals/scripts/seals.js";
 import { genesis } from "./genesis.js";
+import { TESTED_STATE, TESTING_STATE } from "./regression.js";
 
 const DATA = fileURLToPath(new URL("../test-data/", import.meta.url));
 
 /**
  * KAAL's own state: the subject of every case that makes a claim about KAAL
- * itself, such as that its links hold or its BRAIN is valid. It is the state
- * these cases are kept in, found from here, never from the directory they are
- * run from: that is part of a run's environment, not of what a case is about.
+ * itself, such as that its links hold or its BRAIN is valid. The run that
+ * executes these cases hands it to them: the tested state it names. A run that
+ * names none tests the state these cases are kept in, found from here, never
+ * from the directory they are run from, which is part of the run's environment.
+ * A tested state handed to another testing state than this one, or one that is
+ * not a directory, is refused rather than silently judged or ignored.
  */
 export function kaal(): string {
-  return fileURLToPath(new URL("../", import.meta.url));
+  const own = fileURLToPath(new URL("../", import.meta.url));
+  const tested = process.env[TESTED_STATE];
+  if (tested === undefined) return own;
+  const testing = process.env[TESTING_STATE];
+  const same = (a: string, b: string) => fs.realpathSync(a) === fs.realpathSync(b);
+  if (!testing || !fs.existsSync(testing) || !same(testing, own))
+    throw new Error(`${TESTED_STATE} names a tested state for another testing state than ${own}`);
+  if (!fs.statSync(tested, { throwIfNoEntry: false })?.isDirectory())
+    throw new Error(`${TESTED_STATE}: ${tested} is not a directory`);
+  return tested;
 }
 
 /**
@@ -137,4 +150,52 @@ export function regressionCandidate(name: string): string {
   fs.cpSync(regressionTrusted(), root, { recursive: true });
   fs.cpSync(path.join(DATA, "regression", "candidates", name), root, { recursive: true });
   return root;
+}
+
+/**
+ * A scratch copy of a state from test-data/runs, as plain files: `greeter`,
+ * whose cases say what its greeting is, and `silent`, whose greeting says
+ * something else; `before`, `after` and `after-weak`, the cases of one claim
+ * before and after refactoring, well and badly, and `sound`, `forgets-x` and
+ * `forgets-y`, states those cases test, the last two each breaking the claim;
+ * `empty`, whose npm test names no case file, beside a test file it does not
+ * name; `titled`, holding a case titled with its own file's path beside a
+ * case that fails; `unloadable`, holding such a case in a file that then
+ * fails to load; `killer`, whose case stops the runner executing it;
+ * `todo`, holding cases marked todo that hold and break beside cases marked
+ * skipped, one with a reason and one with an empty one; and `cancelled`,
+ * holding a case cancelled before it starts beside one that fails; `hooked`,
+ * whose hook before each case fails; `lineone`, declaring a case titled with
+ * its own path on its first line; `unresolved`, declaring one there in a
+ * file with an import that cannot be resolved; `twice`, holding two cases
+ * at one address, the first cancelled before it starts; and `nameless`,
+ * whose case, cancelled before it starts, has a title built while it runs.
+ */
+export function runState(name: string): string {
+  const to = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-state-")), name);
+  fs.cpSync(path.join(DATA, "runs", name), to, { recursive: true });
+  return to;
+}
+
+/**
+ * The trusted regression from test-data/regression with cases from
+ * test-data/runs/replay: one that passes only when the state it is handed is
+ * a candidate itself, holding its own cases, and one marked todo that holds.
+ */
+export function replayTrusted(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-trusted-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  fs.cpSync(path.join(DATA, "runs", "replay"), root, { recursive: true });
+  return root;
+}
+
+/**
+ * A scratch testing state from test-data/runs/escaping, whose npm test names
+ * case files in a directory beside it, test-data/runs/escaped, copied next to it.
+ */
+export function escapingState(): string {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-state-"));
+  for (const name of ["escaping", "escaped"])
+    fs.cpSync(path.join(DATA, "runs", name), path.join(parent, name), { recursive: true });
+  return path.join(parent, "escaping");
 }

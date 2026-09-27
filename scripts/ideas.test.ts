@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 import { ideaErrors, readIdeas } from "../skills/managing-ideas/scripts/ideas.js";
+import { kaal } from "./test-data.js";
 
-const REPO = fileURLToPath(new URL("../", import.meta.url));
-const IDEAS = path.join(REPO, "ideas");
+/** The subject of this file's cases about KAAL itself. */
+const KAAL = kaal();
+const IDEAS = path.join(KAAL, "ideas");
 const MODULAR = path.join(IDEAS, "modular-kaal", "idea.md");
 
 // Why: brain/learning/genesis/26/09/27/04/nodes/managing-ideas.md

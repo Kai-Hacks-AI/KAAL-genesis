@@ -1,0 +1,7 @@
+[
+  { "file": "a.test.ts", "title": "adds", "outcome": "passed" },
+  { "file": "a.test.ts", "title": "subtracts", "outcome": "failed" },
+  { "file": "b.test.ts", "title": "greets", "outcome": "passed" },
+  { "file": "b.test.ts", "title": "greets", "outcome": "skipped" },
+  { "file": "c.test.ts", "title": "adds", "outcome": "passed" }
+]
