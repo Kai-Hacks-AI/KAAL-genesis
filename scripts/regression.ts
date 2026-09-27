@@ -111,8 +111,9 @@ export function unreplayable(repo: string): string | undefined {
   });
   if (uncopied.length)
     return `the accepted regression's cases or test data link to what its replay does not copy (${uncopied.join(", ")})`;
-  // The replay copies the plan too, as it is: a plan that is a link would be copied as the link, and lead to the candidate's.
-  if (entryAt(path.join(repo, PLAN))?.kind === "link")
+  // The replay copies the plan too, as it is: a plan that is a link, or is reached through one, would lead to the candidate's.
+  const planParts = PLAN.split("/");
+  if (planParts.some((_, i) => entryAt(path.join(repo, ...planParts.slice(0, i + 1)))?.kind === "link"))
     return `the accepted regression's plan is a link, so its replay would read the candidate's (${PLAN})`;
   // The checker's imports are followed from where its files are named; one reached through a link runs from elsewhere.
   const linked = [
@@ -588,7 +589,9 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
   const files = caseFiles(trusted);
   // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
   // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
-  for (const rel of [...caseFiles(candidate), PLAN]) fs.rmSync(within(code, rel), { force: true });
+  // A path that climbs out of the copy names none of its files, so nothing is removed for it.
+  for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
+    fs.rmSync(within(code, rel), { force: true });
   const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
   for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
     const to = within(code, rel);
@@ -601,12 +604,19 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
   return runFiles(code, files);
 }
 
+/** Whether `rel`, read as a path, stays inside `code` rather than climbing out of it. */
+function inside(code: string, rel: string): boolean {
+  const at = path.relative(path.resolve(code), path.resolve(code, rel));
+  return !!at && at !== ".." && !at.startsWith(`..${path.sep}`) && !path.isAbsolute(at);
+}
+
 /**
  * `rel` inside the scratch copy `code`, with every directory above it inside
  * the copy too: one the candidate kept as a link leading out of the copy is
  * made a real directory, so writing at `rel` can never write anywhere else.
  */
 function within(code: string, rel: string): string {
+  if (!inside(code, rel)) throw new Error(`${rel}: climbs out of the replay's copy`);
   const root = fs.realpathSync(code);
   const parts = rel.split("/");
   for (let i = 1; i < parts.length; i++) {

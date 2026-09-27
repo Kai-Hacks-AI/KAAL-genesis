@@ -550,6 +550,23 @@ test(
     runTrusted(regressionTrusted(), candidate);
     assert.deepEqual(fs.readdirSync(outside), ["regression-plan.md"]);
     assert.equal(fs.readFileSync(path.join(outside, "regression-plan.md"), "utf8"), "not the replay's\n");
+    // Nor where the candidate's npm test names a case by a path that climbs out of it, such as into the accepted state.
+    const beside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-beside-"));
+    fs.mkdirSync(path.join(beside, "scripts"));
+    fs.writeFileSync(path.join(beside, "scripts", "kept.test.ts"), "// the accepted state's\n");
+    // The candidate kept as deep as the replay's copy, so one path reaches the same file from both.
+    const climbing = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-climbing-")), "repo");
+    fs.cpSync(regressionCandidate("kept"), climbing, { recursive: true });
+    const manifest = path.join(climbing, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+    pkg.scripts.test = `${pkg.scripts.test} ../../${path.basename(beside)}/scripts/kept.test.ts`;
+    fs.writeFileSync(manifest, JSON.stringify(pkg));
+    assert.ok(
+      caseFiles(climbing).some((file) => file.endsWith("kept.test.ts")),
+      "the candidate names the case",
+    );
+    runTrusted(regressionTrusted(), climbing);
+    assert.equal(fs.readFileSync(path.join(beside, "scripts", "kept.test.ts"), "utf8"), "// the accepted state's\n");
   },
 );
 
@@ -687,6 +704,14 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
     fs.symlinkSync("plan.md", path.join(linkedPlan, PLAN));
     assert.equal(
       unreplayable(linkedPlan),
+      "the accepted regression's plan is a link, so its replay would read the candidate's (test/regression-plan.md)",
+    );
+    // Or a plan reached through a directory that is a link, which the replay would not reproduce.
+    const linkedDir = regressionCandidate("kept");
+    fs.renameSync(path.join(linkedDir, "test"), path.join(linkedDir, "config"));
+    fs.symlinkSync("config", path.join(linkedDir, "test"));
+    assert.equal(
+      unreplayable(linkedDir),
       "the accepted regression's plan is a link, so its replay would read the candidate's (test/regression-plan.md)",
     );
     // And checker code reached through a link runs, and imports, from where the link leads.
