@@ -484,6 +484,9 @@ test("a run of a plan is refused for one its testing state does not state, or st
   );
   assert.throws(() => testRun({ testing: state, plan: "suites/names.md" }), /not a plan's place/);
   assert.throws(() => testRun({ testing: state, suite: "suites/names.md", plan: "plans/naming.md" }), /not of both/);
+  // What a plan requires is read only of a plan, however it is asked for.
+  assert.throws(() => planRequirements(state, "suites/names.md"), /not a plan's place/);
+  assert.throws(() => planEvidence(state, "plans/unknown.md", []), /no plan is stated there/);
   fs.appendFileSync(
     path.join(state, "plans", "naming.md"),
     "\n## As runs read it\n\n```yaml\nsuites: [suites/names.md]\n```\n",

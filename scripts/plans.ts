@@ -170,6 +170,9 @@ export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "pr
  * what the plan requires would be chosen by a file the state does not hold.
  */
 export function planRequirements(repo: string, plan: string): PlanRequirement[] {
+  // Only a plan the state states has requirements, however they are asked for.
+  const notPlan = planError(repo, plan);
+  if (notPlan) throw new Error(notPlan);
   // A run reads plans as the links check reads them, so what the check refuses of a state's plans, such as a plan
   // entry that says not where its commitment is stated,
   // naming commitments it may not, a check it names but does not require, or a suite's line that serves no plan, a
