@@ -19,6 +19,8 @@
     "defects:check": "tsx skills/managing-defects/scripts/check.ts defects",
     "ideas:record": "tsx skills/managing-ideas/scripts/record.ts ideas",
     "ideas:check": "tsx skills/managing-ideas/scripts/check.ts ideas",
+    "requirements:record": "tsx skills/managing-requirements/scripts/record.ts requirements",
+    "requirements:check": "tsx skills/managing-requirements/scripts/check.ts requirements",
     "seal": "tsx scripts/seal.ts",
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",
