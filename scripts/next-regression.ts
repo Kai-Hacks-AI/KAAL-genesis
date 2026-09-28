@@ -122,28 +122,56 @@ export function protectionOf(state: string): { protection: Protection; errors: s
 }
 
 /**
- * The inherited cases with those demonstrating new promises: a demonstrating
- * case at the address of an inherited one is that case come to demonstrate a
- * promise too, so the two are one, with the links and memberships of both,
- * each inherited case taken once.
+ * A complete one-to-one pairing of `left` with `right`, as large as can be,
+ * where each pair `fits`: for each of `left`, the index of its partner in
+ * `right`, or nothing. Grown by augmenting paths, so it does not depend on the
+ * order either is listed in.
  */
-function merged(inherited: Held[], demonstrating: Held[]): Held[] {
-  const cases = inherited.map((c) => ({ ...c }));
-  const taken = new Set<number>();
-  for (const d of demonstrating) {
-    const i = cases.findIndex((c, k) => !taken.has(k) && c.file === d.file && c.title === d.title);
-    if (i < 0) {
-      cases.push(d);
-      continue;
-    }
-    taken.add(i);
-    cases[i] = {
-      ...d,
-      places: sorted([...cases[i]!.places, ...d.places]),
-      suites: sorted([...cases[i]!.suites, ...d.suites]),
-    };
+function pairing<L, R>(left: L[], right: R[], fits: (l: L, r: R) => boolean): (number | undefined)[] {
+  const owner: (number | undefined)[] = right.map(() => undefined);
+  const assign = (l: number, seen: Set<number>): boolean =>
+    right.some((r, k) => {
+      if (seen.has(k) || !fits(left[l]!, r)) return false;
+      seen.add(k);
+      if (owner[k] === undefined || assign(owner[k]!, seen)) return ((owner[k] = l), true);
+      return false;
+    });
+  left.forEach((_, l) => assign(l, new Set()));
+  return left.map((_, l) => {
+    const k = owner.indexOf(l);
+    return k < 0 ? undefined : k;
+  });
+}
+
+/** Whether `c` keeps every link and membership `d` has. */
+const keepsAll = (d: Held, c: Held) =>
+  d.places.every((p) => c.places.includes(p)) && d.suites.every((s) => c.suites.includes(s));
+
+/** A case's address, the same for every case at it. */
+const address = (c: Held) => `${c.file}\0${c.title}`;
+
+/**
+ * The cases of the next regression: each inherited case as the candidate
+ * carries it, found by a complete matching at each address with a case of the
+ * candidate keeping its every link and membership, so a case that comes to
+ * prove a new promise too is carried once, as the case it is; each case of the
+ * candidate demonstrating a new promise; and each inherited case the
+ * candidate does not carry, as it was, which the candidate is then held to.
+ */
+function carriedCases(inherited: Held[], candidate: Held[], demonstrates: (c: Held) => boolean): Held[] {
+  const cases: Held[] = [];
+  const carried = new Set<number>();
+  for (const at of new Set(inherited.map(address))) {
+    const is = inherited.filter((c) => address(c) === at);
+    const slots = candidate.flatMap((c, k) => (address(c) === at ? [k] : []));
+    const partner = pairing(is, slots, (c, k) => keepsAll(c, candidate[k]!));
+    is.forEach((c, i) => {
+      const k = partner[i] === undefined ? undefined : slots[partner[i]!];
+      if (k === undefined) cases.push(c);
+      else carried.add(k);
+    });
   }
-  return cases;
+  return [...cases, ...candidate.filter((c, k) => carried.has(k) || demonstrates(c))];
 }
 
 /**
@@ -211,10 +239,11 @@ export function nextRegression(
       suites: sorted([...suites]),
       ...planSettings(accepted),
       cases: byAddress(
-        merged(
+        carriedCases(
           heldCases(accepted, keptCase, commitments, suites),
+          heldCases(candidate, () => true, commitments, suites),
           // Each case by its own links: one at the same address as a case demonstrating a promise is not that case.
-          heldCases(candidate, (c) => c.places.some((p) => proving.has(p)), commitments, suites),
+          (c) => c.places.some((p) => proving.has(p)),
         ),
       ),
     },
@@ -287,29 +316,15 @@ export function carriedErrors(derived: Protection, own: Protection, promises: st
         `${PLAN}: its ${key} are ${canonical(own[key] ?? null)}, but the regression's are ${canonical(derived[key] ?? null)}, which nothing gives up or adds to`,
       );
   // Cases are matched one to one, so two cases at one address need two. At each address the derived cases are paired
-  // with the candidate's by a complete matching that keeps every relation, found whatever order either lists them in;
-  // only what no such pairing can keep is reported.
-  const keeps = (d: Held, o: Held) =>
-    d.places.every((p) => o.places.includes(p)) && d.suites.every((s) => o.suites.includes(s));
-  const addresses = [...new Set(derived.cases.map((c) => `${c.file}\0${c.title}`))];
-  for (const address of addresses) {
-    const at = (c: Held) => `${c.file}\0${c.title}` === address;
-    const ds = derived.cases.filter(at);
-    const os = own.cases.filter(at);
-    // Each derived case's partner among the candidate's, as a matching grown by augmenting paths.
-    const partner: (number | undefined)[] = os.map(() => undefined);
-    const assign = (d: number, seen: Set<number>): boolean =>
-      os.some((o, k) => {
-        if (seen.has(k) || !keeps(ds[d]!, o)) return false;
-        seen.add(k);
-        if (partner[k] === undefined || assign(partner[k]!, seen)) return ((partner[k] = d), true);
-        return false;
-      });
-    const kept = new Set(ds.flatMap((_, d) => (assign(d, new Set()) ? [d] : [])));
-    // What is left unkept is paired with what the candidate has left at the address, if anything, and its losses said.
-    const spare = os.filter((_, k) => partner[k] === undefined);
+  // with the candidate's by a complete matching that keeps every relation, whatever order either lists them in; only
+  // what no such pairing can keep is reported, against what the candidate has left at the address, if anything.
+  for (const at of new Set(derived.cases.map(address))) {
+    const ds = derived.cases.filter((c) => address(c) === at);
+    const os = own.cases.filter((c) => address(c) === at);
+    const partner = pairing(ds, os, keepsAll);
+    const spare = os.filter((_, k) => !partner.includes(k));
     ds.forEach((c, d) => {
-      if (kept.has(d)) return;
+      if (partner[d] !== undefined) return;
       const name = `${c.file}: ${JSON.stringify(c.title)}`;
       const is = spare.shift();
       if (!is) {

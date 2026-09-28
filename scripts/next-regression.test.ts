@@ -308,4 +308,18 @@ test("an inherited case that comes to demonstrate a new promise is carried once,
       },
     ],
   );
+  // Beside another inherited case at its address, one outside the suite, it is carried as the case it is, not the other.
+  const both = edited(r0(), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      "// Why: src/add.ts\n// Suite: suites/plain.md\n",
+      '// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(add(0, 0), 0);\n});\n\n// Why: src/add.ts\n// Suite: suites/plain.md\n',
+    ),
+  );
+  const second = edited(succeeding(both, "next-regression/waves"), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      "// Why: src/add.ts\n// Suite: suites/plain.md\n",
+      `// Why: src/add.ts\n// Why: ${WAVES}\n// Suite: suites/plain.md\n`,
+    ),
+  );
+  assert.deepEqual(judged(both, second), []);
 });
