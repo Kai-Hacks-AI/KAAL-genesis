@@ -164,6 +164,18 @@ export function acceptedProtection(
           unnamed.map((at) => `${at}: a case whose title cannot be read, so it cannot be inherited`).join("\n"),
         );
     }
+    // The runner runs a case titled with nothing at all under another name, so no result could be told to be its, and
+    // it could not be kept from running beside the cases kept: its title names nothing that runs.
+    const untitled = repoCases(accepted).filter((c) => c.title === "");
+    if (untitled.length)
+      throw new Error(
+        untitled
+          .map(
+            (c) =>
+              `${c.file}: a case titled with nothing at all, which runs under another name, so it cannot be inherited`,
+          )
+          .join("\n"),
+      );
   } catch (e) {
     return {
       requires: [],

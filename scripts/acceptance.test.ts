@@ -72,7 +72,7 @@ test("an excluded inherited case is given up, and a commitment only once every c
     result.requires,
     REQUIRED.filter((r) => r !== `commitment: ${GREETING}`),
   );
-  // A case titled with nothing at all can be excluded as any other, by the title it has.
+  // A case titled with whitespace alone can be excluded as any other, by the title it has.
   const untitled = candidate("acceptance/untitled");
   assert.deepEqual(
     acceptance(
@@ -80,14 +80,18 @@ test("an excluded inherited case is given up, and a commitment only once every c
       candidate("acceptance/untitled", "regression/candidates/withdrawn", "acceptance/excludes-untitled"),
     ).errors,
     [],
-  ); // So it can beside a case kept in its file, which still runs and holds.
+  );
+  // A case titled with nothing at all is run under another name, so its title cannot say which case ran, and not
+  // running it beside a case kept cannot be asked by it: a regression holding one is refused, even where it is excluded.
   const beside = candidate("acceptance/untitled-beside");
   assert.deepEqual(
     acceptance(
       beside,
       candidate("acceptance/untitled-beside", "regression/candidates/withdrawn", "acceptance/excludes-untitled-beside"),
     ).errors,
-    [],
+    [
+      `${beside}: scripts/beside.test.ts: a case titled with nothing at all, which runs under another name, so it cannot be inherited`,
+    ],
   );
 
   // Where its cases alone show adding, excluding one of its two cases gives up that case, never adding.

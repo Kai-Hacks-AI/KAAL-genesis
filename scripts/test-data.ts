@@ -197,10 +197,10 @@ export function featureState(...layers: string[]): string {
  * whenever it is loaded; `built-title`, a case whose title is built while it
  * runs; `mixed`, a file of a case `marks`, whose code leaves that mark when
  * called, beside a case kept; `excludes-marks`, a record excluding it;
- * `untitled`, a case of greeting titled with nothing at all;
+ * `untitled`, a case of greeting titled with whitespace alone;
  * `excludes-untitled`, a record excluding it and `greets`; and
- * `untitled-beside` and `excludes-untitled-beside`, the same beside a case
- * kept in its file.
+ * `untitled-beside`, a case of greeting titled with nothing at all beside a
+ * case kept in its file, and `excludes-untitled-beside`, a record excluding it.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

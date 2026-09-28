@@ -607,10 +607,10 @@ export function execute(
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-")), "results.jsonl");
   fs.writeFileSync(out, "");
   // A case to skip is named by its whole title, so no other case whose title only contains it is skipped with it. An
-  // empty title cannot be named so: the runner reads a pattern matching nothing as matching every case of the file.
-  const skipping = skip
-    .filter((title) => title !== "")
-    .map((title) => `--test-skip-pattern=^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  // empty title names no case: the runner runs such a case under another name, and reads a pattern matching nothing as
+  // matching every case of the file.
+  if (skip.includes("")) throw new Error("a case titled with nothing at all cannot be skipped by its title");
+  const skipping = skip.map((title) => `--test-skip-pattern=^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
   const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...skipping, ...files], {
     cwd: code,
     // A run started from within another test run would report to that run instead.
