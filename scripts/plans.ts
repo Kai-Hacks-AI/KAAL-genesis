@@ -221,7 +221,8 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
   // Regression Plan entry that says not where its commitment is stated, a plan naming commitments it may not, a check
   // it names but does not require, or a suite's line that serves no plan, a run refuses too, whichever plan it runs,
   // before anything runs, rather than require less than the plans say.
-  const hasPlan = kindAt(path.join(repo, PLAN)) === "file";
+  // Its entries are read only once it is known to be stated in its own place; one that is not, planErrors refuses.
+  const hasPlan = fs.existsSync(path.join(repo, PLAN)) && planError(repo, PLAN) === undefined;
   const incoherent = [...(hasPlan ? planEntryErrors(repo).errors : []), ...planErrors(repo)];
   if (incoherent.length) throw new Error(incoherent.join("\n"));
   const { conditions, proof } = readPlan(repo, plan);

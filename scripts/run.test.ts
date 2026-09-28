@@ -459,6 +459,13 @@ test("a plan's conditions are what it requires, and a run records the conditions
   );
   assert.throws(() => testRun({ testing: alike, plan: PLAN }), /does not say where it is stated/);
   fs.writeFileSync(unreadable, bare);
+  // A Regression Plan stated through a link is refused before anything reads where it leads, even where that cannot be
+  // read, as a process's own memory cannot where a system shows it as a file.
+  fs.renameSync(unreadable, `${unreadable}.kept`);
+  fs.symlinkSync(fs.existsSync("/proc/self/mem") ? "/proc/self/mem" : `${unreadable}.kept`, unreadable);
+  assert.throws(() => testRun({ testing: alike, plan: GREETING_PLAN }), /a plan stated through a link/);
+  fs.rmSync(unreadable);
+  fs.renameSync(`${unreadable}.kept`, unreadable);
   // A plan other than the Regression Plan that names commitments is refused before anything runs.
   fs.appendFileSync(
     path.join(alike, GREETING_PLAN),
