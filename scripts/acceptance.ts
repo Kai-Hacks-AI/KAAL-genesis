@@ -71,30 +71,31 @@ function placeError(state: string, place: string): string | undefined {
  * passed over, as a glob would pass it over.
  */
 function expanded(state: string, place: string, errors: string[]): string[] {
+  // Every path walked through, whether a segment names it or a wildcard matched it, is the state's own or refused:
+  // one reached through a link is neither read through nor passed over as holding nothing.
+  const own = (rel: string): boolean => {
+    const kind = fs.lstatSync(path.join(state, rel), { throwIfNoEntry: false });
+    if (kind?.isSymbolicLink()) errors.push(`${state}: ${rel}: a commitment stated through a link`);
+    return !!kind && !kind.isSymbolicLink();
+  };
   let found = [""];
   for (const segment of place.split("/")) {
     if (!segment.includes("*")) {
-      found = found.map((at) => (at ? `${at}/${segment}` : segment));
+      found = found.map((at) => (at ? `${at}/${segment}` : segment)).filter(own);
       continue;
     }
     const matches = new RegExp(`^${segment.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`);
     found = found.flatMap((at) => {
       const dir = path.join(state, at);
-      if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
+      if (!fs.lstatSync(dir).isDirectory()) return [];
       return fs
-        .readdirSync(dir, { withFileTypes: true })
-        .filter((e) => matches.test(e.name) && (segment.startsWith(".") || !e.name.startsWith(".")))
-        .flatMap((e) => {
-          const rel = at ? `${at}/${e.name}` : e.name;
-          if (e.isSymbolicLink()) {
-            errors.push(`${state}: ${rel}: a commitment stated through a link`);
-            return [];
-          }
-          return [rel];
-        });
+        .readdirSync(dir)
+        .filter((name) => matches.test(name) && (segment.startsWith(".") || !name.startsWith(".")))
+        .map((name) => (at ? `${at}/${name}` : name))
+        .filter(own);
     });
   }
-  return found.filter((f) => fs.lstatSync(path.join(state, f), { throwIfNoEntry: false })).sort();
+  return found.sort();
 }
 
 /** The Regression Plan's text as its sections are read, or why `state` states none of its own. */

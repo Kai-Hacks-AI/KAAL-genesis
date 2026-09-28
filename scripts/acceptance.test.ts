@@ -200,6 +200,11 @@ test("what a state protects or accepts through a link is not its own, and is ref
   fs.symlinkSync(path.join(elsewhere, "c"), path.join(linkedSkill, "skills", "c"), "junction");
   const skilled = candidate("acceptance/skilled", "acceptance/skill-c");
   assert.match(reduced(skilled, linkedSkill).errors.join("\n"), /skills\/c: a commitment stated through a link/);
+  // Or the directory the wildcard begins in, which would otherwise read as holding no skill at all.
+  const linkedSkills = candidate("acceptance/skilled", "acceptance/skill-c");
+  fs.renameSync(path.join(linkedSkills, "skills"), path.join(elsewhere, "skills"));
+  fs.symlinkSync(path.join(elsewhere, "skills"), path.join(linkedSkills, "skills"), "junction");
+  assert.match(reduced(skilled, linkedSkills).errors.join("\n"), /: skills: a commitment stated through a link/);
   // A Regression Plan kept elsewhere; a file link needs privileges on Windows, so this is shown where one can be made.
   if (process.platform !== "win32") {
     const linkedPlan = candidate();
