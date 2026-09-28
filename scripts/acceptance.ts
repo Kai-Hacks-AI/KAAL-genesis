@@ -231,9 +231,10 @@ export function acceptedProtection(
 }
 
 /**
- * Every link in `state`, beside its dependencies and Git's own files, whose
- * target lies outside it: the replay copies links as they are, so an inherited
- * case following one would run or read what the state does not hold.
+ * Every link in `state`, beside its dependencies and Git's own files, that does
+ * not lead within it by a relative path that never leaves it: the replay copies
+ * links as they are, so an inherited case following one would run or read what
+ * the copy does not hold, even the state it was copied from.
  */
 function escapingLinks(state: string): string[] {
   const root = path.resolve(state);
@@ -244,8 +245,12 @@ function escapingLinks(state: string): string[] {
       if (!rel && (entry.name === "node_modules" || entry.name === ".git")) continue;
       const full = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) {
-        const target = path.relative(root, path.resolve(dir, fs.readlinkSync(full)));
-        if (!target || target === ".." || target.startsWith(`..${path.sep}`) || path.isAbsolute(target)) found.push(at);
+        // Judged by what the link says, not where it leads now: an absolute target leads wherever the copy is made,
+        // and a relative one that climbs out of the state leads out of the copy, whatever it comes back into.
+        const text = fs.readlinkSync(full).split(path.sep).join("/");
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(at), text));
+        if (path.isAbsolute(text) || /^[a-zA-Z]:/.test(text) || target === ".." || target.startsWith("../"))
+          found.push(at);
       } else if (entry.isDirectory()) walk(full, at);
     }
   };
@@ -313,13 +318,15 @@ export function acceptance(
     )
       errors.push(`${place}: rewritten; a Requirement never changes, so a new commitment is a new Requirement`);
   }
+  // An accepted regression that cannot be replayed is refused even when no inherited case is left to run: what its
+  // exclusions name was read from it all the same.
+  const unfaithful = errors.length ? undefined : unreplayable(accepted);
+  if (unfaithful) errors.push(unfaithful);
   if (!errors.length && plan.cases.length) {
-    const unfaithful = unreplayable(accepted);
     const escaping = escapingLinks(candidate);
-    if (unfaithful) errors.push(unfaithful);
-    else if (escaping.length)
+    if (escaping.length)
       errors.push(
-        `the candidate links outside its state (${escaping.join(", ")}), so its inherited cases would not judge it alone`,
+        `the candidate links other than within itself by a relative path (${escaping.join(", ")}), so its inherited cases would not judge it alone`,
       );
     else {
       const excluded = (file: string, title: string) => !plan.cases.some((c) => c.file === file && c.title === title);

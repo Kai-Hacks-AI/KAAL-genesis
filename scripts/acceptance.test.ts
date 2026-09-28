@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { acceptance, acceptedProtection, named } from "./acceptance.js";
 import { newPromises } from "./feature.js";
-import { PLAN } from "./links.js";
+import { PLAN, repoCases } from "./links.js";
 import { layeredState } from "./test-data.js";
 
 const BY_NAME = "requirements/greets-by-name/requirement.md";
@@ -256,8 +256,37 @@ test("what either state keeps through a link is not its own, and is refused rath
   fs.symlinkSync(path.join(elsewhere, "src"), path.join(reaching, "src", "shared"), "junction");
   assert.match(
     acceptance(accepted(), reaching).errors.join("\n"),
-    /the candidate links outside its state \(src\/shared\)/,
+    /the candidate links other than within itself by a relative path \(src\/shared\)/,
   );
+  // Nor within it by its whole path: the replay copies a link as it is, so it would lead back into the candidate itself.
+  const inward = candidate();
+  fs.symlinkSync(path.join(inward, "src"), path.join(inward, "src-again"), "junction");
+  assert.match(
+    acceptance(accepted(), inward).errors.join("\n"),
+    /the candidate links other than within itself by a relative path \(src-again\)/,
+  );
+  // An accepted regression that cannot be replayed is refused even when every inherited case is excluded, and none is
+  // run: what the exclusions name was read from it all the same.
+  const hooked = accepted();
+  const manifest = path.join(hooked, "package.json");
+  const scripts = JSON.parse(fs.readFileSync(manifest, "utf8")) as { scripts: Record<string, string> };
+  scripts.scripts.postinstall = "node -e 0";
+  fs.writeFileSync(manifest, JSON.stringify(scripts));
+  const excludingAll = (state: string) => {
+    const all = candidate();
+    fs.mkdirSync(path.join(all, "acceptance"), { recursive: true });
+    fs.writeFileSync(
+      path.join(all, "acceptance", "all.md"),
+      `---\nexcludes:\n${repoCases(state)
+        .map(
+          (c) =>
+            `  - case: ${JSON.stringify(c.file)}\n    title: ${JSON.stringify(c.title)}\n    because: all given up\n`,
+        )
+        .join("")}---\n`,
+    );
+    return all;
+  };
+  assert.match(acceptance(hooked, excludingAll(hooked)).errors.join("\n"), /runs postinstall/);
   // The accepted Regression Plan kept elsewhere; a file link needs privileges on Windows, so this is shown where one
   // can be made.
   if (process.platform !== "win32") {
@@ -265,5 +294,18 @@ test("what either state keeps through a link is not its own, and is refused rath
     fs.rmSync(path.join(linkedPlan, PLAN));
     fs.symlinkSync(path.join(elsewhere, PLAN), path.join(linkedPlan, PLAN));
     assert.match(acceptance(linkedPlan, candidate()).errors.join("\n"), /a plan stated through a link/);
+    // So is one whose case files are read from outside it, even where they are all excluded.
+    const outward = accepted();
+    fs.rmSync(path.join(outward, PLAN));
+    fs.renameSync(path.join(outward, "scripts", "cases.test.ts"), path.join(elsewhere, "outward.test.ts"));
+    fs.symlinkSync(path.join(elsewhere, "outward.test.ts"), path.join(outward, "scripts", "cases.test.ts"));
+    assert.match(acceptance(outward, excludingAll(outward)).errors.join("\n"), /link outside its state/);
+    // And a candidate link that climbs out of it only to come back in is not within it either.
+    const climbing = candidate();
+    fs.symlinkSync(path.join("..", path.basename(climbing), "src"), path.join(climbing, "src-climbing"));
+    assert.match(
+      acceptance(accepted(), climbing).errors.join("\n"),
+      /the candidate links other than within itself by a relative path \(src-climbing\)/,
+    );
   }
 });
