@@ -55,8 +55,15 @@ export type Run = {
  * Runs show a plan together only as runs of it from that testing state against
  * one tested state; a state is named here by where it is, as a run records it,
  * so runs of one state kept in different places show nothing together.
+ * `commitments` are those derived for the plan rather than named in it, as
+ * its runs were given them, such as what a candidate newly promises.
  */
-export function planEvidence(testing: string, plan: string, runs: Run[]): ReturnType<typeof evidence> {
+export function planEvidence(
+  testing: string,
+  plan: string,
+  runs: Run[],
+  commitments: string[] = [],
+): ReturnType<typeof evidence> {
   if (new Set(runs.map((r) => r.tested)).size > 1)
     throw new Error("runs of different tested states show nothing together");
   const shown = (run: Run): PlanRun => {
@@ -72,7 +79,7 @@ export function planEvidence(testing: string, plan: string, runs: Run[]): Return
     };
   };
   return evidence(
-    planRequirements(testing, plan).map(({ kind, name, under }) => ({ name: `${kind}: ${name}`, under })),
+    planRequirements(testing, plan, commitments).map(({ kind, name, under }) => ({ name: `${kind}: ${name}`, under })),
     runs.map(shown),
   );
 }
@@ -82,7 +89,9 @@ export function planEvidence(testing: string, plan: string, runs: Run[]): Return
  * testing state itself; given a `suite`, by its place in the testing state, a
  * run of that suite, which reaches every case that belongs to it and no
  * other; given a `plan`, a run of that plan, which reaches only what it
- * requires, each case once, and hands its cases the data it provides. `conditions` are those whoever starts the run knows and the run
+ * requires, each case once, and hands its cases the data it provides, and
+ * given `commitments` derived for that plan, requires them too, as
+ * commitments it names. `conditions` are those whoever starts the run knows and the run
  * cannot measure, such as how the files were checked out; the platform and
  * runtime are measured, and refused if given.
  */
@@ -92,14 +101,17 @@ export function testRun({
   suite,
   plan,
   conditions = {},
+  commitments = [],
 }: {
   testing: string;
   tested?: string;
   suite?: string;
   plan?: string;
   conditions?: Record<string, string>;
+  commitments?: string[];
 }): Run {
   if (suite !== undefined && plan !== undefined) throw new Error("a run is of a suite or of a plan, not of both");
+  if (commitments.length && plan === undefined) throw new Error("only a run of a plan is given commitments to require");
   const measured = { platform: process.platform, runtime: `node ${process.version}` };
   for (const key of Object.keys(conditions).filter((k) => Object.hasOwn(measured, k)))
     throw new Error(`${key}: a run measures it, so it cannot be given`);
@@ -144,7 +156,7 @@ export function testRun({
       if (dataWrong) throw new Error(dataWrong);
       handed[PLAN_DATA] = path.resolve(testing, data);
     }
-    requirements = planRequirements(testing, plan);
+    requirements = planRequirements(testing, plan, commitments);
   }
   // A skill's case belongs to none of the state's suites, so the skill stays independent of it: a state where one says
   // it does is refused before anything runs, as its links check refuses it, never run as if a suite held it.

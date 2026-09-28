@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
 import { judgeFiles } from "./regression.js";
-import { kaal as kaalState, regressionCandidate, regressionTrusted, runState } from "./test-data.js";
+import { featureState, kaal as kaalState, regressionCandidate, regressionTrusted, runState } from "./test-data.js";
 
 // KAAL works on files. These cases copy KAAL out of Git, into plain
 // directories with no `.git`, and run its capabilities as their command lines
@@ -78,6 +78,20 @@ test("copied out of Git, KAAL validates BRAIN, checks its seals, its skills and 
     const run = kaal(kaalState, script, ...args);
     assert.equal(run.status, 0, `${script}: ${run.out}`);
   }
+});
+
+// Suite: suites/without-git.md
+// Why: requirements/new-promises/requirement.md
+// Why: requirements/new-promises-demonstrated/requirement.md
+test("copied out of Git, KAAL names what a candidate newly promises and runs its Feature Plan for it", () => {
+  const kaalState = plainCopy(KAAL);
+  const [accepted, candidate] = [regressionTrusted(), featureState("planned", "promised")];
+  const named = kaal(kaalState, "scripts/feature.ts", accepted, candidate);
+  assert.equal(named.status, 0, named.out);
+  assert.deepEqual(JSON.parse(named.out), { promises: ["requirements/greets-by-name/requirement.md"] });
+  const ran = kaal(kaalState, "scripts/feature.ts", "--run", accepted, candidate);
+  assert.equal(ran.status, 0, ran.out);
+  assert.equal((JSON.parse(ran.out) as { evidence: { verdict: string } }).evidence.verdict, "held");
 });
 
 // Suite: suites/without-git.md
