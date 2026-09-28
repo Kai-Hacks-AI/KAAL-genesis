@@ -46,6 +46,10 @@ test("silence retains: an inherited case that no longer holds is refused unless 
   // A record the accepted state already holds is history: it gave up a case of an earlier regression, not of this one.
   const history = candidate("acceptance/history");
   assert.match(acceptance(history, candidate("acceptance/history", ...withdrawn)).errors.join("\n"), greetsFails);
+  // An accepted regression without a plan still hands down every case it keeps.
+  const planless = accepted();
+  fs.rmSync(path.join(planless, PLAN));
+  assert.match(acceptance(planless, candidate(...withdrawn)).errors.join("\n"), greetsFails);
 });
 
 // Why: requirements/accepted-reductions/requirement.md
@@ -137,6 +141,13 @@ test("an acceptance record, and a Requirement the accepted plan names, stay as t
   const removed = candidate();
   fs.rmSync(path.join(removed, "requirements", "greets-by-name"), { recursive: true });
   assert.match(acceptance(now, removed).errors.join("\n"), /greets-by-name\/requirement\.md: removed/);
+  // A Requirement the accepted plan names by a wildcard is kept as it was, as one it names directly is.
+  const wild = ["feature/promised", "acceptance/wild-requirements"];
+  const wildNow = layeredState(...wild);
+  assert.deepEqual(acceptance(wildNow, layeredState(...wild, "feature/refactored")).errors, []);
+  assert.deepEqual(acceptance(wildNow, layeredState(...wild, "feature/rewritten")).errors, [
+    `${BY_NAME}: rewritten; a Requirement never changes, so a new commitment is a new Requirement`,
+  ]);
 });
 
 // Why: requirements/accepted-reductions/requirement.md

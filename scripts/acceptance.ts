@@ -24,7 +24,7 @@ import { judge, runTrusted, unreplayable } from "./regression.js";
 
 /** Where KAAL keeps its acceptance records: one file each, `acceptance/<name>.md`, never rewritten. */
 export const ACCEPTANCE = "acceptance";
-const REQUIREMENT_PLACE = /^requirements\/[^/]+\/requirement\.md$/;
+const REQUIREMENT_PLACE = /^requirements\/[^/*]+\/requirement\.md$/;
 
 /** What an acceptance record excludes of the accepted regression: one of its cases, by its address there, or a suite that serves its plan. */
 export type Exclusion = { case: { file: string; title: string } } | { suite: string };
@@ -140,14 +140,21 @@ export function acceptedExclusions(accepted: string, candidate: string): { accep
 export function acceptancePlan(
   accepted: string,
   exclusions: Accepted[],
-): { requires: PlanRequirement[]; cases: Case[]; errors: string[] } {
+): { requires: PlanRequirement[]; given: PlanRequirement[]; cases: Case[]; errors: string[] } {
   const errors: string[] = [];
-  if (!fs.lstatSync(path.join(accepted, PLAN), { throwIfNoEntry: false })) return { requires: [], cases: [], errors };
-  let requirements: PlanRequirement[];
+  // An accepted regression without a plan requires nothing named, but its cases are still inherited, as its own
+  // replay runs them all.
+  const hasPlan = !!fs.lstatSync(path.join(accepted, PLAN), { throwIfNoEntry: false });
+  let requirements: PlanRequirement[] = [];
   try {
-    requirements = planRequirements(accepted, PLAN);
+    if (hasPlan) requirements = planRequirements(accepted, PLAN);
   } catch (e) {
-    return { requires: [], cases: [], errors: [`${accepted}: ${e instanceof Error ? e.message : String(e)}`] };
+    return {
+      requires: [],
+      given: [],
+      cases: [],
+      errors: [`${accepted}: ${e instanceof Error ? e.message : String(e)}`],
+    };
   }
   const inherited = repoCases(accepted);
   const serving = new Set(suitePlans(accepted).flatMap((s) => (s.serves.includes(PLAN) ? [s.suite] : [])));
@@ -169,7 +176,7 @@ export function acceptancePlan(
     seen.add(n);
   }
   const cases = inherited.filter((c) => !excludedCase(c));
-  const text = `\n${fs.readFileSync(path.join(accepted, PLAN), "utf8").replace(/\r\n/g, "\n")}`;
+  const text = hasPlan ? `\n${fs.readFileSync(path.join(accepted, PLAN), "utf8").replace(/\r\n/g, "\n")}` : "";
   const onlyCases = (place: string) =>
     (planEntries(text).find((e) => e.place === place)?.shownBy ?? ["its cases"]).every((by) => by === "its cases");
   const requires = requirements.filter((r) => {
@@ -179,7 +186,7 @@ export function acceptancePlan(
     const own = inherited.filter((c) => c.places.includes(r.name));
     return !(own.length && own.every(excludedCase) && onlyCases(r.name));
   });
-  return { requires, cases, errors };
+  return { requires, given: requirements.filter((r) => !requires.includes(r)), cases, errors };
 }
 
 /** A requirement named for reading: its kind and name. */
@@ -205,9 +212,21 @@ export function acceptance(
   const stated = acceptedExclusions(accepted, candidate);
   const plan = acceptancePlan(accepted, stated.accepted);
   const errors = [...stated.errors, ...plan.errors];
-  for (const place of planCommitments(
-    fs.existsSync(path.join(accepted, PLAN)) ? fs.readFileSync(path.join(accepted, PLAN), "utf8") : "",
-  ).filter((p) => REQUIREMENT_PLACE.test(p))) {
+  // Each Requirement the accepted plan names, directly or by a wildcard, as the links check finds what a place names.
+  const requirementsNamed = [
+    ...new Set(
+      plan.requires
+        .concat(plan.given)
+        .filter((r) => r.kind === "commitment")
+        .flatMap((r) =>
+          r.name.includes("*")
+            ? fs.globSync(r.name, { cwd: accepted }).map((f) => f.split(path.sep).join("/"))
+            : [r.name],
+        )
+        .filter((p) => REQUIREMENT_PLACE.test(p)),
+    ),
+  ].sort();
+  for (const place of requirementsNamed) {
     const is = fs.lstatSync(path.join(candidate, place), { throwIfNoEntry: false });
     if (!is)
       errors.push(
