@@ -187,7 +187,8 @@ function runsSection(text: string): string {
     const line = lines[i]!;
     const marker = /^(```|~~~)/.exec(line)?.[1];
     if (fence) {
-      if (marker === fence) fence = undefined;
+      // Only a line that is the fence and nothing else closes it.
+      if (line.trimEnd() === fence) fence = undefined;
       continue;
     }
     if (marker) {
@@ -209,9 +210,12 @@ function runsSection(text: string): string {
 export function readPlan(repo: string, plan: string): PlanReading {
   const part = runsSection(planText(repo, plan));
   if (!part) return { conditions: [], proof: {} };
-  // The fence may close directly after it opens: a block with nothing in it.
-  const found = /\n```yaml\n(?:([\s\S]*?)\n)?```/.exec(part);
-  const block = found ? (found[1] ?? "") : undefined;
+  // The block opens on a line that is exactly its fence and closes on the next line that is only the fence, maybe
+  // directly after it opens: a block with nothing in it. A line that only begins as a fence closes nothing.
+  const lines = part.split("\n");
+  const open = lines.findIndex((line) => line.trimEnd() === "```yaml");
+  const close = open < 0 ? -1 : lines.findIndex((line, i) => i > open && line.trimEnd() === "```");
+  const block = close < 0 ? undefined : lines.slice(open + 1, close).join("\n");
   if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
   // A block that says nothing, or holds only comments, requires nothing; anything else must say what runs read.
   const says = block.split("\n").some((line) => line.trim() && !line.trim().startsWith("#"));

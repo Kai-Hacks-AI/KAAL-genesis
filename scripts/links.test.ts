@@ -480,6 +480,16 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   // Within it, a line in its yaml block that looks like a heading is part of the block, not the section's end.
   const commented = served("", "conditions:\n## a comment, not a heading\n  - { platform: linux }");
   assert.deepEqual(linkErrors(commented), []);
+  // A line that only begins as a fence does not close the block, so nothing after it goes unread.
+  const unclosed = served("", "conditions: []\n```draft\ndata: missing");
+  assert.notDeepEqual(linkErrors(unclosed), []);
+  // Nor does it close a fenced example, so a heading still inside the example is not the plan's own.
+  const example = served("");
+  fs.appendFileSync(
+    path.join(example, PLAN),
+    "\n## Examples\n\n```markdown\n```draft\n## As runs read it\n\n~~~yaml\nconditions: 5\n~~~\n```\n",
+  );
+  assert.deepEqual(linkErrors(example), []);
   // Nor a file within it that cannot be read.
   const closedFile = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });
