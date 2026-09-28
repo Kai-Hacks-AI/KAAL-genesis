@@ -217,11 +217,12 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
   // Only a plan the state states has requirements, however they are asked for.
   const notPlan = planError(repo, plan);
   if (notPlan) throw new Error(notPlan);
-  // A run reads plans as the links check reads them, so what the check refuses of a state's plans, such as a plan
-  // entry that says not where its commitment is stated,
-  // naming commitments it may not, a check it names but does not require, or a suite's line that serves no plan, a
-  // run refuses too, before anything runs, rather than require less than the plan says.
-  const incoherent = [...(plan === PLAN ? planEntryErrors(repo).errors : []), ...planErrors(repo)];
+  // A run reads plans as the links check reads them, so what the check refuses of a state's plans, such as a
+  // Regression Plan entry that says not where its commitment is stated, a plan naming commitments it may not, a check
+  // it names but does not require, or a suite's line that serves no plan, a run refuses too, whichever plan it runs,
+  // before anything runs, rather than require less than the plans say.
+  const hasPlan = kindAt(path.join(repo, PLAN)) === "file";
+  const incoherent = [...(hasPlan ? planEntryErrors(repo).errors : []), ...planErrors(repo)];
   if (incoherent.length) throw new Error(incoherent.join("\n"));
   const { conditions, proof } = readPlan(repo, plan);
   const text = planText(repo, plan);

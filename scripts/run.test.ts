@@ -445,6 +445,8 @@ test("a plan's conditions are what it requires, and a run records the conditions
   const unreadable = path.join(alike, PLAN);
   fs.appendFileSync(unreadable, "2. Farewell, somewhere. Shown by its cases.\n");
   assert.throws(() => testRun({ testing: alike, plan: PLAN }), /does not say where it is stated/);
+  // Whichever plan runs: a state whose plans the links check refuses is refused, not only when its own plan is wrong.
+  assert.throws(() => testRun({ testing: alike, plan: GREETING_PLAN }), /does not say where it is stated/);
   fs.writeFileSync(
     unreadable,
     fs.readFileSync(unreadable, "utf8").replace("2. Farewell, somewhere. Shown by its cases.\n", ""),
