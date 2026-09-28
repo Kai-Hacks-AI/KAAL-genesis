@@ -439,11 +439,23 @@ test("a plan that says how runs read it says it so they can, with its data insid
   const kept = served("", "data: plan-data");
   fs.mkdirSync(path.join(kept, "plan-data"));
   assert.deepEqual(linkErrors(kept), [
-    `${PLAN}: data: plan-data is not kept under a test-data/ directory, where the regression's identity finds test data`,
+    `${PLAN}: data: plan-data is not kept where the regression's identity finds test data: under a test-data/ directory, outside node_modules and .git`,
   ]);
   const underTestData = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(underTestData, "test-data", "plan"), { recursive: true });
   assert.deepEqual(linkErrors(underTestData), []);
+  // Nor where the regression's identity never looks, among the dependencies or Git's own files, whatever it is called.
+  for (const root of ["node_modules", ".git"]) {
+    const ignored = served("", `data: ${root}/test-data/plan`);
+    fs.mkdirSync(path.join(ignored, root, "test-data", "plan"), { recursive: true });
+    assert.deepEqual(
+      linkErrors(ignored),
+      [
+        `${PLAN}: data: ${root}/test-data/plan is not kept where the regression's identity finds test data: under a test-data/ directory, outside node_modules and .git`,
+      ],
+      root,
+    );
+  }
   // Nothing within the data is reached through a link either, however deep, or a case could read what the state does
   // not hold.
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-data-"));

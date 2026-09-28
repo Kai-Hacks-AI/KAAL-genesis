@@ -525,11 +525,20 @@ function isData(file: string, directory: boolean): boolean {
   return !directory && inCases && !/\.(ts|js|mjs|cjs|mts|cts)$/.test(file);
 }
 
+/** Where the regression's identity never looks: a repository's dependencies and Git's own files. */
+const UNLOOKED = ["node_modules", ".git"];
+
+/** Whether a directory, by its path from the repository's root, is test data the regression's identity finds. */
+export function keptAsData(directory: string): boolean {
+  const parts = directory.split("/");
+  return !UNLOOKED.includes(parts[0]!) && isData(directory, true);
+}
+
 /** The test data and test-data loaders of a repository, outside its dependencies and Git's own files. */
 function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
     const rel = dir ? `${dir}/${name}` : name;
-    if (rel === "node_modules" || rel === ".git") return [];
+    if (UNLOOKED.includes(rel)) return [];
     const directory = fs.lstatSync(at).isDirectory();
     if (isData(rel, directory)) return [[rel, at]];
     return directory ? dataOf(at, rel) : [];

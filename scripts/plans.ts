@@ -4,6 +4,7 @@ import YAML from "yaml";
 import type { Conditions, Requirement } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import { PLAN, planCommitments, planEntries, planEntryErrors, section, SUITES, suiteError } from "./links.js";
+import { keptAsData } from "./regression.js";
 
 /**
  * KAAL's test plans, read from a state's files alone. A plan states a testing
@@ -286,10 +287,11 @@ export function planErrors(repo: string): string[] {
       const dataWrong = data === undefined ? undefined : planDataError(repo, plan, data);
       if (dataWrong) errors.push(dataWrong);
       // The Regression Plan's data is kept where the regression's identity finds test data, under a test-data/
-      // directory, so a change to it is a change to the regression, never one its identity misses.
-      else if (plan === PLAN && data !== undefined && !data.split("/").includes("test-data"))
+      // directory outside the dependencies and Git's own files, so a change to it is a change to the regression, never
+      // one its identity misses.
+      else if (plan === PLAN && data !== undefined && !keptAsData(data.replace(/\/+$/, "")))
         errors.push(
-          `${PLAN}: data: ${data} is not kept under a test-data/ directory, where the regression's identity finds test data`,
+          `${PLAN}: data: ${data} is not kept where the regression's identity finds test data: under a test-data/ directory, outside node_modules and .git`,
         );
       // A plan that says how runs read it says it in full: every check it names as showing a commitment is proof it
       // requires. One that does not yet say how runs read it requires no proof of them.
