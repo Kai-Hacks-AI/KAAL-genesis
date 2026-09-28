@@ -467,6 +467,24 @@ test("a suite says which plans it serves, strictly written, and only plans its s
       `${PLAN}: data: test-data/plan holds listed/greeting.txt, which cannot be read`,
     ]);
   fs.chmodSync(path.join(unsearchable, "test-data", "plan", "listed"), 0o755);
+  // Nor a file within it that cannot be read.
+  const closedFile = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });
+  fs.writeFileSync(path.join(closedFile, "test-data", "plan", "greeting.txt"), "hello\n");
+  fs.chmodSync(path.join(closedFile, "test-data", "plan", "greeting.txt"), 0o000);
+  if (!readable)
+    assert.deepEqual(linkErrors(closedFile), [
+      `${PLAN}: data: test-data/plan holds greeting.txt, which cannot be read`,
+    ]);
+  fs.chmodSync(path.join(closedFile, "test-data", "plan", "greeting.txt"), 0o644);
+  // Its data holds only files and directories: nothing, such as a pipe, that could supply bytes the state does not
+  // hold, where the system can make one.
+  const piped = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(piped, "test-data", "plan"), { recursive: true });
+  if (spawnSync("mkfifo", [path.join(piped, "test-data", "plan", "pipe")]).status === 0)
+    assert.deepEqual(linkErrors(piped), [
+      `${PLAN}: data: test-data/plan holds pipe, which is neither a file nor a directory`,
+    ]);
   // Nor may a suite or a plan be one that cannot be read, or what the state's plans require would be unknown.
   const closedFiles = regressionCandidate("kept");
   fs.mkdirSync(path.join(closedFiles, "plans"));

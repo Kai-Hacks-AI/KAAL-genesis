@@ -52,6 +52,16 @@ function textOf(file: string): string | undefined {
   }
 }
 
+/** Whether the file `file` can be opened for reading. */
+function opens(file: string): boolean {
+  try {
+    fs.closeSync(fs.openSync(file, "r"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The names in `dir`, sorted, or undefined where it cannot be listed, as where no one may read it. */
 function listed(dir: string): string[] | undefined {
   try {
@@ -228,6 +238,9 @@ export function planDataError(repo: string, plan: string, data: string): string 
         return `${entry}, which cannot be read`;
       }
       if (stat.isSymbolicLink()) return `${entry}, reached through a link`;
+      // A file is opened only once it is known to be one, so nothing, such as a pipe, can keep it waiting.
+      if (!stat.isDirectory() && !stat.isFile()) return `${entry}, which is neither a file nor a directory`;
+      if (stat.isFile() && !opens(path.join(at, entry))) return `${entry}, which cannot be read`;
       const deeper = stat.isDirectory() ? wrong(entry) : undefined;
       if (deeper !== undefined) return deeper;
     }
