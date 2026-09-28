@@ -81,6 +81,33 @@ test("an excluded inherited case is given up, and a commitment only once every c
     ).errors,
     [],
   );
+  // A title holding a character no command line can carry is still excluded by it, beside a case kept.
+  const nul = candidate("acceptance/nul-titled");
+  assert.deepEqual(
+    acceptance(nul, candidate("acceptance/nul-titled", "regression/candidates/withdrawn", "acceptance/excludes-nul"))
+      .errors,
+    [],
+  );
+  // A test the accepted regression runs without naming it, under the title of a case excluded beside it, would be
+  // given up with it unnamed: the accepted regression is refused, as it refuses a test it runs but does not name.
+  const shadowed = candidate("acceptance/shadowed");
+  assert.deepEqual(
+    acceptance(
+      shadowed,
+      candidate("acceptance/shadowed", "regression/candidates/withdrawn", "acceptance/excludes-shadowed"),
+    ).errors,
+    [
+      'the accepted regression runs what it does not name beside an excluded case (scripts/shadowed.test.ts: "drops" runs but is not named), so no title can say which case is given up',
+    ],
+  );
+  // So it is where every case of that file is excluded, and the file is not run against the candidate at all.
+  assert.match(
+    acceptance(
+      shadowed,
+      candidate("acceptance/shadowed", "regression/candidates/withdrawn", "acceptance/excludes-shadowed-whole"),
+    ).errors.join("\n"),
+    /runs what it does not name beside an excluded case \(scripts\/shadowed\.test\.ts: "drops" runs but is not named\)/,
+  );
   // A case titled with nothing at all is run under another name, so its title cannot say which case ran, and not
   // running it beside a case kept cannot be asked by it: a regression holding one is refused, even where it is excluded.
   const beside = candidate("acceptance/untitled-beside");
@@ -132,9 +159,12 @@ test("an excluded inherited case is given up, and a commitment only once every c
     // A case excluded from a file that keeps others is not run beside them either.
     fs.rmSync(mark);
     const mixed = candidate("acceptance/mixed");
-    assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed", "acceptance/excludes-marks")).errors, []);
+    assert.deepEqual(
+      acceptance(mixed, candidate("acceptance/mixed", "acceptance/mixed-marking", "acceptance/excludes-marks")).errors,
+      [],
+    );
     assert.equal(fs.existsSync(mark), false, "an excluded case was run beside the kept ones");
-    assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed")).errors, []);
+    assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed", "acceptance/mixed-marking")).errors, []);
     assert.equal(fs.existsSync(mark), true, "a kept case was not run");
   } finally {
     delete process.env.KAAL_WAVE_MARK;

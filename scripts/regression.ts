@@ -610,7 +610,13 @@ export function execute(
   // empty title names no case: the runner runs such a case under another name, and reads a pattern matching nothing as
   // matching every case of the file.
   if (skip.includes("")) throw new Error("a case titled with nothing at all cannot be skipped by its title");
-  const skipping = skip.map((title) => `--test-skip-pattern=^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  // A control character, such as a NUL no command line can carry, is written as its escape.
+  const skipping = skip.map(
+    (title) =>
+      `--test-skip-pattern=^${title
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`)}$`,
+  );
   const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...skipping, ...files], {
     cwd: code,
     // A run started from within another test run would report to that run instead.
@@ -787,10 +793,10 @@ function within(code: string, rel: string): string {
 /**
  * The candidate's own cases, run by the trusted runner and reporter. They
  * prove what the candidate replaces, and they show which cases it really
- * runs, so the next accepted regression can name every one of them.
+ * runs, so the next accepted regression can name every one of them. Only
+ * `files` of them, where given.
  */
-function runCandidate(candidate: string): Result[] {
-  const files = caseFiles(candidate);
+export function runCandidate(candidate: string, files = caseFiles(candidate)): Result[] {
   if (!files.length) return [];
   const code = scratchCopy(candidate, true);
   return execute(code, files, code, false, plannedData(candidate, code));

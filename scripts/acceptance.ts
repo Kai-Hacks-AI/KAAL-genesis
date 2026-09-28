@@ -5,7 +5,7 @@ import YAML from "yaml";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import { type Case, linkErrors, PLAN, planCommitments, planEntries, repoCases, unnamedCases } from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
-import { judge, runTrusted, unreplayable } from "./regression.js";
+import { judge, runCandidate, runTrusted, unmatchedCases, unreplayable } from "./regression.js";
 
 /**
  * What a candidate is allowed to give up of the accepted regression, read from
@@ -258,6 +258,29 @@ function escapingLinks(state: string): string[] {
   return found.sort();
 }
 
+/**
+ * What the accepted regression runs, in each file a case is excluded from,
+ * that its source does not name, or names without it running: an exclusion
+ * gives up a case by its title, which is how the runner is told to pass it
+ * over, so a test run under that title without being named, such as one
+ * registered through `it`, would be given up with it unnamed. The accepted
+ * regression refuses any such test as the next regression, so an accepted
+ * state holding one is refused. The files are run as the accepted state's own.
+ */
+function unaddressed(accepted: string, exclusions: Accepted[]): string[] {
+  const files = [...new Set(exclusions.flatMap((a) => ("case" in a.exclusion ? [a.exclusion.case.file] : [])))].sort();
+  if (!files.length) return [];
+  const unmatched = unmatchedCases(
+    repoCases(accepted).filter((c) => files.includes(c.file)),
+    runCandidate(accepted, files),
+  );
+  return unmatched.length
+    ? [
+        `the accepted regression runs what it does not name beside an excluded case (${unmatched.join(", ")}), so no title can say which case is given up`,
+      ]
+    : [];
+}
+
 /** A requirement named for reading: its kind and name. */
 const requirementName = (r: PlanRequirement) => `${r.kind}: ${r.name}`;
 
@@ -322,6 +345,8 @@ export function acceptance(
   // exclusions name was read from it all the same.
   const unfaithful = errors.length ? undefined : unreplayable(accepted);
   if (unfaithful) errors.push(unfaithful);
+  // So is one running what it does not name where a case is excluded, even from a file not run at all.
+  if (!errors.length) errors.push(...unaddressed(accepted, stated.accepted));
   if (!errors.length && plan.cases.length) {
     const escaping = escapingLinks(candidate);
     if (escaping.length)
