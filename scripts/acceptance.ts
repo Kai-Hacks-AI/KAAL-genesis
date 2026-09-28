@@ -193,6 +193,8 @@ export function acceptedProtection(
     exclusions.some(
       (a) => "case" in a.exclusion && a.exclusion.case.file === c.file && a.exclusion.case.title === c.title,
     );
+  const lookalike = (file: string, title: string) =>
+    inherited.find((c) => c.file === file && c.title !== title && c.title.trim() === title && !excludedCase(c))?.title;
   const seen = new Set<string>();
   for (const { exclusion, record } of exclusions) {
     const n = named(exclusion);
@@ -208,6 +210,12 @@ export function acceptedProtection(
       inherited.filter((c) => c.file === exclusion.case.file && c.title === exclusion.case.title).length > 1
     )
       errors.push(`${record}: excludes ${n}, an address the accepted regression holds more than one case at`);
+    // The runner passes over, with the case a title names, any whose title is the same but for the space around it,
+    // so such a case must be excluded with it, or neither is.
+    else if ("case" in exclusion && lookalike(exclusion.case.file, exclusion.case.title) !== undefined)
+      errors.push(
+        `${record}: excludes ${n}, which the runner cannot tell from ${JSON.stringify(lookalike(exclusion.case.file, exclusion.case.title))} kept beside it, whose title differs only by the space around it`,
+      );
     else if ("suite" in exclusion && !serving.has(exclusion.suite))
       errors.push(`${record}: excludes ${n}, which serves no Regression Plan of the accepted regression`);
     seen.add(n);

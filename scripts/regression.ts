@@ -610,12 +610,16 @@ export function execute(
   // empty title names no case: the runner runs such a case under another name, and reads a pattern matching nothing as
   // matching every case of the file.
   if (skip.includes("")) throw new Error("a case titled with nothing at all cannot be skipped by its title");
-  // A control character, such as a NUL no command line can carry, is written as its escape.
+  // Every character but printable ASCII is written as the escape of each UTF-16 unit, as the runner reads the title:
+  // a command line can carry no NUL, and would carry half a surrogate pair as something else. The title ends where the
+  // pattern does, and not before a line break closing it, as $ would allow. The runner also tries each pattern on a
+  // title with the space around it trimmed, so a case whose title differs only by that is skipped too: acceptance
+  // excludes such cases together or not at all.
   const skipping = skip.map(
     (title) =>
       `--test-skip-pattern=^${title
         .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        .replace(/[\u0000-\u001f\u007f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`)}$`,
+        .replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)}(?![\\s\\S])`,
   );
   const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...skipping, ...files], {
     cwd: code,

@@ -110,6 +110,16 @@ test("an excluded inherited case is given up, and a commitment only once every c
     ).errors.join("\n"),
     /runs what it does not name beside an excluded case \(scripts\/shadowed\.test\.ts: "drops" runs but is not named\)/,
   );
+  // The runner passes over, with a case, one whose title differs only by the space around it, so a case is excluded
+  // beside such a case only with it.
+  const trailing = candidate("acceptance/trailing");
+  assert.deepEqual(acceptance(trailing, candidate("acceptance/trailing", "acceptance/excludes-trailing")).errors, [
+    'acceptance/stop-summing.md: excludes case: scripts/trailing.test.ts: "sums", which the runner cannot tell from "sums\\n" kept beside it, whose title differs only by the space around it',
+  ]);
+  assert.deepEqual(
+    acceptance(trailing, candidate("acceptance/trailing", "acceptance/excludes-trailing-both")).errors,
+    [],
+  );
   // A case titled with nothing at all is run under another name, so its title cannot say which case ran, and not
   // running it beside a case kept cannot be asked by it: a regression holding one is refused, even where it is excluded.
   const beside = candidate("acceptance/untitled-beside");
@@ -168,6 +178,17 @@ test("an excluded inherited case is given up, and a commitment only once every c
     assert.equal(fs.existsSync(mark), false, "an excluded case was run beside the kept ones");
     assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed", "acceptance/mixed-marking")).errors, []);
     assert.equal(fs.existsSync(mark), true, "a kept case was not run");
+    // Nor where its title holds what a command line would carry as something else, such as half a surrogate pair.
+    fs.rmSync(mark);
+    const surrogate = candidate("acceptance/surrogate");
+    assert.deepEqual(
+      acceptance(
+        surrogate,
+        candidate("acceptance/surrogate", "acceptance/surrogate-marking", "acceptance/excludes-surrogate"),
+      ).errors,
+      [],
+    );
+    assert.equal(fs.existsSync(mark), false, "an excluded case was run beside the kept ones");
   } finally {
     delete process.env.KAAL_WAVE_MARK;
   }

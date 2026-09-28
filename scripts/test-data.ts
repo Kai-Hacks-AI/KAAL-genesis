@@ -203,11 +203,16 @@ export function featureState(...layers: string[]): string {
  * `untitled-beside`, a case of greeting titled with nothing at all beside a
  * case kept in its file, and `excludes-untitled-beside`, a record excluding it;
  * `control-titled`, a case of greeting titled with a NUL beside a case kept, and
- * `excludes-control`, a record excluding it and `greets`; and `shadowed`, a case
+ * `excludes-control`, a record excluding it and `greets`; `shadowed`, a case
  * of greeting `drops` beside a case kept and a test registered through `it`
  * under the same title, `excludes-shadowed`, a record excluding `drops` and
  * `greets`, and `excludes-shadowed-whole`, one excluding every case of that
- * file and `greets`.
+ * file and `greets`; `trailing`, a case `sums` beside a case titled `sums`
+ * and a line break, `excludes-trailing`, a record excluding `sums`, and
+ * `excludes-trailing-both`, one excluding both; and
+ * `surrogate`, a case titled with half a surrogate pair beside a case kept,
+ * `surrogate-marking`, the code it calls leaving the mark KAAL_WAVE_MARK says,
+ * and `excludes-surrogate`, a record excluding it.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));
