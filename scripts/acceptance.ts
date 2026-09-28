@@ -361,9 +361,8 @@ export function acceptance(
   // exclusions name was read from it all the same.
   const unfaithful = errors.length ? undefined : unreplayable(accepted);
   if (unfaithful) errors.push(unfaithful);
-  // So is one running what it does not name where a case is excluded, even from a file not run at all.
-  if (!errors.length) errors.push(...unaddressed(accepted, stated.accepted));
-  if (!errors.length && plan.cases.length) {
+  const clean = !errors.length;
+  if (clean && plan.cases.length) {
     const escaping = escapingLinks(candidate);
     if (escaping.length)
       errors.push(
@@ -399,6 +398,10 @@ export function acceptance(
         errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
     }
   }
+  // So is one running what it does not name where a case is excluded, even from a file not run at all. Its own run of
+  // those files runs the excluded cases too, so it comes after the replay: nothing they leave, even outside the copy
+  // they run in, can reach what the replay judges.
+  if (clean) errors.push(...unaddressed(accepted, stated.accepted));
   return { excluded: stated.accepted, requires: plan.requires.map(requirementName), errors };
 }
 

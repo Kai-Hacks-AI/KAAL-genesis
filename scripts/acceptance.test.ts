@@ -198,6 +198,11 @@ test("an excluded inherited case is given up, and a commitment only once every c
     assert.equal(fs.existsSync(mark), false, "an excluded case was run beside the kept ones");
     assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed", "acceptance/mixed-marking")).errors, []);
     assert.equal(fs.existsSync(mark), true, "a kept case was not run");
+    // Nor does the accepted state's own run of a file a case is excluded from, which runs that case too, come before
+    // the replay, where what it leaves outside its copy could meet a kept case.
+    if (fs.existsSync(mark)) fs.rmSync(mark);
+    const ordered = candidate("acceptance/ordered");
+    assert.deepEqual(acceptance(ordered, candidate("acceptance/ordered", "acceptance/excludes-ordered")).errors, []);
     // The runner is told which cases to pass over by --test-skip-pattern, which Node has only since 22.1, so KAAL
     // declares it runs on nothing older.
     const manifest = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
