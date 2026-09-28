@@ -352,5 +352,41 @@
         "not demonstrated"
       ]
     ]
+  },
+  {
+    "shows": "a requirement named as an object member is one like any other, not demonstrated by runs that did not reach it",
+    "requirements": [
+      {
+        "name": "constructor",
+        "under": []
+      },
+      {
+        "name": "toString",
+        "under": []
+      },
+      {
+        "name": "__proto__",
+        "under": []
+      }
+    ],
+    "runs": [
+      {
+        "conditions": {},
+        "unaccounted": 0,
+        "shown": {}
+      }
+    ],
+    "verdict": "not demonstrated",
+    "under": [
+      [
+        "not demonstrated"
+      ],
+      [
+        "not demonstrated"
+      ],
+      [
+        "not demonstrated"
+      ]
+    ]
   }
 ]

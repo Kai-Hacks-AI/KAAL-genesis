@@ -56,9 +56,11 @@ export function evidence(
   const judged = requirements.map(({ name, under }) => ({
     name,
     under: (under.length ? under : [{}]).map((conditions) => {
-      const shown = runs.filter((r) => satisfies(r.conditions, conditions));
-      const failed = shown.some((r) => r.unaccounted > 0 || (r.shown[name] ?? []).includes("failed"));
-      const held = shown.some((r) => (r.shown[name] ?? []).length > 0 && r.shown[name]!.every((o) => o === "passed"));
+      const reached = runs
+        .filter((r) => satisfies(r.conditions, conditions))
+        .map((r) => ({ unaccounted: r.unaccounted, of: Object.hasOwn(r.shown, name) ? r.shown[name]! : [] }));
+      const failed = reached.some((r) => r.unaccounted > 0 || r.of.includes("failed"));
+      const held = reached.some((r) => r.of.length > 0 && r.of.every((o) => o === "passed"));
       return { conditions, verdict: (failed ? "failed" : held ? "held" : "not demonstrated") as Verdict };
     }),
   }));
