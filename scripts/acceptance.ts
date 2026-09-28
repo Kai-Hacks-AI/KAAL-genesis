@@ -172,7 +172,10 @@ export function acceptedProtection(
     };
   }
   const inherited = repoCases(accepted);
-  const serving = new Set(suitePlans(accepted).flatMap((s) => (s.serves.includes(PLAN) ? [s.suite] : [])));
+  // Without a plan, no suite serves one, whatever it says it serves.
+  const serving = new Set(
+    hasPlan ? suitePlans(accepted).flatMap((s) => (s.serves.includes(PLAN) ? [s.suite] : [])) : [],
+  );
   const excludedCase = (c: { file: string; title: string }) =>
     exclusions.some(
       (a) => "case" in a.exclusion && a.exclusion.case.file === c.file && a.exclusion.case.title === c.title,
@@ -311,7 +314,12 @@ export function acceptance(
       const kept = (file: string) => plan.cases.some((c) => c.file === file);
       // A file whose every case is excluded is not run at all, so nothing it would do against the candidate, such as
       // never finishing, can hold up what is kept.
-      const results = runTrusted(accepted, candidate, kept).filter((r) =>
+      // Nor is a case excluded from a file that keeps others run beside them, where it could still disturb them.
+      const skipped = (file: string) =>
+        stated.accepted.flatMap((a) =>
+          "case" in a.exclusion && a.exclusion.case.file === file ? [a.exclusion.case.title] : [],
+        );
+      const results = runTrusted(accepted, candidate, kept, skipped).filter((r) =>
         r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
       );
       errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));

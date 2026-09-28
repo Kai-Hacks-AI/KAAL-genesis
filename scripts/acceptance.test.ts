@@ -107,6 +107,13 @@ test("an excluded inherited case is given up, and a commitment only once every c
     assert.equal(fs.existsSync(mark), false, "an excluded file was run");
     assert.deepEqual(acceptance(waving, candidate("acceptance/waving", "acceptance/marking")).errors, []);
     assert.equal(fs.existsSync(mark), true, "a kept file was not run");
+    // A case excluded from a file that keeps others is not run beside them either.
+    fs.rmSync(mark);
+    const mixed = candidate("acceptance/mixed");
+    assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed", "acceptance/excludes-marks")).errors, []);
+    assert.equal(fs.existsSync(mark), false, "an excluded case was run beside the kept ones");
+    assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed")).errors, []);
+    assert.equal(fs.existsSync(mark), true, "a kept case was not run");
   } finally {
     delete process.env.KAAL_WAVE_MARK;
   }
@@ -161,6 +168,12 @@ test("an exclusion names a case or a suite the accepted regression has, once, an
   // A suite that does not serve the accepted regression's plan is nothing it has to give up.
   const unserved = layeredState("feature/promised");
   assert.deepEqual(acceptance(unserved, layeredState("feature/promised", "acceptance/excludes-plain")).errors, [
+    "acceptance/unplain.md: excludes suite: suites/plain.md, which serves no Regression Plan of the accepted regression",
+  ]);
+  // Nor is one saying it serves a plan the accepted regression does not have.
+  const planless = accepted();
+  fs.rmSync(path.join(planless, PLAN));
+  assert.deepEqual(acceptance(planless, candidate("acceptance/excludes-plain")).errors, [
     "acceptance/unplain.md: excludes suite: suites/plain.md, which serves no Regression Plan of the accepted regression",
   ]);
 });
