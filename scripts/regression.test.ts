@@ -128,6 +128,16 @@ test("a plan derived from anything but the accepted regression as it is now is r
 // Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
 test("the regression hands its cases the data its plan provides, both when it replays the accepted cases and when it runs the candidate's own", () => {
   assert.deepEqual(regressionErrors(regressionCandidate("plan-data"), regressionCandidate("plan-data"), BASE), []);
+  // A candidate whose plan provides data no run could hand is refused with what is wrong with it, as the links check
+  // says it, not by failing to run: its cases run without the data.
+  const unhanded = regressionCandidate("plan-data");
+  const plan = path.join(unhanded, PLAN);
+  fs.writeFileSync(plan, fs.readFileSync(plan, "utf8").replace("data: test-data/plan", "data: missing"));
+  const errors = regressionErrors(regressionCandidate("plan-data"), unhanded, BASE);
+  assert.ok(
+    errors.includes(`as the next accepted regression, ${PLAN}: data: missing is no directory inside the state`),
+    errors.join("\n"),
+  );
 });
 
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md

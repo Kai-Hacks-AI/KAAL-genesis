@@ -17,7 +17,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
-import { planDataError, readPlan } from "./plans.js";
+import { planDataError, planError, readPlan } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
@@ -700,16 +700,19 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
 /**
  * What a run of `repo`'s regression hands its cases in `code`, a copy of it
  * with its test data: the directory the Regression Plan provides as data, in
- * that copy, where the plan provides one, as a run of the plan hands it.
+ * that copy, where the plan provides one, as a run of the plan hands it. Data
+ * no run could hand, a plan's links check refuses, so its cases are handed
+ * none, and the regression says what is wrong rather than failing to run.
  */
 function plannedData(repo: string, code: string): Record<string, string> {
-  if (!fs.existsSync(path.join(repo, PLAN))) return {};
-  const { data } = readPlan(repo, PLAN);
-  if (data === undefined) return {};
-  const wrong =
-    planDataError(repo, PLAN, data) ??
-    (keptAsData(data.replace(/\/+$/, "")) ? undefined : `${PLAN}: data: ${data} is not test data the regression finds`);
-  if (wrong) throw new Error(wrong);
+  if (!fs.existsSync(path.join(repo, PLAN)) || planError(repo, PLAN)) return {};
+  let data: string | undefined;
+  try {
+    data = readPlan(repo, PLAN).data;
+  } catch {
+    return {};
+  }
+  if (data === undefined || planDataError(repo, PLAN, data) || !keptAsData(data.replace(/\/+$/, ""))) return {};
   return { [PLAN_DATA]: path.resolve(within(code, data.replace(/\/+$/, ""))) };
 }
 
