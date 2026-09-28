@@ -8,6 +8,7 @@ skills/using-skills/test-data/** -text
 skills/testing/test-data/** -text
 skills/managing-defects/test-data/** -text
 skills/managing-ideas/test-data/** -text
+skills/managing-requirements/test-data/** -text
 test-data/** -text
 # Why: brain/learning/genesis/26/09/25/01/nodes/using-skills.md
 skills/*/SKILL.md -text
@@ -17,3 +18,5 @@ AGENTS.md -text
 defects/** -text
 # Why: brain/learning/genesis/26/09/27/04/nodes/managing-ideas.md
 ideas/** -text
+# Why: brain/learning/genesis/26/09/28/01/nodes/managing-requirements.md
+requirements/** -text
