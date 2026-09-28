@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { FEATURE_PLAN, featureEvidence, featureRun, newPromises } from "./feature.js";
 import { PLAN } from "./links.js";
 import { planRequirements, readPlan } from "./plans.js";
+import { testRun } from "./run.js";
 import { featureState, kaal, regressionCandidate, regressionTrusted } from "./test-data.js";
 
 /** The subject of this file's cases about KAAL itself. */
@@ -73,6 +77,61 @@ test("a Requirement rewritten in place is refused, neither kept nor newly promis
     `${GREETS_BY_NAME}: rewritten in place: a Requirement never changes, so this is neither kept nor newly promised`,
   ]);
   assert.throws(() => featureRun({ accepted, candidate }), /rewritten in place/);
+});
+
+// Why: requirements/new-promises/requirement.md
+test("what a state states through a link is not its own, so what the candidate newly promises is refused, not read through it", () => {
+  const accepted = regressionTrusted();
+  const refused = (candidate: string, why: RegExp) => {
+    const { promises, errors } = newPromises(accepted, candidate);
+    assert.deepEqual(promises, []);
+    assert.equal(errors.length, 1, errors.join("\n"));
+    assert.match(errors[0]!, why);
+    assert.throws(() => featureRun({ accepted, candidate }), why);
+    // What the accepted state states is read from its own files too.
+    assert.match(newPromises(candidate, featureState("planned", "promised")).errors.join("\n"), why);
+  };
+  // Its Requirements kept elsewhere, reached through a link.
+  const linkedRequirements = featureState("planned");
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-elsewhere-"));
+  fs.cpSync(featureState("promised"), elsewhere, { recursive: true });
+  fs.symlinkSync(path.join(elsewhere, "requirements"), path.join(linkedRequirements, "requirements"), "junction");
+  refused(linkedRequirements, /requirements: reached through a link/);
+  // One Requirement reached through a link, which would otherwise be passed over as none.
+  const linkedRequirement = featureState("planned");
+  fs.mkdirSync(path.join(linkedRequirement, "requirements"));
+  fs.symlinkSync(
+    path.join(elsewhere, "requirements", "greets-by-name"),
+    path.join(linkedRequirement, "requirements", "greets-by-name"),
+    "junction",
+  );
+  refused(linkedRequirement, /requirements\/greets-by-name: reached through a link/);
+  // Its Regression Plan reached through a link; a file link needs privileges on Windows, so this is shown where one
+  // can be made.
+  if (process.platform !== "win32") {
+    const linkedPlan = featureState("planned");
+    fs.rmSync(path.join(linkedPlan, PLAN));
+    fs.symlinkSync(path.join(elsewhere, PLAN), path.join(linkedPlan, PLAN));
+    refused(linkedPlan, /a plan stated through a link/);
+  }
+});
+
+// Why: requirements/new-promises-demonstrated/requirement.md
+test("only runs against the candidate itself are evidence of what it newly promises", () => {
+  const accepted = regressionTrusted();
+  const candidate = featureState("planned", "promised");
+  const { promises } = newPromises(accepted, candidate);
+  // The candidate's own cases, run against another state that keeps the promise, show nothing of the candidate.
+  const elsewhere = testRun({
+    testing: candidate,
+    tested: featureState("planned", "promised"),
+    plan: FEATURE_PLAN,
+    commitments: promises,
+  });
+  assert.throws(() => featureEvidence(accepted, candidate, [elsewhere]), /shows nothing of what .* newly promises/);
+  const { run } = featureRun({ accepted, candidate });
+  assert.throws(() => featureEvidence(accepted, candidate, [run, elsewhere]), /shows nothing of/);
+  assert.equal(featureEvidence(accepted, candidate, [run]).evidence.verdict, "held");
 });
 
 // Why: requirements/new-promises-demonstrated/requirement.md

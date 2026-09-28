@@ -8,6 +8,7 @@ import {
   requirementErrors,
 } from "../skills/managing-requirements/scripts/requirements.js";
 import { PLAN, planCommitments } from "./links.js";
+import { planError } from "./plans.js";
 import { planEvidence, type Run, testRun } from "./run.js";
 
 /**
@@ -34,10 +35,39 @@ function requirementPlaces(state: string): string[] {
 }
 
 /**
+ * Why what `state` states cannot be read from its own files, if it cannot: its
+ * Regression Plan is not a plan it states in its own place, such as one
+ * reached through a link, or its Requirements are reached through one, or
+ * are no complete records. What is stated through a link is stated by a file
+ * the state does not hold, so what it promises is not the state's own.
+ */
+function unstatedErrors(state: string): string[] {
+  const errors: string[] = [];
+  if (fs.lstatSync(path.join(state, PLAN), { throwIfNoEntry: false })) {
+    const wrong = planError(state, PLAN);
+    if (wrong) errors.push(`${state}: ${wrong}`);
+  }
+  const dir = path.join(state, REQUIREMENTS);
+  const kind = fs.lstatSync(dir, { throwIfNoEntry: false });
+  if (kind?.isSymbolicLink()) errors.push(`${state}: ${REQUIREMENTS}: reached through a link`);
+  else if (kind?.isDirectory()) {
+    // A Requirement's directory reached through a link would be passed over as no Requirement at all.
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isSymbolicLink()))
+      errors.push(`${state}: ${REQUIREMENTS}/${entry.name}: reached through a link`);
+    // A record that is not a file of its own, or cannot be read, could be a commitment the state states.
+    errors.push(...requirementErrors(dir));
+  }
+  return errors;
+}
+
+/**
  * Every commitment `state` states, by place, sorted: those its Regression Plan
  * names, and every Requirement it records, whether or not a plan names it yet.
+ * Refused where that cannot be read from the state's own files.
  */
 export function statedCommitments(state: string): string[] {
+  const errors = unstatedErrors(state);
+  if (errors.length) throw new Error(errors.join("\n"));
   const plan = path.join(state, PLAN);
   const named = fs.existsSync(plan) ? planCommitments(`\n${fs.readFileSync(plan, "utf8")}`) : [];
   return [...new Set([...named, ...requirementPlaces(state)])].sort();
@@ -56,8 +86,9 @@ export function statedCommitments(state: string): string[] {
 export function newPromises(accepted: string, candidate: string): { promises: string[]; errors: string[] } {
   for (const state of [accepted, candidate])
     if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
-  // A Requirement that cannot be read could be one the candidate newly states, so what it promises is not yet known.
-  const errors = requirementErrors(path.join(candidate, REQUIREMENTS));
+  // What either state states must be read from its own files, or what the candidate newly promises is not yet known.
+  const errors = [...unstatedErrors(accepted), ...unstatedErrors(candidate)];
+  if (errors.length) return { promises: [], errors };
   const before = new Set(statedCommitments(accepted));
   const kept = new Set(requirementPlaces(accepted));
   for (const place of requirementPlaces(candidate).filter((p) => kept.has(p)))
@@ -94,8 +125,9 @@ export function featureRun({
  * What `runs` of the Feature Plan demonstrate of what `candidate` newly
  * promises relative to `accepted`, as the plan judges any runs: each new
  * promise, and whatever else the plan requires, under each set of conditions
- * it states. A new promise no case proves is not demonstrated; a candidate
- * that newly promises nothing gives the plan nothing more to require.
+ * it states. Only runs of the candidate's own testing against the candidate
+ * itself are evidence. A new promise no case proves is not demonstrated; a
+ * candidate that newly promises nothing gives the plan nothing more to require.
  */
 export function featureEvidence(
   accepted: string,
@@ -104,6 +136,10 @@ export function featureEvidence(
 ): { promises: string[]; evidence: ReturnType<typeof planEvidence> } {
   const { promises, errors } = newPromises(accepted, candidate);
   if (errors.length) throw new Error(errors.join("\n"));
+  // Only runs against the candidate show what it promises: cases passing against any other state say nothing of it.
+  for (const run of runs)
+    if (run.tested !== path.resolve(candidate))
+      throw new Error(`a run against ${run.tested} shows nothing of what ${candidate} newly promises`);
   return { promises, evidence: planEvidence(candidate, FEATURE_PLAN, runs, promises) };
 }
 
