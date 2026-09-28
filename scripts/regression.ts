@@ -17,6 +17,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
+import { planDataError, readPlan } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
@@ -577,7 +578,13 @@ export const TESTING_STATE = "KAAL_TESTING_STATE";
  * both states. With no files, nothing is run. A runner that does not
  * complete is refused, never read as having nothing more to report.
  */
-export function execute(code: string, files: string[], tested: string): Result[];
+export function execute(
+  code: string,
+  files: string[],
+  tested: string,
+  positions?: false,
+  handed?: Record<string, string>,
+): Result[];
 export function execute(
   code: string,
   files: string[],
@@ -687,7 +694,23 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
   // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
   // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
   // its own, so no case sees more of it than the regression judges, or writes into it.
-  return execute(code, files, scratchCopy(candidate, true));
+  return execute(code, files, scratchCopy(candidate, true), false, plannedData(trusted, code));
+}
+
+/**
+ * What a run of `repo`'s regression hands its cases in `code`, a copy of it
+ * with its test data: the directory the Regression Plan provides as data, in
+ * that copy, where the plan provides one, as a run of the plan hands it.
+ */
+function plannedData(repo: string, code: string): Record<string, string> {
+  if (!fs.existsSync(path.join(repo, PLAN))) return {};
+  const { data } = readPlan(repo, PLAN);
+  if (data === undefined) return {};
+  const wrong =
+    planDataError(repo, PLAN, data) ??
+    (keptAsData(data.replace(/\/+$/, "")) ? undefined : `${PLAN}: data: ${data} is not test data the regression finds`);
+  if (wrong) throw new Error(wrong);
+  return { [PLAN_DATA]: path.resolve(within(code, data.replace(/\/+$/, ""))) };
 }
 
 /** Whether `rel`, read as a path, stays inside `code` rather than climbing out of it. */
@@ -737,7 +760,7 @@ function runCandidate(candidate: string): Result[] {
   const files = caseFiles(candidate);
   if (!files.length) return [];
   const code = scratchCopy(candidate, true);
-  return execute(code, files, code);
+  return execute(code, files, code, false, plannedData(candidate, code));
 }
 
 /**

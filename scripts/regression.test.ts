@@ -125,6 +125,11 @@ test("a plan derived from anything but the accepted regression as it is now is r
   ]);
 });
 
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("the regression hands its cases the data its plan provides, both when it replays the accepted cases and when it runs the candidate's own", () => {
+  assert.deepEqual(regressionErrors(regressionCandidate("plan-data"), regressionCandidate("plan-data"), BASE), []);
+});
+
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a trusted regression without a plan classifies nothing, so every one of its cases must hold", () => {
   const trusted = regressionCandidate("kept");
