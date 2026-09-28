@@ -178,6 +178,12 @@ test("an excluded inherited case is given up, and a commitment only once every c
     assert.equal(fs.existsSync(mark), false, "an excluded case was run beside the kept ones");
     assert.deepEqual(acceptance(mixed, candidate("acceptance/mixed", "acceptance/mixed-marking")).errors, []);
     assert.equal(fs.existsSync(mark), true, "a kept case was not run");
+    // The runner is told which cases to pass over by --test-skip-pattern, which Node has only since 22.1, so KAAL
+    // declares it runs on nothing older.
+    const manifest = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+      engines: { node: string };
+    };
+    assert.equal(manifest.engines.node, ">=22.1");
     // Nor where its title holds what a command line would carry as something else, such as half a surrogate pair.
     fs.rmSync(mark);
     const surrogate = candidate("acceptance/surrogate");
