@@ -43,6 +43,11 @@ export function kindAt(at: string): "directory" | "file" | "other" | undefined {
   }
 }
 
+/** Whether `dir`, a directory, is reached through a link and holds nothing that could be refused as reached through it. */
+function emptyLink(dir: string): boolean {
+  return fs.lstatSync(dir).isSymbolicLink() && fs.readdirSync(dir).length === 0;
+}
+
 /** A line meant to say its suite serves a plan, strictly written or not: any line that starts with "Serves". */
 const SERVES_LIKE = /^\s*serves\b/i;
 const SERVES = /^Serves: (\S+)$/;
@@ -258,6 +263,11 @@ export function planErrors(repo: string): string[] {
   const suites = kindAt(path.join(repo, SUITES));
   if (suites !== undefined && suites !== "directory")
     errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
+  // One reached through a link states nothing of the state's own: each suite it holds is refused as stated through a
+  // link, and one that holds none yet is refused itself, since whatever were put there later would change what plans
+  // require.
+  if (suites === "directory" && emptyLink(path.join(repo, SUITES)))
+    errors.push(`${SUITES}: reached through a link, so it states no suite of the state's own`);
   for (const suite of suiteEntries(repo)) {
     const wrong = suiteError(repo, suite);
     if (wrong) errors.push(wrong);
@@ -265,6 +275,8 @@ export function planErrors(repo: string): string[] {
   const where = kindAt(path.join(repo, PLANS));
   if (where !== undefined && where !== "directory")
     errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
+  if (where === "directory" && emptyLink(path.join(repo, PLANS)))
+    errors.push(`${PLANS}: reached through a link, so it states no plan of the state's own`);
   const plans = [
     ...(fs.existsSync(path.join(repo, PLAN)) ? [PLAN] : []),
     ...(where === "directory"

@@ -403,6 +403,15 @@ test("a suite says which plans it serves, strictly written, and only plans its s
     "suites: not a directory, where KAAL states its suites",
     "plans: not a directory, where KAAL states its plans",
   ]);
+  // A link to a directory elsewhere, even one that holds nothing yet, states nothing of the state's own: whatever were
+  // put there later would change what the state's plans require.
+  const elsewhere = regressionCandidate("kept");
+  for (const dir of ["plans", "suites"])
+    fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), `kaal-${dir}-`)), path.join(elsewhere, dir), "junction");
+  assert.deepEqual(linkErrors(elsewhere), [
+    "suites: reached through a link, so it states no suite of the state's own",
+    "plans: reached through a link, so it states no plan of the state's own",
+  ]);
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });
