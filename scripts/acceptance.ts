@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 import type { Conditions } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planCommitments, planEntries, SUITES } from "./links.js";
+import { PLAN, planCommitments, planEntries, SUITES, suiteError } from "./links.js";
 import { kindAt, planError, readPlan, suitePlans } from "./plans.js";
 
 /**
@@ -81,9 +81,16 @@ export function protection(state: string): { protects: Protection[]; errors: str
   } catch (e) {
     errors.push(`${state}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  // Suites reached through a link are not the state's own, and would be read as serving nothing.
-  if (fs.lstatSync(path.join(state, SUITES), { throwIfNoEntry: false })?.isSymbolicLink())
-    errors.push(`${state}: ${SUITES}: reached through a link`);
+  // Suites reached through a link are not the state's own, and would be read as serving nothing: the directory, or any
+  // one suite in it, which would otherwise be passed over as serving no plan.
+  const suites = path.join(state, SUITES);
+  const suitesKind = fs.lstatSync(suites, { throwIfNoEntry: false });
+  if (suitesKind?.isSymbolicLink()) errors.push(`${state}: ${SUITES}: reached through a link`);
+  else if (suitesKind?.isDirectory())
+    for (const name of fs.readdirSync(suites).sort()) {
+      const wrong = suiteError(state, `${SUITES}/${name}`);
+      if (wrong) errors.push(`${state}: ${wrong}`);
+    }
   for (const { suite, serves } of suitePlans(state)) if (serves.includes(PLAN)) protects.push({ suite });
   return { protects, errors };
 }
@@ -216,8 +223,9 @@ function accepts(place: string, bytes: Buffer): { accepted: Accepted[]; errors: 
  * entries of the acceptance records it adds, those it holds that the accepted
  * state does not. A record the accepted state holds is history: it accepted
  * reductions of an earlier regression, and accepts nothing more, so a waiver
- * never waits for a later loss; rewritten, it is refused. With no record added,
- * the candidate accepts no reduction at all.
+ * never waits for a later loss; rewritten or removed, it is refused, so the
+ * same record can never be added again as if new. With no record added, the
+ * candidate accepts no reduction at all.
  */
 export function acceptedReductions(accepted: string, candidate: string): { accepted: Accepted[]; errors: string[] } {
   const before = records(accepted);
@@ -234,6 +242,8 @@ export function acceptedReductions(accepted: string, candidate: string): { accep
     entries.push(...read.accepted);
     errors.push(...read.errors);
   }
+  for (const place of before.records.keys())
+    if (!after.records.has(place)) errors.push(`${place}: removed; an acceptance record is history, never removed`);
   return { accepted: entries, errors };
 }
 

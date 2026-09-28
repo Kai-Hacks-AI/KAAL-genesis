@@ -95,7 +95,7 @@ function recordOf(layer: string): string {
 }
 
 // Why: requirements/accepted-reductions/requirement.md
-test("an entry that accepts what the candidate does not reduce, or says not why, is refused, and an old record is never rewritten", () => {
+test("an entry that accepts what the candidate does not reduce, or says not why, is refused, and an old record is never rewritten or removed", () => {
   const now = accepted();
   assert.deepEqual(acceptance(now, candidate("acceptance/unnamed", "acceptance/overreaching")).errors, [
     "acceptance/everything-else.md: accepts losing commitment: src/add.ts, which the candidate does not reduce",
@@ -112,6 +112,11 @@ test("an entry that accepts what the candidate does not reduce, or says not why,
   );
   assert.deepEqual(acceptance(history, rewritten).errors, [
     "acceptance/stop-naming-guests.md: rewritten; an acceptance record is history, never rewritten",
+  ]);
+  // Removed, it could be added again later as if new, so it is refused too.
+  const removed = candidate();
+  assert.deepEqual(acceptance(history, removed).errors, [
+    "acceptance/stop-naming-guests.md: removed; an acceptance record is history, never removed",
   ]);
 });
 
@@ -184,5 +189,11 @@ test("what a state protects or accepts through a link is not its own, and is ref
     fs.symlinkSync(path.join(elsewhere, PLAN), path.join(linkedPlan, PLAN));
     assert.match(reduced(now, linkedPlan).errors.join("\n"), /a plan stated through a link/);
     assert.match(reduced(linkedPlan, now).errors.join("\n"), /a plan stated through a link/);
+    // One suite reached through a link, which would otherwise be passed over as serving nothing.
+    const linkedSuite = candidate();
+    fs.rmSync(path.join(linkedSuite, "suites", "plain.md"));
+    fs.symlinkSync(path.join(elsewhere, "suites", "plain.md"), path.join(linkedSuite, "suites", "plain.md"));
+    assert.match(reduced(now, linkedSuite).errors.join("\n"), /suites\/plain\.md: a suite stated through a link/);
+    assert.match(reduced(linkedSuite, now).errors.join("\n"), /suites\/plain\.md: a suite stated through a link/);
   }
 });
