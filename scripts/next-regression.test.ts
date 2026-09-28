@@ -323,3 +323,18 @@ test("an inherited case that comes to demonstrate a new promise is carried once,
   );
   assert.deepEqual(judged(both, second), []);
 });
+
+// Why: requirements/derived-regression/requirement.md
+test("the cases demonstrating a new promise run in a copy of the candidate, never in the candidate judged", () => {
+  const R0 = r0();
+  const writing = edited(succeeding(R0, "next-regression/waves"), "scripts/waves.test.ts", (t) =>
+    t
+      .replace(
+        'assert.equal(wave("x"), "~ x");',
+        'assert.equal(wave("x"), "~ x");\n  fs.writeFileSync("written-by-a-case.txt", "");',
+      )
+      .replace('import test from "node:test";', 'import fs from "node:fs";\nimport test from "node:test";'),
+  );
+  assert.deepEqual(nextRegression(R0, writing).demonstrated, [WAVES]);
+  assert.equal(fs.existsSync(path.join(writing, "written-by-a-case.txt")), false);
+});

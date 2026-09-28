@@ -467,6 +467,15 @@ function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   });
 }
 
+/**
+ * A copy of `state` to run its own cases in, with its test data and sharing
+ * its dependencies, so nothing its cases write, beside them or anywhere under
+ * the state, reaches the state they are judging.
+ */
+export function snapshot(state: string): string {
+  return scratchCopy(state, true);
+}
+
 /** A scratch copy of a checkout to run cases in, sharing its dependencies, with only the permissions its identity records; without its test data unless `data`. */
 function scratchCopy(repo: string, data: boolean): string {
   const code = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-regression-")), "repo");

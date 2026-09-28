@@ -6,7 +6,7 @@ import { acceptance, acceptedExclusions, acceptedProtection } from "./acceptance
 import { featureRun, newPromises } from "./feature.js";
 import { type Case, caseSuites, PLAN, planEntries, repoCases } from "./links.js";
 import { type PlanRequirement, planError, planRequirements, readPlan } from "./plans.js";
-import { derivedFrom, successorErrors, unreplayable } from "./regression.js";
+import { derivedFrom, snapshot, successorErrors, unreplayable } from "./regression.js";
 
 /**
  * The next regression, derived from the accepted one, never restated by hand:
@@ -201,7 +201,8 @@ export function nextRegression(
   let demonstrated: string[] = [];
   if (promises.length && !unstated.length) {
     try {
-      const { run } = featureRun({ accepted, candidate });
+      // In a copy of the candidate, as every run of its cases is, so nothing they write reaches the state judged.
+      const { run } = featureRun({ accepted, candidate: snapshot(candidate) });
       const judged = evidence(
         promises.map((p) => ({ name: `commitment: ${p}`, under: [] })),
         [
