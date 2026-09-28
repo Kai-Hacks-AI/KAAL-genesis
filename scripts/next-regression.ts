@@ -122,6 +122,31 @@ export function protectionOf(state: string): { protection: Protection; errors: s
 }
 
 /**
+ * The inherited cases with those demonstrating new promises: a demonstrating
+ * case at the address of an inherited one is that case come to demonstrate a
+ * promise too, so the two are one, with the links and memberships of both,
+ * each inherited case taken once.
+ */
+function merged(inherited: Held[], demonstrating: Held[]): Held[] {
+  const cases = inherited.map((c) => ({ ...c }));
+  const taken = new Set<number>();
+  for (const d of demonstrating) {
+    const i = cases.findIndex((c, k) => !taken.has(k) && c.file === d.file && c.title === d.title);
+    if (i < 0) {
+      cases.push(d);
+      continue;
+    }
+    taken.add(i);
+    cases[i] = {
+      ...d,
+      places: sorted([...cases[i]!.places, ...d.places]),
+      suites: sorted([...cases[i]!.suites, ...d.suites]),
+    };
+  }
+  return cases;
+}
+
+/**
  * The next regression derived from `accepted` for `candidate`: the accepted
  * protection less what the acceptance records the candidate adds give up, as
  * Acceptance reads them, with each commitment the candidate newly promises, as
@@ -185,16 +210,13 @@ export function nextRegression(
       ].sort((a, b) => (a.place < b.place ? -1 : a.place > b.place ? 1 : 0)),
       suites: sorted([...suites]),
       ...planSettings(accepted),
-      cases: byAddress([
-        ...heldCases(accepted, keptCase, commitments, suites),
-        ...heldCases(
-          candidate,
+      cases: byAddress(
+        merged(
+          heldCases(accepted, keptCase, commitments, suites),
           // Each case by its own links: one at the same address as a case demonstrating a promise is not that case.
-          (c) => c.places.some((p) => proving.has(p)),
-          commitments,
-          suites,
+          heldCases(candidate, (c) => c.places.some((p) => proving.has(p)), commitments, suites),
         ),
-      ]),
+      ),
     },
     promises,
     demonstrated,

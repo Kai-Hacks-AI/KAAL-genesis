@@ -14,10 +14,9 @@ import {
   planEntries,
   repoCases,
   section,
-  SUITES,
   testArgs,
 } from "./links.js";
-import { planDataError, planError, readPlan } from "./plans.js";
+import { planDataError, planError, readPlan, suitePlans } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
@@ -240,7 +239,7 @@ function checkerCode(repo: string): { found: string[]; escaping: string[]; unres
 
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
- * content: its plan, the places its commitments are stated, its suites, its case files,
+ * content: its plan, the places its commitments are stated, the suites that serve its plan, its case files,
  * its test data, and what fixes how it judges (everything that decides what
  * its install puts in place, and the checker's code, found through its
  * relative imports), entry by entry: each directory as one, each regular file
@@ -299,8 +298,9 @@ function regressionInputs(repo: string): Map<string, Entry> {
     for (const place of planCommitments(plan))
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
-  // Which suites serve the plan, and so what it requires, is said by the suites, not the plan: they are part of it too.
-  if (entryAt(path.join(repo, SUITES))) add(SUITES);
+  // Which suites serve the plan, and so what it requires, is said by the suites, not the plan: each that serves it is
+  // part of it too, and a suite serving no Regression Plan is none of its.
+  for (const { suite, serves } of suitePlans(repo)) if (serves.includes(PLAN)) add(suite);
   for (const file of caseFiles(repo)) add(file);
   for (const [file, at] of dataOf(repo)) add(file, at);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.

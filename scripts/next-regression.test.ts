@@ -208,11 +208,19 @@ test("a regression is derived from the accepted one as it is now, and an old acc
 });
 
 // Why: requirements/derived-regression/requirement.md
-test("which suites serve the regression is part of it, so a change to them changes its identity", () => {
+test("which suites serve the regression is part of it, so a change to them changes its identity, and to no other suite", () => {
   const R0 = r0();
   const before = regressionIdentity(R0);
+  // A suite serving no Regression Plan is none of the regression's, however it changes.
+  fs.writeFileSync(path.join(R0, "suites/other.md"), "# Other\n\nSomething else.\n");
+  assert.equal(regressionIdentity(R0), before);
+  edited(R0, "suites/other.md", (t) => `${t}\nMore of something else.\n`);
+  assert.equal(regressionIdentity(R0), before);
+  // One that starts serving it, or stops, changes what it requires.
+  const serving = regressionIdentity(edited(R0, "suites/other.md", (t) => `${t}\nServes: test/regression-plan.md\n`));
+  assert.notEqual(serving, before);
   edited(R0, "suites/plain.md", (t) => t.replace("Serves: test/regression-plan.md\n", ""));
-  assert.notEqual(regressionIdentity(R0), before);
+  assert.notEqual(regressionIdentity(R0), serving);
 });
 
 // Why: requirements/derived-regression/requirement.md
@@ -277,4 +285,27 @@ test("only a case that demonstrates a new promise enters with it, and cases at o
     fs.readFileSync(path.join(both, "scripts/cases.test.ts"), "utf8"),
   );
   assert.deepEqual(judged(both, swapped), []);
+});
+
+// Why: requirements/derived-regression/requirement.md
+test("an inherited case that comes to demonstrate a new promise is carried once, with both", () => {
+  const R0 = r0();
+  const linked = edited(succeeding(R0, "next-regression/waves"), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      "// Why: src/add.ts\n// Suite: suites/plain.md\n",
+      `// Why: src/add.ts\n// Why: ${WAVES}\n// Suite: suites/plain.md\n`,
+    ),
+  );
+  assert.deepEqual(judged(R0, linked), []);
+  assert.deepEqual(
+    nextRegression(R0, linked).protection.cases.filter((c) => c.title === "adds"),
+    [
+      {
+        file: "scripts/cases.test.ts",
+        title: "adds",
+        places: [WAVES, "src/add.ts"].sort(),
+        suites: ["suites/plain.md"],
+      },
+    ],
+  );
 });
