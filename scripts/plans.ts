@@ -43,6 +43,15 @@ export function kindAt(at: string): "directory" | "file" | "other" | undefined {
   }
 }
 
+/** The text of `file`, or undefined where it cannot be read, as where no one may read it. */
+function textOf(file: string): string | undefined {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 /** The names in `dir`, sorted, or undefined where it cannot be listed, as where no one may read it. */
 function listed(dir: string): string[] | undefined {
   try {
@@ -84,6 +93,7 @@ export function planError(repo: string, place: string): string | undefined {
   const real = fs.existsSync(file) ? path.relative(fs.realpathSync(repo), fs.realpathSync(file)) : undefined;
   if (real === undefined || !fs.statSync(file).isFile()) return `${place}: no plan is stated there`;
   if (real.split(path.sep).join("/") !== place) return `${place}: a plan stated through a link`;
+  if (textOf(file) === undefined) return `${place}: cannot be read, so what the plan requires is unknown`;
   return undefined;
 }
 
@@ -102,9 +112,9 @@ function suiteEntries(repo: string): string[] {
  */
 export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
   return suiteEntries(repo)
-    .filter((suite) => !suiteError(repo, suite))
+    .filter((suite) => !suiteError(repo, suite) && textOf(path.join(repo, suite)) !== undefined)
     .map((suite) => {
-      const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
+      const lines = textOf(path.join(repo, suite))!.split(/\r?\n/);
       const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
       const stray = lines.flatMap((line, i) => (SERVES_LIKE.test(line) && !SERVES.test(line) ? [i + 1] : []));
       return { suite, serves, stray };
@@ -211,7 +221,12 @@ export function planDataError(repo: string, plan: string, data: string): string 
     if (names === undefined) return `${within || "it"}, which cannot be read`;
     for (const name of names) {
       const entry = within ? `${within}/${name}` : name;
-      const stat = fs.lstatSync(path.join(at, entry));
+      let stat: fs.Stats;
+      try {
+        stat = fs.lstatSync(path.join(at, entry));
+      } catch {
+        return `${entry}, which cannot be read`;
+      }
       if (stat.isSymbolicLink()) return `${entry}, reached through a link`;
       const deeper = stat.isDirectory() ? wrong(entry) : undefined;
       if (deeper !== undefined) return deeper;
@@ -286,6 +301,8 @@ export function planErrors(repo: string): string[] {
   for (const suite of suiteEntries(repo)) {
     const wrong = suiteError(repo, suite);
     if (wrong) errors.push(wrong);
+    else if (textOf(path.join(repo, suite)) === undefined)
+      errors.push(`${suite}: cannot be read, so which plans it serves is unknown`);
   }
   const where = kindAt(path.join(repo, PLANS));
   if (where !== undefined && where !== "directory")

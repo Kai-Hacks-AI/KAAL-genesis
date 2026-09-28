@@ -457,6 +457,29 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   if (!readable)
     assert.deepEqual(linkErrors(closedData), [`${PLAN}: data: test-data/plan holds closed, which cannot be read`]);
   fs.chmodSync(path.join(closedData, "test-data", "plan", "closed"), 0o755);
+  // Nor one whose names can be listed but whose entries cannot be looked at.
+  const unsearchable = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(unsearchable, "test-data", "plan", "listed"), { recursive: true });
+  fs.writeFileSync(path.join(unsearchable, "test-data", "plan", "listed", "greeting.txt"), "hello\n");
+  fs.chmodSync(path.join(unsearchable, "test-data", "plan", "listed"), 0o444);
+  if (!readable)
+    assert.deepEqual(linkErrors(unsearchable), [
+      `${PLAN}: data: test-data/plan holds listed/greeting.txt, which cannot be read`,
+    ]);
+  fs.chmodSync(path.join(unsearchable, "test-data", "plan", "listed"), 0o755);
+  // Nor may a suite or a plan be one that cannot be read, or what the state's plans require would be unknown.
+  const closedFiles = regressionCandidate("kept");
+  fs.mkdirSync(path.join(closedFiles, "plans"));
+  fs.mkdirSync(path.join(closedFiles, "suites"));
+  fs.writeFileSync(path.join(closedFiles, "plans", "p.md"), "# P\n");
+  fs.writeFileSync(path.join(closedFiles, "suites", "s.md"), "# S\n\nServes: plans/p.md\n");
+  for (const file of ["plans/p.md", "suites/s.md"]) fs.chmodSync(path.join(closedFiles, file), 0o000);
+  if (!readable)
+    assert.deepEqual(linkErrors(closedFiles), [
+      "suites/s.md: cannot be read, so which plans it serves is unknown",
+      "plans/p.md: cannot be read, so what the plan requires is unknown",
+    ]);
+  for (const file of ["plans/p.md", "suites/s.md"]) fs.chmodSync(path.join(closedFiles, file), 0o644);
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });
