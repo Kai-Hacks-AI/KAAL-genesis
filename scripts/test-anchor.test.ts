@@ -9,7 +9,7 @@ import { entries, kaal, tree } from "./test-data.js";
 /** The subject of this file's cases about KAAL itself. */
 const KAAL = kaal();
 
-// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
 test("KAAL's test/ holds exactly the entry point the testing skill creates and KAAL's Regression Plan", () => {
   const created = createAnchor(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-anchor-")), ANCHOR_DIR));
   const committed = path.join(KAAL, ANCHOR_DIR);
@@ -26,7 +26,7 @@ function agentsFiles(dir = KAAL): string[] {
   });
 }
 
-// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
 test("test/ is KAAL's only testing anchor: no other directory holds the entry point the testing skill creates", () => {
   const anchors = agentsFiles().filter((file) => fs.readFileSync(path.join(KAAL, file), "utf8") === ANCHOR_AGENTS_MD);
   assert.deepEqual(anchors, [`${ANCHOR_DIR}/AGENTS.md`]);

@@ -57,7 +57,7 @@ function born(): string {
 }
 
 // Suite: suites/genesis.md
-// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/genesis.md
 test("Genesis births the entry points and one learning of KAAL's current understanding, nothing else", () => {
   const nodes = `brain/learning/genesis/${LEARNING}/nodes`;
   assert.deepEqual(Object.keys(files(born())), [
@@ -68,7 +68,7 @@ test("Genesis births the entry points and one learning of KAAL's current underst
 });
 
 // Suite: suites/genesis.md
-// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/genesis.md
 test("the entry points Genesis births are byte-identical to KAAL's own", () => {
   const produced = files(born());
   for (const file of ["AGENTS.md", "brain/AGENTS.md"])
@@ -77,7 +77,7 @@ test("the entry points Genesis births are byte-identical to KAAL's own", () => {
 
 // Genesis may leave out of a node how KAAL came to its meaning, but may not add meaning KAAL does not hold.
 // Suite: suites/genesis.md
-// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/genesis.md
 test("Genesis adds nothing KAAL does not hold: every sentence it births is one KAAL's current node of that name holds", () => {
   const produced = files(born());
   for (const name of BORN) {
@@ -88,14 +88,14 @@ test("Genesis adds nothing KAAL does not hold: every sentence it births is one K
 });
 
 // Suite: suites/genesis.md
-// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/genesis.md
 test("Genesis is never behind KAAL: no node KAAL holds for a name it births is newer than what it births", () => {
   for (const name of BORN)
     assert.ok(current(name).learning <= LEARNING, `${name}: KAAL holds ${current(name).learning}`);
 });
 
 // Suite: suites/genesis.md
-// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/genesis.md
 test("nothing a KAAL born by Genesis holds states KAAL's meaning through a branch, a merge or a push", () => {
   for (const [file, text] of Object.entries(files(born())))
     assert.doesNotMatch(text, /`main`|\bbranch|\bmerg|\bpush|pull request|kaal\/<name>/i, file);

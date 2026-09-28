@@ -57,14 +57,14 @@ function kaal(cwd: string, script: string, ...args: string[]) {
 }
 
 // Suite: suites/without-git.md
-// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
 test("the processes these cases run KAAL in cannot find git", () => {
   const run = spawnSync("git", ["--version"], { env: withoutGit() });
   assert.equal((run.error as NodeJS.ErrnoException | undefined)?.code, "ENOENT");
 });
 
 // Suite: suites/without-git.md
-// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/using-seals.md
 // Why: scripts/brain-seals.ts
 // Why: brain/learning/genesis/26/09/27/02/nodes/managing-defects.md
@@ -158,7 +158,7 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
 
 // Suite: suites/genesis.md
 // Suite: suites/without-git.md
-// Why: brain/learning/genesis/26/09/27/01/nodes/genesis.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/genesis.md
 test("copied out of Git, KAAL births a new KAAL into an ordinary directory, and the new KAAL works without Git", () => {
   const kaalState = plainCopy(KAAL);
   const newborn = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-newborn-"));
@@ -242,7 +242,7 @@ test("copied out of Git, KAAL runs a plan of a plain directory's cases and says 
 });
 
 // Suite: suites/without-git.md
-// Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
 test("copied out of Git, an accepted state judges a candidate state with its own checker, both plain directories", () => {
   // The accepted state carries KAAL's checker, as main does, and judges with it.
   const accepted = plainCopy(regressionTrusted());

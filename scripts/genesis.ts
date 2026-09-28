@@ -35,13 +35,13 @@ export function genesis(repo = "."): void {
  * The learning Genesis births: KAAL's understanding as it is now, as of this
  * learning, which no node KAAL holds for a name born here may be newer than.
  */
-export const LEARNING = "26/09/27/01";
+export const LEARNING = "26/09/28/06";
 
 /**
  * KAAL's current understanding, born in order into the BRAIN at `root`: each
  * node says what KAAL's current node of that name says, without how KAAL came
  * to it, such as what taught this KAAL a meaning: a new KAAL lived none of it. What Genesis births is stated in
- * brain/learning/genesis/26/09/27/01/nodes/genesis.md.
+ * brain/learning/genesis/26/09/28/06/nodes/genesis.md.
  */
 function birth(root: string): void {
   createNode({
@@ -146,9 +146,13 @@ BASS is KAAL's understanding. Skills remain independent of BASS and can be reuse
 
 KAAL's testing has one anchor, \`test/\`, whose entry point the skill creates. Besides that entry point, \`test/\` holds only KAAL's Regression Plan; tests and their data stay with what they test.
 
-KAAL works on files. The accepted regression is a state of KAAL's files whose commitments every later change must keep. A candidate is a state of KAAL's files proposed to succeed it. A candidate names the accepted regression it derives from by that regression's own content, never by where its files are kept or how they are versioned. The accepted regression's commitments stay authoritative until the candidate is accepted; the candidate then becomes the accepted regression, and the commitments it proved join what every later candidate must keep. Systems outside KAAL, such as a repository host, may keep the states, choose which one is accepted and arrange when a candidate is judged; they hand KAAL the states, and KAAL judges them from their files alone.
+KAAL works on files. The accepted regression is a state of KAAL's files whose protection every later change must keep. A candidate is a state of KAAL's files proposed to succeed it. A candidate names the accepted regression it derives from by that regression's own content, never by where its files are kept or how they are versioned. Systems outside KAAL, such as a repository host, may keep the states, choose which one is accepted and arrange when a candidate is judged; they hand KAAL the states, and KAAL judges them from their files alone.
 
-A commitment's meaning is stated once. A node never changes, so a commitment stated in BRAIN keeps one meaning in every generation, and a change that keeps its node retains it. Later understanding supersedes a node through a new node with the same name, and the old node stays as it was learned. Replacement and withdrawal supersede alike: a replacement's node states the commitment KAAL makes now; a withdrawal's node states that KAAL no longer makes the commitment, and why. A withdrawal succeeds the old meaning but establishes no commitment in its place. A commitment stated in code can change in place, so changing its statement changes the commitment. A candidate names every commitment of the accepted regression it replaces or withdraws, together with what supersedes it; whatever it does not name, it retains.
+The next regression is derived, never restated: it is what the accepted regression protects, less exactly what the candidate explicitly gives up, with what the candidate newly promises and demonstrates. What a regression protects is what its plan requires, its commitments, the suites that serve it, its conditions, its proof other than cases and its data, together with its cases, found from those through their links and memberships. A candidate gives up only what an acceptance record it adds names, inherited cases and suites; whatever of the accepted regression no record gives up, it keeps, so silence never gives up protection. A candidate adds protection only by newly promising a commitment, stated in a place the accepted state does not state, and demonstrating it by its own cases; nothing else enters. A replacement is both: its successor newly promised and demonstrated, and what it replaces given up. Conditions, proof other than cases and data can yet be neither given up nor added: the next regression keeps them as they were.
+
+The candidate's own regression, its plan, suites, cases and data, is what judges the next candidate once it is accepted, so it must carry the derived regression exactly: every inherited case at its address, still helping prove what it helped prove and belonging to the suites it belonged to, and nothing required that the derivation does not require. The accepted regression's checker holds it to that, and replays every inherited case the candidate does not give up against it. Once accepted, the candidate is the accepted regression the same derivation starts from next, so each generation follows from the one before by the same operation, and names the one it was derived from.
+
+A commitment's meaning is stated once. A node never changes, so a commitment stated in BRAIN keeps one meaning in every generation. Later understanding supersedes a node through a new node with the same name, and the old node stays as it was learned. The regression keeps protecting the old node's commitment until a candidate gives up its cases, and protects the new node's once a candidate newly promises and demonstrates it. A commitment stated in code can change in place, so changing its statement changes the commitment.
 
 The skill explains how a test is written. This node records why and how KAAL uses it.
 `,
