@@ -80,7 +80,16 @@ test("an excluded inherited case is given up, and a commitment only once every c
       candidate("acceptance/untitled", "regression/candidates/withdrawn", "acceptance/excludes-untitled"),
     ).errors,
     [],
+  ); // So it can beside a case kept in its file, which still runs and holds.
+  const beside = candidate("acceptance/untitled-beside");
+  assert.deepEqual(
+    acceptance(
+      beside,
+      candidate("acceptance/untitled-beside", "regression/candidates/withdrawn", "acceptance/excludes-untitled-beside"),
+    ).errors,
+    [],
   );
+
   // Where its cases alone show adding, excluding one of its two cases gives up that case, never adding.
   const byCases = layeredState("feature/promised");
   const once = acceptance(
