@@ -118,6 +118,12 @@ export function protection(state: string): { protects: Protection[]; errors: str
   const errors: string[] = [];
   const protects: Protection[] = [];
   for (const place of planCommitments(text)) {
+    // A place is a path inside the state, of plain segments with * the one wildcard, as the links check reads places:
+    // never absolute, never . or .., so neither it nor what a wildcard lists can lie outside the state.
+    if (!/^[\w*-][\w.*-]*(\/[\w*-][\w.*-]*)*$/.test(place) || place.split("/").some((s) => s === "." || s === "..")) {
+      errors.push(`${state}: ${place}: not a place inside the state`);
+      continue;
+    }
     protects.push({ commitment: place });
     // A place named by a wildcard, such as each skill's SKILL.md, protects each file it names, each on its own.
     const files = place.includes("*") ? expanded(state, place, errors) : [place];

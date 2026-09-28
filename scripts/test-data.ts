@@ -189,8 +189,10 @@ export function featureState(...layers: string[]): string {
  * of adding, which nothing loses; `reasonless`, one that says not why;
  * `history`, a state holding the record `accepts-unnamed` adds;
  * `any-conditions` and `unconditioned`, the protection required under a set
- * naming no condition, and under no set at all; and `node-22` and
- * `later-node`, it required on Linux with Node 22, and with Node 22.4.
+ * naming no condition, and under no set at all; `node-22` and
+ * `later-node`, it required on Linux with Node 22, and with Node 22.4; and
+ * `outside`, the protection with commitments stated outside the state, plainly
+ * and by a wildcard.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

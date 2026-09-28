@@ -212,6 +212,16 @@ test("what a state protects or accepts through a link is not its own, and is ref
   fs.symlinkSync(path.join(elsewhere, "suites"), path.join(linkedSuites, "suites"), "junction");
   assert.match(reduced(now, linkedSuites).errors.join("\n"), /suites: reached through a link/);
   assert.match(reduced(linkedSuites, now).errors.join("\n"), /suites: reached through a link/);
+  // A place outside the state, named plainly or by a wildcard, is never read, in either state.
+  const beside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-beside-"));
+  const outside = path.join(beside, "state");
+  fs.cpSync(candidate("acceptance/outside"), outside, { recursive: true });
+  fs.mkdirSync(path.join(beside, "shared"));
+  fs.writeFileSync(path.join(beside, "shared", "file.md"), "shared\n");
+  for (const errors of [reduced(now, outside).errors, reduced(outside, now).errors]) {
+    assert.match(errors.join("\n"), /\.\.\/shared\/file\.md: not a place inside the state/);
+    assert.match(errors.join("\n"), /\.\.\/shared\/\*\.md: not a place inside the state/);
+  }
   // A file a wildcard names, reached through a link, however its place reads.
   const linkedSkill = candidate("acceptance/skilled");
   fs.mkdirSync(path.join(elsewhere, "c"));
