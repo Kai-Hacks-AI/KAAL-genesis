@@ -481,7 +481,9 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   // hold, where the system can make one.
   const piped = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(piped, "test-data", "plan"), { recursive: true });
-  if (spawnSync("mkfifo", [path.join(piped, "test-data", "plan", "pipe")]).status === 0)
+  // Only where one is really made: some systems' mkfifo, such as Git Bash's on Windows, succeeds without making one.
+  const pipe = path.join(piped, "test-data", "plan", "pipe");
+  if (spawnSync("mkfifo", [pipe]).status === 0 && fs.lstatSync(pipe).isFIFO())
     assert.deepEqual(linkErrors(piped), [
       `${PLAN}: data: test-data/plan holds pipe, which is neither a file nor a directory`,
     ]);
