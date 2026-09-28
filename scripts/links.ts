@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
-import { planErrors } from "./plans.js";
+import { planError, planErrors } from "./plans.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -25,9 +25,13 @@ export const SKILL_CASES = "skills/*/SKILL.md";
  */
 const SHOWN_BY = ["its cases", "the seal checks"];
 
-/** The fence a line opens, if it opens one: three or more backticks or tildes, indented by at most three spaces. */
+/**
+ * The fence a line opens, if it opens one: three or more backticks or tildes,
+ * indented by at most three spaces; after backticks, nothing more of them, as
+ * a line such as ```draft``` opens none.
+ */
 export function fenceOpened(line: string): string | undefined {
-  return /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+  return /^ {0,3}(`{3,})[^`]*$/.exec(line)?.[1] ?? /^ {0,3}(~{3,})/.exec(line)?.[1];
 }
 
 /** Whether a line closes the fence `fence` opened: the same mark, at least as long, and nothing else. */
@@ -329,6 +333,9 @@ export function planEntryErrors(repo: string): { errors: string[]; unplaced: Set
  */
 export function linkErrors(repo: string): string[] {
   if (!fs.existsSync(path.join(repo, PLAN))) return [`${PLAN}: there is no plan, so no link can be read`];
+  // Refused as any plan is before it is read, so one that is no file, or reached through a link, is said to be so.
+  const notPlan = planError(repo, PLAN);
+  if (notPlan) return [notPlan];
   const entries = planEntries(`\n${fs.readFileSync(path.join(repo, PLAN), "utf8")}`);
   const { errors, unplaced } = planEntryErrors(repo);
   const stated = new Set(entries.flatMap((e) => (e.place ? [e.place] : [])));

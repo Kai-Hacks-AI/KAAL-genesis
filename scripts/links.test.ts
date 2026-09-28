@@ -518,6 +518,25 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   assert.deepEqual(linkErrors(exampled), [
     `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
   ]);
+  // A backtick fence's info string holds no backtick, so a line such as ```draft``` opens no fence that could hide the
+  // section after it.
+  const inline = served("");
+  fs.appendFileSync(path.join(inline, PLAN), "\n```draft```\n\n## As runs read it\n\n```yaml\nconditions: 5\n```\n");
+  assert.deepEqual(linkErrors(inline), [
+    `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
+  ]);
+  // The Regression Plan is refused as any plan is, before it is read: as a directory, or through a link to what
+  // cannot be read, where a system shows a process's own memory as a file.
+  const notFile = served("");
+  fs.rmSync(path.join(notFile, PLAN));
+  fs.mkdirSync(path.join(notFile, PLAN));
+  assert.deepEqual(linkErrors(notFile), [`${PLAN}: no plan is stated there`]);
+  if (fs.existsSync("/proc/self/mem")) {
+    const linkedPlan = served("");
+    fs.rmSync(path.join(linkedPlan, PLAN));
+    fs.symlinkSync("/proc/self/mem", path.join(linkedPlan, PLAN));
+    assert.deepEqual(linkErrors(linkedPlan), [`${PLAN}: a plan stated through a link`]);
+  }
   // Nor a file within it that cannot be read.
   const closedFile = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });
