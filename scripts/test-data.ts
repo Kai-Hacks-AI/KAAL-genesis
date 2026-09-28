@@ -153,6 +153,27 @@ export function regressionCandidate(name: string): string {
 }
 
 /**
+ * A state of the trusted repository in test-data/regression with layers from
+ * test-data/feature laid over it in order, in a scratch directory: `planned`,
+ * KAAL's Feature Plan in its place, requiring no conditions; `promised`, a
+ * Requirement that a greeting names who it greets, named by the regression
+ * plan, with a case that helps prove it; `unproven`, the same Requirement
+ * recorded, which no plan names and no case proves; `decomposed`, that
+ * case replaced by another of the same claim, in another file and a suite;
+ * `moved`, the same Requirement, byte for byte, at another place, named and
+ * proven there; `rewritten`, the Requirement at the same place saying
+ * something else; and `refactored`, the greeting's code rewritten and a case
+ * given more data, promising what it did; and `forgetful`, a greeting that
+ * names no one.
+ */
+export function featureState(...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-feature-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, "feature", layer), root, { recursive: true });
+  return root;
+}
+
+/**
  * A scratch copy of a state from test-data/runs, as plain files: `greeter`,
  * whose cases say what its greeting is, and `silent`, whose greeting says
  * something else; `before`, `after` and `after-weak`, the cases of one claim

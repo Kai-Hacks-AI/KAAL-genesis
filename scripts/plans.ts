@@ -286,8 +286,12 @@ export type PlanRequirement = Requirement & { kind: "commitment" | "suite" | "pr
  * it states for it or else the plan's. A suite that says it serves the plan
  * must be one the state states in its own place, never through a link, or
  * what the plan requires would be chosen by a file the state does not hold.
+ * `derived` are commitments whoever runs the plan derives for it rather than
+ * the plan naming them, such as what a candidate newly promises for the
+ * Feature Plan: each is required as a commitment the plan names would be,
+ * under the plan's sets of conditions, so they can only add to what it requires.
  */
-export function planRequirements(repo: string, plan: string): PlanRequirement[] {
+export function planRequirements(repo: string, plan: string, derived: string[] = []): PlanRequirement[] {
   // Only a plan the state states has requirements, however they are asked for.
   const notPlan = planError(repo, plan);
   if (notPlan) throw new Error(notPlan);
@@ -302,7 +306,11 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
   const { conditions, proof } = readPlan(repo, plan);
   const text = planText(repo, plan);
   return [
-    ...planCommitments(text).map((name) => ({ name, kind: "commitment" as const, under: conditions })),
+    ...[...new Set([...planCommitments(text), ...derived])].map((name) => ({
+      name,
+      kind: "commitment" as const,
+      under: conditions,
+    })),
     ...suitePlans(repo)
       .filter((s) => s.serves.includes(plan))
       .map(({ suite }) => {
