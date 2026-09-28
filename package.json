@@ -28,6 +28,7 @@
     "regression:check": "tsx scripts/check-regression.ts",
     "links:check": "tsx scripts/check-links.ts",
     "feature": "tsx scripts/feature.ts",
+    "acceptance": "tsx scripts/acceptance.ts",
     "typecheck": "tsc -p .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

@@ -174,6 +174,29 @@ export function featureState(...layers: string[]): string {
 }
 
 /**
+ * A state of the trusted repository in test-data/regression with layers laid
+ * over it in order, each named by its place in test-data, such as
+ * `feature/promised` or `regression/candidates/replaced`, in a scratch
+ * directory. Those in test-data/acceptance are: `protected`, a Regression Plan
+ * that protects adding, also shown by the seal checks, greeting, and greeting
+ * by name, on Linux and on Windows, served by the suite `suites/plain.md`;
+ * `unnamed`, `moved`, `replaced`, `windowless`, `unsealed` and `unserved`,
+ * each that protection with one piece of it no longer required: greeting by
+ * name, greeting by name at its old place, greeting with hello, Windows, the
+ * seal checks of adding, and the plain suite's service; `extended`, one more
+ * Requirement newly named and proven; `accepts-…`, a record accepting the
+ * loss of the like-named piece; `overreaching`, one also accepting the loss
+ * of adding, which nothing loses; `reasonless`, one that says not why; and
+ * `history`, a state holding the record `accepts-unnamed` adds.
+ */
+export function layeredState(...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, layer), root, { recursive: true });
+  return root;
+}
+
+/**
  * A scratch copy of a state from test-data/runs, as plain files: `greeter`,
  * whose cases say what its greeting is, and `silent`, whose greeting says
  * something else; `before`, `after` and `after-weak`, the cases of one claim
