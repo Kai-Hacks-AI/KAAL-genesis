@@ -5,7 +5,15 @@ import YAML from "yaml";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import { type Case, linkErrors, PLAN, planCommitments, planEntries, repoCases, unnamedCases } from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
-import { judge, runCandidate, runTrusted, unmatchedCases, unreplayable } from "./regression.js";
+import {
+  judge,
+  runCandidate,
+  runTrusted,
+  SKIP_LIMIT,
+  skipArguments,
+  unmatchedCases,
+  unreplayable,
+} from "./regression.js";
 
 /**
  * What a candidate is allowed to give up of the accepted regression, read from
@@ -372,10 +380,23 @@ export function acceptance(
         stated.accepted.flatMap((a) =>
           "case" in a.exclusion && a.exclusion.case.file === file ? [a.exclusion.case.title] : [],
         );
-      const results = runTrusted(accepted, candidate, kept, skipped).filter((r) =>
-        r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
-      );
-      errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
+      // Titles are named to the runner on its command line, which no platform lets grow without end.
+      const unnameable = [...new Set(plan.cases.map((c) => c.file))].flatMap((file) => {
+        const length = skipArguments(skipped(file)).join(" ").length;
+        return length > SKIP_LIMIT
+          ? [
+              `${file}: the titles excluded beside the cases it keeps would take ${length} characters to name to the runner, more than the ${SKIP_LIMIT} any platform's command line is sure to carry`,
+            ]
+          : [];
+      });
+      errors.push(...unnameable);
+      const results = unnameable.length
+        ? []
+        : runTrusted(accepted, candidate, kept, skipped).filter((r) =>
+            r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
+          );
+      if (!unnameable.length)
+        errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
     }
   }
   return { excluded: stated.accepted, requires: plan.requires.map(requirementName), errors };

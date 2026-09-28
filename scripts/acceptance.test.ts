@@ -120,6 +120,26 @@ test("an excluded inherited case is given up, and a commitment only once every c
     acceptance(trailing, candidate("acceptance/trailing", "acceptance/excludes-trailing-both")).errors,
     [],
   );
+  // A title is named to the runner on its command line, which no platform lets grow without end: an exclusion beside
+  // kept cases whose titles would take more than any is sure to carry is refused, rather than failing to run.
+  const long = "long ".repeat(2000);
+  const withLong = (...layers: string[]) => {
+    const state = candidate(...layers);
+    fs.writeFileSync(
+      path.join(state, "scripts", "long.test.ts"),
+      `import assert from "node:assert/strict";\nimport test from "node:test";\nimport { add } from "../src/add.js";\n\n// Why: src/add.ts\ntest(${JSON.stringify(long)}, () => {\n  assert.equal(add(1, 2), 3);\n});\n\n// Why: src/add.ts\ntest("adds beside a long title", () => {\n  assert.equal(add(2, 1), 3);\n});\n`,
+    );
+    return state;
+  };
+  const longCandidate = withLong();
+  fs.mkdirSync(path.join(longCandidate, "acceptance"), { recursive: true });
+  fs.writeFileSync(
+    path.join(longCandidate, "acceptance", "long.md"),
+    `---\nexcludes:\n  - case: scripts/long.test.ts\n    title: ${JSON.stringify(long)}\n    because: the seal checks show adding without it\n---\n`,
+  );
+  assert.deepEqual(acceptance(withLong(), longCandidate).errors, [
+    "scripts/long.test.ts: the titles excluded beside the cases it keeps would take 10031 characters to name to the runner, more than the 8192 any platform's command line is sure to carry",
+  ]);
   // A case titled with nothing at all is run under another name, so its title cannot say which case ran, and not
   // running it beside a case kept cannot be asked by it: a regression holding one is refused, even where it is excluded.
   const beside = candidate("acceptance/untitled-beside");

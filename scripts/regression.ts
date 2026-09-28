@@ -510,6 +510,27 @@ export function judge(cases: Case[], results: Result[], superseded: Set<string>)
   return [...expected, ...unaccounted];
 }
 
+/** The most the runner's command line may spend naming the cases it passes over: well within what every platform carries. */
+export const SKIP_LIMIT = 8192;
+
+/**
+ * The runner's arguments passing over each case titled as `skip` says, and
+ * no other: each title whole, as the runner reads it.
+ */
+export function skipArguments(skip: string[]): string[] {
+  // Every character but printable ASCII is written as the escape of each UTF-16 unit, as the runner reads the title:
+  // a command line can carry no NUL, and would carry half a surrogate pair as something else. The title ends where the
+  // pattern does, and not before a line break closing it, as $ would allow. The runner also tries each pattern on a
+  // title with the space around it trimmed, so a case whose title differs only by that is skipped too: acceptance
+  // excludes such cases together or not at all.
+  return skip.map(
+    (title) =>
+      `--test-skip-pattern=^${title
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)}(?![\\s\\S])`,
+  );
+}
+
 const TSX = fileURLToPath(import.meta.resolve("tsx/cli"));
 // A URL, not a path: a Windows path such as D:\\… would be read as a URL with the scheme "d:".
 const REPORTER = new URL("./regression-reporter.ts", import.meta.url).href;
@@ -610,17 +631,7 @@ export function execute(
   // empty title names no case: the runner runs such a case under another name, and reads a pattern matching nothing as
   // matching every case of the file.
   if (skip.includes("")) throw new Error("a case titled with nothing at all cannot be skipped by its title");
-  // Every character but printable ASCII is written as the escape of each UTF-16 unit, as the runner reads the title:
-  // a command line can carry no NUL, and would carry half a surrogate pair as something else. The title ends where the
-  // pattern does, and not before a line break closing it, as $ would allow. The runner also tries each pattern on a
-  // title with the space around it trimmed, so a case whose title differs only by that is skipped too: acceptance
-  // excludes such cases together or not at all.
-  const skipping = skip.map(
-    (title) =>
-      `--test-skip-pattern=^${title
-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        .replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)}(?![\\s\\S])`,
-  );
+  const skipping = skipArguments(skip);
   const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...skipping, ...files], {
     cwd: code,
     // A run started from within another test run would report to that run instead.
