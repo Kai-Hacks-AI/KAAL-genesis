@@ -186,11 +186,19 @@ export function planDataError(repo: string, plan: string, data: string): string 
   if (real.split(path.sep).join("/") !== data.replace(/\/+$/, ""))
     return `${plan}: data: ${data} is reached through a link`;
   // Nor is anything within it, however deep, or a case could read what the state does not hold.
-  const linked = (fs.readdirSync(at, { recursive: true }) as string[])
-    .sort()
-    .find((within) => fs.lstatSync(path.join(at, within)).isSymbolicLink());
-  if (linked !== undefined)
-    return `${plan}: data: ${data} holds ${linked.split(path.sep).join("/")}, reached through a link`;
+  // Each directory is listed only once it is known to be no link, so what a link leads to is never read.
+  const linked = (within: string): string | undefined => {
+    for (const name of fs.readdirSync(path.join(at, within)).sort()) {
+      const entry = within ? `${within}/${name}` : name;
+      const stat = fs.lstatSync(path.join(at, entry));
+      if (stat.isSymbolicLink()) return entry;
+      const deeper = stat.isDirectory() ? linked(entry) : undefined;
+      if (deeper !== undefined) return deeper;
+    }
+    return undefined;
+  };
+  const link = linked("");
+  if (link !== undefined) return `${plan}: data: ${data} holds ${link}, reached through a link`;
   return undefined;
 }
 

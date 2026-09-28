@@ -457,6 +457,25 @@ test("a plan that says how runs read it says it so they can, with its data insid
     fs.symlinkSync(target, path.join(nested, "test-data", "plan", link), type);
     assert.deepEqual(linkErrors(nested), [`${PLAN}: data: test-data/plan holds ${link}, reached through a link`], link);
   }
+  // A link is refused where it is, never followed, so what it leads to is never read, however large, looping or closed.
+  const beyond = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-beyond-data-"));
+  fs.symlinkSync(beyond, path.join(beyond, "again"), "junction");
+  // Where the system has a directory no one may list, as Linux has for another process's mapped files, the link to it
+  // is refused like any other rather than failing to be read.
+  const closed = "/proc/1/map_files";
+  const unlistable = (() => {
+    try {
+      fs.readdirSync(closed);
+      return false;
+    } catch {
+      return fs.existsSync(closed);
+    }
+  })();
+  if (unlistable) fs.symlinkSync(closed, path.join(beyond, "closed"), "junction");
+  const leading = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(leading, "test-data", "plan"), { recursive: true });
+  fs.symlinkSync(beyond, path.join(leading, "test-data", "plan", "beyond"), "junction");
+  assert.deepEqual(linkErrors(leading), [`${PLAN}: data: test-data/plan holds beyond, reached through a link`]);
   // Nothing a plan says runs read is ever null, and its data is a place of its own in the state, never the state itself.
   assert.deepEqual(linkErrors(served("", "proof: null")), [`${PLAN}: proof: not proofs by name`]);
   for (const data of ['""', ".", "./", "src/.."])
