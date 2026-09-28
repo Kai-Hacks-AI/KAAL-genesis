@@ -23,16 +23,18 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 15. KAAL's plans. Owned by KAAL's testing; stated in `brain/learning/genesis/26/09/27/07/nodes/plan.md`. Shown by its cases.
 16. What a candidate newly promises. Owned by KAAL's testing; stated in `requirements/new-promises/requirement.md`. Shown by its cases.
 17. What demonstrates a candidate's new promises. Owned by KAAL's testing; stated in `requirements/new-promises-demonstrated/requirement.md`. Shown by its cases.
+18. Which inherited cases no longer hold against a candidate. Owned by KAAL's testing; stated in `requirements/inherited-reductions/requirement.md`. Shown by its cases.
+19. What a candidate explicitly gives up of the accepted regression. Owned by KAAL's testing; stated in `requirements/accepted-reductions/requirement.md`. Shown by its cases.
 
 ## How this regression differs from the one it was derived from
 
-Derived from: the accepted regression `cdb1184573181c4c7349279d9fcc8b6fd14a7a1dcf87fadb8b597518901af4cc`.
+Derived from: the accepted regression `5068781645a694d183b54d7222e859320fef5bdaaaa7c4664823916dd564908b`.
 
 This section names the regression a plan was derived from and what the plan does not retain of it, each with what supersedes it; every commitment of that regression it does not name is retained. A regression is named by its identity, taken from its own content: its plan, the places its commitments are stated, its case files, its test data, and what fixes how it judges: everything that decides what its install puts in place, how its TypeScript is compiled, and all of its checker's own code. The accepted regression's own checker prints it: `npm run regression:check -- --identity`, run in the accepted state. It is taken from the files byte for byte, so it is the same wherever the files are, as long as their bytes are: a checkout that rewrites line endings has another. Of a file's permissions it records only whether its owner may execute it, as a checkout does, and the replay gives the regression's cases no other permission, so none can depend on one. A regression is judged only from its own files, so one without a lockfile, or whose install takes packages from local files, whose inputs link outside its state, as the link reads wherever the state is kept, or have names or link targets that are not UTF-8, or whose cases or test data link to what its replay does not copy, or whose plan is a link or is reached through one, or whose checker is run by any other command line than `tsx scripts/check-regression.ts`, is reached through a link, imports code from outside it, or imports code it does not hold, is refused. The checker's code is found as its module loader finds it. A candidate must hold that checker, run by `regression:check` as `tsx scripts/check-regression.ts`, since once accepted it judges every later candidate. On a candidate, it must be the identity of the accepted regression as it is now; once the candidate is accepted, the section stays as the record of how this regression came to be, and the next candidate replaces it with its own. Changes made within a candidate before it is accepted are not changes to the regression. How a commitment is replaced or withdrawn is stated in `brain/learning/genesis/26/09/26/03/nodes/testing.md`.
 
 - Replaces: nothing.
 - Withdraws: nothing.
-- Adds: commitments 16 and 17, what a candidate newly promises and what demonstrates it, which the accepted regression does not have. They are KAAL's first Requirements, and `npm run feature -- <accepted>` names them from the files, as KAAL's Feature Plan, `plans/feature.md`, requires them.
+- Adds: commitments 18 and 19, which inherited cases no longer hold against a candidate and what a candidate explicitly gives up of the accepted regression, which the accepted regression does not have. `npm run feature -- <accepted>` names them from the files; `npm run acceptance -- <accepted>` holds with nothing excluded, and this candidate adds no acceptance record.
 
 ## How a commitment's cases are found
 

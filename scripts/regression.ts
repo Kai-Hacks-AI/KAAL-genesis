@@ -510,6 +510,34 @@ export function judge(cases: Case[], results: Result[], superseded: Set<string>)
   return [...expected, ...unaccounted];
 }
 
+/**
+ * Whether the runner can be told to pass over a case by its title: not when it
+ * is titled with nothing at all, which the runner runs under another name, and
+ * reads a pattern matching nothing as matching every case of its file.
+ */
+export const skippable = (title: string): boolean => title !== "";
+
+/** The most the runner's command line may spend naming the cases it passes over: well within what every platform carries. */
+export const SKIP_LIMIT = 8192;
+
+/**
+ * The runner's arguments passing over each case titled as `skip` says, and
+ * no other: each title whole, as the runner reads it.
+ */
+export function skipArguments(skip: string[]): string[] {
+  // Every character but printable ASCII is written as the escape of each UTF-16 unit, as the runner reads the title:
+  // a command line can carry no NUL, and would carry half a surrogate pair as something else. The title ends where the
+  // pattern does, and not before a line break closing it, as $ would allow. The runner also tries each pattern on a
+  // title with the space around it trimmed, so a case whose title differs only by that is skipped too: acceptance
+  // excludes such cases together or not at all.
+  return skip.map(
+    (title) =>
+      `--test-skip-pattern=^${title
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)}(?![\\s\\S])`,
+  );
+}
+
 const TSX = fileURLToPath(import.meta.resolve("tsx/cli"));
 // A URL, not a path: a Windows path such as D:\\… would be read as a URL with the scheme "d:".
 const REPORTER = new URL("./regression-reporter.ts", import.meta.url).href;
@@ -584,6 +612,7 @@ export function execute(
   tested: string,
   positions?: false,
   handed?: Record<string, string>,
+  skip?: string[],
 ): Result[];
 export function execute(
   code: string,
@@ -591,6 +620,7 @@ export function execute(
   tested: string,
   positions: true,
   handed?: Record<string, string>,
+  skip?: string[],
 ): Positioned[];
 export function execute(
   code: string,
@@ -598,12 +628,18 @@ export function execute(
   tested: string,
   positions = false,
   handed: Record<string, string> = {},
+  skip: string[] = [],
 ): Positioned[] {
   // With no files to run, the test runner would look for cases of its own, which no state named: run nothing.
   if (!files.length) return [];
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-")), "results.jsonl");
   fs.writeFileSync(out, "");
-  const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...files], {
+  // A case to skip is named by its whole title, so no other case whose title only contains it is skipped with it. An
+  // empty title names no case: the runner runs such a case under another name, and reads a pattern matching nothing as
+  // matching every case of the file.
+  if (!skip.every(skippable)) throw new Error("a case titled with nothing at all cannot be skipped by its title");
+  const skipping = skipArguments(skip);
+  const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...skipping, ...files], {
     cwd: code,
     // A run started from within another test run would report to that run instead.
     // No npm_* variable either: they describe whichever package's script started this run, not the one
@@ -644,11 +680,19 @@ export function execute(
  * state they test. Returns what each case did. The plan is
  * the accepted regression's own, as its identity says, so a case that reads
  * it reads what its links were written against, not a plan that has since
- * replaced or withdrawn what they point at.
+ * replaced or withdrawn what they point at. Given `only`, only the case files
+ * it keeps are run, as when every case of the others has been given up; given
+ * `skip`, each file it names cases of is run on its own, without those cases,
+ * so a case given up never runs beside the cases kept.
  */
-export function runTrusted(trusted: string, candidate: string): Result[] {
+export function runTrusted(
+  trusted: string,
+  candidate: string,
+  only?: (file: string) => boolean,
+  skip?: (file: string) => string[],
+): Result[] {
   const code = scratchCopy(candidate, false);
-  const files = caseFiles(trusted);
+  const files = caseFiles(trusted).filter((file) => !only || only(file));
   // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
   // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
   // A path that climbs out of the copy names none of its files, so nothing is removed for it.
@@ -694,7 +738,21 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
   // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
   // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
   // its own, so no case sees more of it than the regression judges, or writes into it.
-  return execute(code, files, scratchCopy(candidate, true), false, plannedData(trusted, code));
+  const tested = scratchCopy(candidate, true);
+  const handed = plannedData(trusted, code);
+  // A title is skipped in every file a run executes, so each file with cases to skip is run on its own, where its
+  // titles, each unique there, name only its own cases.
+  const alone = skip ? files.filter((file) => skip(file).length) : [];
+  return [
+    ...execute(
+      code,
+      files.filter((file) => !alone.includes(file)),
+      tested,
+      false,
+      handed,
+    ),
+    ...alone.flatMap((file) => execute(code, [file], tested, false, handed, skip!(file))),
+  ];
 }
 
 /**
@@ -757,10 +815,10 @@ function within(code: string, rel: string): string {
 /**
  * The candidate's own cases, run by the trusted runner and reporter. They
  * prove what the candidate replaces, and they show which cases it really
- * runs, so the next accepted regression can name every one of them.
+ * runs, so the next accepted regression can name every one of them. Only
+ * `files` of them, where given.
  */
-function runCandidate(candidate: string): Result[] {
-  const files = caseFiles(candidate);
+export function runCandidate(candidate: string, files = caseFiles(candidate)): Result[] {
   if (!files.length) return [];
   const code = scratchCopy(candidate, true);
   return execute(code, files, code, false, plannedData(candidate, code));
@@ -788,6 +846,20 @@ export function unmatchedCases(cases: Case[], results: Result[]): string[] {
       : `${r.file}: "${r.name}" runs but is not named`,
   );
   return [...ghosts, ...unnamed];
+}
+
+/**
+ * The cases `state` has, as a regression knows them: those its source names,
+ * each shown by the state's own run, by the trusted runner and reporter, to be
+ * one test run under that name, one to one. With that run's results and, where
+ * what it names and what it runs disagree, each disagreement. A regression KAAL
+ * accepts has none, so the cases of an accepted state are exactly those it
+ * names, and a case's address says which test it is.
+ */
+export function caseInventory(state: string): { cases: Case[]; results: Result[]; errors: string[] } {
+  const cases = repoCases(state);
+  const results = runCandidate(state);
+  return { cases, results, errors: unmatchedCases(cases, results) };
 }
 
 /** The candidate's cases that point at a commitment replacing one of the accepted regression's must each pass: a skip proves nothing. */
@@ -824,10 +896,9 @@ export function regressionErrors(trusted: string, candidate: string, base: strin
     // Its links are what choose which of its cases protect which commitment, so they must hold from its files.
     ...linkErrors(candidate).map((error) => `as the next accepted regression, ${error}`),
   ];
-  const candidateCases = repoCases(candidate);
-  const candidateResults = runCandidate(candidate);
+  const { cases: candidateCases, results: candidateResults, errors: unmatched } = caseInventory(candidate);
   successor.push(
-    ...unmatchedCases(candidateCases, candidateResults).map((error) => `as the next accepted regression, ${error}`),
+    ...unmatched.map((error) => `as the next accepted regression, ${error}`),
     // As the accepted regression, its cases are replayed by this runner, so each must pass under it, whatever its own npm test did.
     ...candidateResults
       .filter((r) => r.outcome !== "pass" && r.name.split("\\").join("/") !== r.file)

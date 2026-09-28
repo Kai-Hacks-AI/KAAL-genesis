@@ -174,6 +174,56 @@ export function featureState(...layers: string[]): string {
 }
 
 /**
+ * A state of the trusted repository in test-data/regression with layers laid
+ * over it in order, each named by its place in test-data, such as
+ * `feature/promised` or `regression/candidates/replaced`, in a scratch
+ * directory. Those in test-data/acceptance are: `protected`, a Regression
+ * Plan that protects adding, also shown by the seal checks, greeting, and
+ * greeting by name, on Linux and on Windows, served by the suite
+ * `suites/plain.md`; `windowless`, that plan no longer requiring Windows;
+ * `extended`, one more Requirement newly named and proven; `excludes-…`, a
+ * record excluding the inherited case `greets`, the case `adds`, both cases
+ * of adding, the plain
+ * suite, or a case `waves` the regression never had; `reasonless`, one
+ * excluding `greets` without saying why; `history`, a state holding the
+ * record `excludes-greets` adds; `wild-requirements`, a Regression Plan
+ * naming every Requirement by a wildcard, with a case that helps prove them;
+ * `twice-greets`, a second case titled `greets` in the same file;
+ * `stray-link`, a link in that file belonging to no case; `twice-named`,
+ * a Regression Plan naming adding twice, only its second entry also shown by
+ * the seal checks; `waving`, a case file of its own showing greeting by
+ * waving, with the code it imports; `excludes-waving`, a record excluding
+ * that case; `marking`, that code leaving a mark where KAAL_WAVE_MARK says
+ * whenever it is loaded; `built-title`, a case whose title is built while it
+ * runs; `mixed`, a file of a case `marks` beside a case kept;
+ * `mixed-marking`, the code `marks` calls leaving that mark when called;
+ * `excludes-marks`, a record excluding it;
+ * `untitled`, a case of greeting titled with whitespace alone;
+ * `excludes-untitled`, a record excluding it and `greets`;
+ * `untitled-beside`, a case of greeting titled with nothing at all beside a
+ * case kept in its file, and `excludes-untitled-beside`, a record excluding it;
+ * `control-titled`, a case of greeting titled with a NUL beside a case kept, and
+ * `excludes-control`, a record excluding it and `greets`; `shadowed`, a case
+ * of greeting `drops` beside a case kept and a test registered through `it`
+ * under the same title, `excludes-shadowed`, a record excluding `drops` and
+ * `greets`, and `excludes-shadowed-whole`, one excluding every case of that
+ * file and `greets`; `trailing`, a case `sums` beside a case titled `sums`
+ * and a line break, `excludes-trailing`, a record excluding `sums`, and
+ * `excludes-trailing-both`, one excluding both;
+ * `surrogate`, a case titled with half a surrogate pair beside a case kept,
+ * `surrogate-marking`, the code it calls leaving the mark KAAL_WAVE_MARK says,
+ * and `excludes-surrogate`, a record excluding it; and `ordered`, a case kept
+ * that finds nothing where KAAL_WAVE_MARK says, before a case leaving a mark
+ * there, and `excludes-ordered`, a record excluding that second case.
+ */
+export function layeredState(...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, layer), root, { recursive: true });
+  return root;
+}
+
+/**
  * A scratch copy of a state from test-data/runs, as plain files: `greeter`,
  * whose cases say what its greeting is, and `silent`, whose greeting says
  * something else; `before`, `after` and `after-weak`, the cases of one claim

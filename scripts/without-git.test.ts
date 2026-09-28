@@ -7,7 +7,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
 import { judgeFiles } from "./regression.js";
-import { featureState, kaal as kaalState, regressionCandidate, regressionTrusted, runState } from "./test-data.js";
+import {
+  featureState,
+  kaal as kaalState,
+  layeredState,
+  regressionCandidate,
+  regressionTrusted,
+  runState,
+} from "./test-data.js";
 
 // KAAL works on files. These cases copy KAAL out of Git, into plain
 // directories with no `.git`, and run its capabilities as their command lines
@@ -92,6 +99,26 @@ test("copied out of Git, KAAL names what a candidate newly promises and runs its
   const ran = kaal(kaalState, "scripts/feature.ts", "--run", accepted, candidate);
   assert.equal(ran.status, 0, ran.out);
   assert.equal((JSON.parse(ran.out) as { evidence: { verdict: string } }).evidence.verdict, "held");
+});
+
+// Suite: suites/without-git.md
+// Why: requirements/inherited-reductions/requirement.md
+// Why: requirements/accepted-reductions/requirement.md
+test("copied out of Git, KAAL gives up only the inherited cases a candidate excludes, and refuses the rest", () => {
+  const kaalState = plainCopy(KAAL);
+  const protectedState = ["feature/promised", "acceptance/protected"];
+  const accepted = layeredState(...protectedState);
+  const silent = layeredState(...protectedState, "regression/candidates/withdrawn");
+  const refused = kaal(kaalState, "scripts/acceptance.ts", accepted, silent);
+  assert.equal(refused.status, 1, refused.out);
+  assert.match(refused.out, /inherited case not excluded: scripts\/cases\.test\.ts: "greets" failed/);
+  const explicit = layeredState(...protectedState, "regression/candidates/withdrawn", "acceptance/excludes-greets");
+  const given = kaal(kaalState, "scripts/acceptance.ts", accepted, explicit);
+  assert.equal(given.status, 0, given.out);
+  assert.deepEqual(
+    (JSON.parse(given.out) as { excluded: { excludes: string }[] }).excluded.map((e) => e.excludes),
+    ['case: scripts/cases.test.ts: "greets"'],
+  );
 });
 
 // Suite: suites/without-git.md
