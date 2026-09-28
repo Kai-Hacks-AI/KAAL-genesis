@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { type Case, PLAN, planCommitments, planEntries, repoCases } from "./links.js";
+import { type Case, linkErrors, PLAN, planCommitments, planEntries, repoCases } from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
 import { judge, runTrusted, unreplayable } from "./regression.js";
 
@@ -148,7 +148,13 @@ export function acceptedProtection(
   const hasPlan = !!fs.lstatSync(path.join(accepted, PLAN), { throwIfNoEntry: false });
   let requirements: PlanRequirement[] = [];
   try {
-    if (hasPlan) requirements = planRequirements(accepted, PLAN);
+    if (hasPlan) {
+      // What the links check refuses of the accepted regression, such as a link belonging to no case, is refused here
+      // too, rather than read past while its cases are found.
+      const wrong = linkErrors(accepted);
+      if (wrong.length) throw new Error(wrong.join("\n"));
+      requirements = planRequirements(accepted, PLAN);
+    }
   } catch (e) {
     return {
       requires: [],
@@ -185,7 +191,11 @@ export function acceptedProtection(
   const cases = inherited.filter((c) => !excludedCase(c));
   const text = hasPlan ? `\n${fs.readFileSync(path.join(accepted, PLAN), "utf8").replace(/\r\n/g, "\n")}` : "";
   const onlyCases = (place: string) =>
-    (planEntries(text).find((e) => e.place === place)?.shownBy ?? ["its cases"]).every((by) => by === "its cases");
+    // Every entry the plan states the place in says what shows it, not only the first.
+    planEntries(text)
+      .filter((e) => e.place === place)
+      .flatMap((e) => e.shownBy ?? ["its cases"])
+      .every((by) => by === "its cases");
   const requires = requirements.filter((r) => {
     if (r.kind === "suite") return !exclusions.some((a) => "suite" in a.exclusion && a.exclusion.suite === r.name);
     if (r.kind !== "commitment") return true;

@@ -75,6 +75,12 @@ test("an excluded inherited case is given up, and a commitment only once every c
   // Where the seal checks show it too, excluding every case of it still keeps adding, shown by them.
   const sealed = acceptance(now, candidate("feature/refactored", "acceptance/excludes-adding"));
   assert.deepEqual([sealed.errors, sealed.requires], [[], REQUIRED]);
+  // So it does where only a later entry of the plan for the same place says the seal checks show it.
+  const twice = acceptance(
+    candidate("acceptance/twice-named"),
+    candidate("acceptance/twice-named", "feature/refactored", "acceptance/excludes-adding"),
+  );
+  assert.deepEqual([twice.errors, twice.requires.includes("commitment: src/add.ts")], [[], true]);
   // Excluding a suite gives up that requirement, never the cases that show what they help prove.
   const unplain = acceptance(now, candidate("acceptance/excludes-plain"));
   assert.deepEqual([unplain.errors, unplain.requires], [[], REQUIRED.filter((r) => r !== "suite: suites/plain.md")]);
@@ -117,6 +123,12 @@ test("an exclusion names a case or a suite the accepted regression has, once, an
   assert.deepEqual(acceptance(twice, candidate("acceptance/twice-greets", "acceptance/excludes-greets")).errors, [
     'acceptance/stop-greeting-with-hello.md: excludes case: scripts/cases.test.ts: "greets", an address the accepted regression holds more than one case at',
   ]);
+  // An accepted regression whose links the links check refuses, such as one belonging to no case, is refused, not read
+  // past while its cases are found.
+  assert.match(
+    acceptance(candidate("acceptance/stray-link"), candidate("acceptance/stray-link")).errors.join("\n"),
+    /a link that belongs to no case/,
+  );
   // A suite that does not serve the accepted regression's plan is nothing it has to give up.
   const unserved = layeredState("feature/promised");
   assert.deepEqual(acceptance(unserved, layeredState("feature/promised", "acceptance/excludes-plain")).errors, [
