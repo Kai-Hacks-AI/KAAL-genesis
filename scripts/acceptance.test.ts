@@ -82,10 +82,12 @@ test("an excluded inherited case is given up, and a commitment only once every c
     [],
   );
   // A title holding a character no command line can carry is still excluded by it, beside a case kept.
-  const nul = candidate("acceptance/nul-titled");
+  const control = candidate("acceptance/control-titled");
   assert.deepEqual(
-    acceptance(nul, candidate("acceptance/nul-titled", "regression/candidates/withdrawn", "acceptance/excludes-nul"))
-      .errors,
+    acceptance(
+      control,
+      candidate("acceptance/control-titled", "regression/candidates/withdrawn", "acceptance/excludes-control"),
+    ).errors,
     [],
   );
   // A test the accepted regression runs without naming it, under the title of a case excluded beside it, would be

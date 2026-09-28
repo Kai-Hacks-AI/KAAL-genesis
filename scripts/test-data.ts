@@ -202,8 +202,8 @@ export function featureState(...layers: string[]): string {
  * `excludes-untitled`, a record excluding it and `greets`;
  * `untitled-beside`, a case of greeting titled with nothing at all beside a
  * case kept in its file, and `excludes-untitled-beside`, a record excluding it;
- * `nul-titled`, a case of greeting titled with a NUL beside a case kept, and
- * `excludes-nul`, a record excluding it and `greets`; and `shadowed`, a case
+ * `control-titled`, a case of greeting titled with a NUL beside a case kept, and
+ * `excludes-control`, a record excluding it and `greets`; and `shadowed`, a case
  * of greeting `drops` beside a case kept and a test registered through `it`
  * under the same title, `excludes-shadowed`, a record excluding `drops` and
  * `greets`, and `excludes-shadowed-whole`, one excluding every case of that
