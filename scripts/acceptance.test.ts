@@ -50,6 +50,13 @@ test("silence retains: an inherited case that no longer holds is refused unless 
   const planless = accepted();
   fs.rmSync(path.join(planless, PLAN));
   assert.match(acceptance(planless, candidate(...withdrawn)).errors.join("\n"), greetsFails);
+  // So a case of it whose title cannot be read, which could not be handed down, is refused, not passed over.
+  const unreadable = candidate("acceptance/built-title");
+  fs.rmSync(path.join(unreadable, PLAN));
+  assert.match(
+    acceptance(unreadable, candidate()).errors.join("\n"),
+    /scripts\/built\.test\.ts:\d+: a case whose title cannot be read, so it cannot be inherited/,
+  );
 });
 
 // Why: requirements/accepted-reductions/requirement.md
@@ -89,6 +96,20 @@ test("an excluded inherited case is given up, and a commitment only once every c
   const unexcluded = candidate("acceptance/waving");
   fs.rmSync(path.join(unexcluded, "src", "wave.ts"));
   assert.match(acceptance(waving, unexcluded).errors.join("\n"), /scripts\/wave\.test\.ts/);
+  // Nor is it run at all: nothing it would do against the candidate, such as never finishing, can hold up what is kept.
+  const mark = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-mark-")), "loaded");
+  process.env.KAAL_WAVE_MARK = mark;
+  try {
+    assert.deepEqual(
+      acceptance(waving, candidate("acceptance/waving", "acceptance/marking", "acceptance/excludes-waving")).errors,
+      [],
+    );
+    assert.equal(fs.existsSync(mark), false, "an excluded file was run");
+    assert.deepEqual(acceptance(waving, candidate("acceptance/waving", "acceptance/marking")).errors, []);
+    assert.equal(fs.existsSync(mark), true, "a kept file was not run");
+  } finally {
+    delete process.env.KAAL_WAVE_MARK;
+  }
   // Excluding a suite gives up that requirement, never the cases that show what they help prove.
   const unplain = acceptance(now, candidate("acceptance/excludes-plain"));
   assert.deepEqual([unplain.errors, unplain.requires], [[], REQUIRED.filter((r) => r !== "suite: suites/plain.md")]);

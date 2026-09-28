@@ -644,11 +644,12 @@ export function execute(
  * state they test. Returns what each case did. The plan is
  * the accepted regression's own, as its identity says, so a case that reads
  * it reads what its links were written against, not a plan that has since
- * replaced or withdrawn what they point at.
+ * replaced or withdrawn what they point at. Given `only`, only the case files
+ * it keeps are run, as when every case of the others has been given up.
  */
-export function runTrusted(trusted: string, candidate: string): Result[] {
+export function runTrusted(trusted: string, candidate: string, only?: (file: string) => boolean): Result[] {
   const code = scratchCopy(candidate, false);
-  const files = caseFiles(trusted);
+  const files = caseFiles(trusted).filter((file) => !only || only(file));
   // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
   // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
   // A path that climbs out of the copy names none of its files, so nothing is removed for it.

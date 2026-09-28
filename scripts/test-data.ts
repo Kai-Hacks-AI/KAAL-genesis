@@ -192,8 +192,10 @@ export function featureState(...layers: string[]): string {
  * `stray-link`, a link in that file belonging to no case; `twice-named`,
  * a Regression Plan naming adding twice, only its second entry also shown by
  * the seal checks; `waving`, a case file of its own showing greeting by
- * waving, with the code it imports; and `excludes-waving`, a record
- * excluding that case.
+ * waving, with the code it imports; `excludes-waving`, a record excluding
+ * that case; `marking`, that code leaving a mark where KAAL_WAVE_MARK says
+ * whenever it is loaded; and `built-title`, a case whose title is built while
+ * it runs.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

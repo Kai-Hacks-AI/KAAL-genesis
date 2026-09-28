@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { type Case, linkErrors, PLAN, planCommitments, planEntries, repoCases } from "./links.js";
+import { type Case, linkErrors, PLAN, planCommitments, planEntries, repoCases, unnamedCases } from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
 import { judge, runTrusted, unreplayable } from "./regression.js";
 
@@ -154,6 +154,14 @@ export function acceptedProtection(
       const wrong = linkErrors(accepted);
       if (wrong.length) throw new Error(wrong.join("\n"));
       requirements = planRequirements(accepted, PLAN);
+    } else {
+      // Without a plan there are no links to check, but a case whose title cannot be read would still be passed over
+      // as none, and never replayed.
+      const unnamed = unnamedCases(accepted);
+      if (unnamed.length)
+        throw new Error(
+          unnamed.map((at) => `${at}: a case whose title cannot be read, so it cannot be inherited`).join("\n"),
+        );
     }
   } catch (e) {
     return {
@@ -299,10 +307,11 @@ export function acceptance(
       );
     else {
       const excluded = (file: string, title: string) => !plan.cases.some((c) => c.file === file && c.title === title);
-      // A file's own report, as when it does not load, still counts while it holds a case not excluded; one whose
-      // every case is excluded has nothing left to judge.
+      // A file's own report, as when it does not load, counts while it holds a case not excluded.
       const kept = (file: string) => plan.cases.some((c) => c.file === file);
-      const results = runTrusted(accepted, candidate).filter((r) =>
+      // A file whose every case is excluded is not run at all, so nothing it would do against the candidate, such as
+      // never finishing, can hold up what is kept.
+      const results = runTrusted(accepted, candidate, kept).filter((r) =>
         r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
       );
       errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
