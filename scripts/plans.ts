@@ -21,11 +21,11 @@ import { PLAN, planCommitments, planEntries, planEntryErrors, section, SUITES, s
 export const PLANS = "plans";
 const PLAN_PLACE = /^plans\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 /**
- * What is at `at`: a directory, something else, or nothing. What cannot be
- * read, such as a link that loops back on itself, is something else: no
- * directory, so nothing is stated there.
+ * What is at `at`: a directory, a file, something else, or nothing. What
+ * cannot be read, such as a link that loops back on itself, is something else:
+ * neither directory nor file, so nothing is stated there.
  */
-export function kindAt(at: string): "directory" | "other" | undefined {
+export function kindAt(at: string): "directory" | "file" | "other" | undefined {
   try {
     const stat = fs.statSync(at, { throwIfNoEntry: false });
     return stat === undefined
@@ -34,7 +34,9 @@ export function kindAt(at: string): "directory" | "other" | undefined {
         : undefined
       : stat.isDirectory()
         ? "directory"
-        : "other";
+        : stat.isFile()
+          ? "file"
+          : "other";
   } catch {
     return "other";
   }
@@ -73,7 +75,7 @@ export function suitePlans(repo: string): { suite: string; serves: string[]; str
       .sort()
       .map((name) => `${SUITES}/${name}`)
       // A link to nothing states nothing, and is refused as such where suites are checked.
-      .filter((suite) => fs.statSync(path.join(repo, suite), { throwIfNoEntry: false })?.isFile())
+      .filter((suite) => kindAt(path.join(repo, suite)) === "file")
       .map((suite) => {
         const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
         const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
@@ -228,10 +230,12 @@ export function planRequirements(repo: string, plan: string): PlanRequirement[] 
 export function planErrors(repo: string): string[] {
   const errors: string[] = [];
   // What is not a directory states no suite and no plan, so no suite or plan a run should require goes unread.
-  if (kindAt(path.join(repo, SUITES)) === "other")
+  const suites = kindAt(path.join(repo, SUITES));
+  if (suites !== undefined && suites !== "directory")
     errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
   const where = kindAt(path.join(repo, PLANS));
-  if (where === "other") errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
+  if (where !== undefined && where !== "directory")
+    errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
   const plans = [
     ...(fs.existsSync(path.join(repo, PLAN)) ? [PLAN] : []),
     ...(where === "directory"

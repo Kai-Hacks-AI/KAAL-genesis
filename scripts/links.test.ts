@@ -354,6 +354,10 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   const dangling = served(`Serves: ${PLAN}`);
   fs.symlinkSync("nowhere.md", path.join(dangling, "suites", "ghost.md"));
   assert.deepEqual(linkErrors(dangling), ["suites/ghost.md: no suite is stated there"]);
+  // So does one that is a link looping back on itself, which cannot be read at all.
+  fs.rmSync(path.join(dangling, "suites", "ghost.md"));
+  fs.symlinkSync("loop.md", path.join(dangling, "suites", "loop.md"));
+  assert.deepEqual(linkErrors(dangling), ["suites/loop.md: no suite is stated there"]);
   // Only the Regression Plan names commitments, whose cases say so through their links; another plan is carried by
   // the suites that serve it, so a commitment it names would be checked by nothing.
   fs.appendFileSync(
