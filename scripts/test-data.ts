@@ -186,8 +186,9 @@ export function featureState(...layers: string[]): string {
  * of adding, the plain
  * suite, or a case `waves` the regression never had; `reasonless`, one
  * excluding `greets` without saying why; `history`, a state holding the
- * record `excludes-greets` adds; and `wild-requirements`, a Regression Plan
- * naming every Requirement by a wildcard, with a case that helps prove them.
+ * record `excludes-greets` adds; `wild-requirements`, a Regression Plan
+ * naming every Requirement by a wildcard, with a case that helps prove them;
+ * and `twice-greets`, a second case titled `greets` in the same file.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

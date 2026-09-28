@@ -172,6 +172,12 @@ export function acceptedProtection(
       !inherited.some((c) => c.file === exclusion.case.file && c.title === exclusion.case.title)
     )
       errors.push(`${record}: excludes ${n}, which the accepted regression has no case of`);
+    // Two cases at one address are two cases, which one exclusion could not tell apart.
+    else if (
+      "case" in exclusion &&
+      inherited.filter((c) => c.file === exclusion.case.file && c.title === exclusion.case.title).length > 1
+    )
+      errors.push(`${record}: excludes ${n}, an address the accepted regression holds more than one case at`);
     else if ("suite" in exclusion && !serving.has(exclusion.suite))
       errors.push(`${record}: excludes ${n}, which serves no Regression Plan of the accepted regression`);
     seen.add(n);
@@ -228,12 +234,22 @@ export function acceptance(
         .filter((p) => REQUIREMENT_PLACE.test(p)),
     ),
   ].sort();
+  // A record reached through a link anywhere along its path is not one the candidate holds.
+  const own = (place: string) => {
+    try {
+      const real = path.relative(fs.realpathSync(candidate), fs.realpathSync(path.join(candidate, place)));
+      return real.split(path.sep).join("/") === place;
+    } catch {
+      return false;
+    }
+  };
   for (const place of requirementsNamed) {
     const is = fs.lstatSync(path.join(candidate, place), { throwIfNoEntry: false });
     if (!is)
       errors.push(
         `${place}: removed; a Requirement is history, so its record stays even once it is no longer required`,
       );
+    else if (!own(place)) errors.push(`${place}: reached through a link, so the candidate does not hold its record`);
     else if (
       !is.isFile() ||
       !fs.readFileSync(path.join(accepted, place)).equals(fs.readFileSync(path.join(candidate, place)))

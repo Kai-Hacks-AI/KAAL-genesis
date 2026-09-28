@@ -112,6 +112,11 @@ test("an exclusion names a case or a suite the accepted regression has, once, an
   assert.deepEqual(acceptance(now, candidate("acceptance/reasonless")).errors, [
     "acceptance/drop-greeting.md: entry 1 says not why it is given up, as because: <why>",
   ]);
+  // Two cases at one address are two cases: one exclusion cannot give up both.
+  const twice = candidate("acceptance/twice-greets");
+  assert.deepEqual(acceptance(twice, candidate("acceptance/twice-greets", "acceptance/excludes-greets")).errors, [
+    'acceptance/stop-greeting-with-hello.md: excludes case: scripts/cases.test.ts: "greets", an address the accepted regression holds more than one case at',
+  ]);
   // A suite that does not serve the accepted regression's plan is nothing it has to give up.
   const unserved = layeredState("feature/promised");
   assert.deepEqual(acceptance(unserved, layeredState("feature/promised", "acceptance/excludes-plain")).errors, [
@@ -138,6 +143,18 @@ test("an acceptance record, and a Requirement the accepted plan names, stay as t
     acceptance(now, candidate("feature/rewritten")).errors.join("\n"),
     /greets-by-name\/requirement\.md: rewritten/,
   );
+  // Held through a link, even to the same bytes, a Requirement's record is not the candidate's own.
+  const linked = candidate();
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-elsewhere-"));
+  fs.renameSync(path.join(linked, "requirements", "greets-by-name"), path.join(elsewhere, "greets-by-name"));
+  fs.symlinkSync(
+    path.join(elsewhere, "greets-by-name"),
+    path.join(linked, "requirements", "greets-by-name"),
+    "junction",
+  );
+  assert.deepEqual(acceptance(now, linked).errors, [
+    `${BY_NAME}: reached through a link, so the candidate does not hold its record`,
+  ]);
   const removed = candidate();
   fs.rmSync(path.join(removed, "requirements", "greets-by-name"), { recursive: true });
   assert.match(acceptance(now, removed).errors.join("\n"), /greets-by-name\/requirement\.md: removed/);
