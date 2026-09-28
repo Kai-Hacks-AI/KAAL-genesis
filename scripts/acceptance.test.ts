@@ -50,6 +50,25 @@ test("silence retains: an inherited case that no longer holds is refused unless 
   const planless = accepted();
   fs.rmSync(path.join(planless, PLAN));
   assert.match(acceptance(planless, candidate(...withdrawn)).errors.join("\n"), greetsFails);
+  // What a regression runs without naming, such as a test registered through `it`, is held as its replay holds it:
+  // silence keeps it too, whether or not the file holds a case, and whether or not there is a plan.
+  const aliased = (state: string) => {
+    fs.writeFileSync(
+      path.join(state, "scripts", "aliased.test.ts"),
+      'import assert from "node:assert/strict";\nimport { it } from "node:test";\nimport { greet } from "../src/greet.js";\n\nit("guards", () => {\n  assert.equal(greet("z"), "hello z");\n});\n',
+    );
+    return state;
+  };
+  const guardsFails = /scripts\/aliased\.test\.ts: "guards" failed, and points at nothing/;
+  assert.match(
+    acceptance(aliased(accepted()), candidate(...withdrawn, "acceptance/excludes-greets")).errors.join("\n"),
+    guardsFails,
+  );
+  const aliasedOnly = aliased(accepted());
+  fs.rmSync(path.join(aliasedOnly, PLAN));
+  for (const file of fs.readdirSync(path.join(aliasedOnly, "scripts")))
+    if (file.endsWith(".test.ts") && file !== "aliased.test.ts") fs.rmSync(path.join(aliasedOnly, "scripts", file));
+  assert.match(acceptance(aliasedOnly, candidate(...withdrawn)).errors.join("\n"), guardsFails);
   // So a case of it whose title cannot be read, which could not be handed down, is refused, not passed over.
   const unreadable = candidate("acceptance/built-title");
   fs.rmSync(path.join(unreadable, PLAN));

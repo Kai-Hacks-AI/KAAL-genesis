@@ -3,7 +3,16 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { type Case, linkErrors, PLAN, planCommitments, planEntries, repoCases, unnamedCases } from "./links.js";
+import {
+  type Case,
+  caseFiles,
+  linkErrors,
+  PLAN,
+  planCommitments,
+  planEntries,
+  repoCases,
+  unnamedCases,
+} from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
 import {
   judge,
@@ -362,25 +371,33 @@ export function acceptance(
   const unfaithful = errors.length ? undefined : unreplayable(accepted);
   if (unfaithful) errors.push(unfaithful);
   const clean = !errors.length;
-  if (clean && plan.cases.length) {
+  const excluded = (file: string, title: string) =>
+    stated.accepted.some(
+      (a) => "case" in a.exclusion && a.exclusion.case.file === file && a.exclusion.case.title === title,
+    );
+  // A file whose every case is excluded is not run at all, so nothing it would do against the candidate, such as
+  // never finishing, can hold up what is kept. Any other file is, even one holding no case, whose tests the replay
+  // holds as it holds any it runs without naming.
+  const inherited = clean ? repoCases(accepted) : [];
+  const kept = (file: string) => {
+    const own = inherited.filter((c) => c.file === file);
+    return !own.length || own.some((c) => !excluded(c.file, c.title));
+  };
+  const running = clean ? caseFiles(accepted).filter(kept) : [];
+  if (running.length) {
     const escaping = escapingLinks(candidate);
     if (escaping.length)
       errors.push(
         `the candidate links other than within itself by a relative path (${escaping.join(", ")}), so its inherited cases would not judge it alone`,
       );
     else {
-      const excluded = (file: string, title: string) => !plan.cases.some((c) => c.file === file && c.title === title);
-      // A file's own report, as when it does not load, counts while it holds a case not excluded.
-      const kept = (file: string) => plan.cases.some((c) => c.file === file);
-      // A file whose every case is excluded is not run at all, so nothing it would do against the candidate, such as
-      // never finishing, can hold up what is kept.
       // Nor is a case excluded from a file that keeps others run beside them, where it could still disturb them.
       const skipped = (file: string) =>
         stated.accepted.flatMap((a) =>
           "case" in a.exclusion && a.exclusion.case.file === file ? [a.exclusion.case.title] : [],
         );
       // Titles are named to the runner on its command line, which no platform lets grow without end.
-      const unnameable = [...new Set(plan.cases.map((c) => c.file))].flatMap((file) => {
+      const unnameable = running.flatMap((file) => {
         const length = skipArguments(skipped(file)).join(" ").length;
         return length > SKIP_LIMIT
           ? [
@@ -389,13 +406,14 @@ export function acceptance(
           : [];
       });
       errors.push(...unnameable);
-      const results = unnameable.length
-        ? []
-        : runTrusted(accepted, candidate, kept, skipped).filter((r) =>
-            r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
-          );
-      if (!unnameable.length)
+      if (!unnameable.length) {
+        // Only what is excluded is given up: a file's own report counts while the file is run, and a result no case
+        // accounts for is held, as the accepted regression's replay holds it.
+        const results = runTrusted(accepted, candidate, kept, skipped).filter((r) =>
+          r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
+        );
         errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
+      }
     }
   }
   // So is one running what it does not name where a case is excluded, even from a file not run at all. Its own run of
