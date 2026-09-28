@@ -243,3 +243,38 @@ test("the regression's cases are carried one to one, and its sets of conditions 
   );
   assert.deepEqual(judged(R0, reordered), []);
 });
+
+// Why: requirements/derived-regression/requirement.md
+test("only a case that demonstrates a new promise enters with it, and cases at one address are carried by any pairing that keeps them", () => {
+  const R0 = r0();
+  // A case beside the one demonstrating a new promise, at its very address, does not enter because its sibling does.
+  const beside = edited(
+    succeeding(R0, "next-regression/waves"),
+    "scripts/waves.test.ts",
+    (t) => `${t}\n// Why: src/add.ts\ntest("waves", () => {\n  assert.ok(true);\n});\n`,
+  );
+  assert.deepEqual(
+    nextRegression(R0, beside)
+      .protection.cases.filter((c) => c.file === "scripts/waves.test.ts")
+      .map((c) => c.places),
+    [[WAVES]],
+  );
+  // Two inherited cases at one address, one also in the suite, carried in the other order, still keep every relation.
+  const both = edited(r0(), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      "// Why: src/add.ts\n// Suite: suites/plain.md\n",
+      '// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(add(0, 0), 0);\n});\n\n// Why: src/add.ts\n// Suite: suites/plain.md\n',
+    ),
+  );
+  const swapped = edited(succeeding(both), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      '// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(add(0, 0), 0);\n});\n\n// Why: src/add.ts\n// Suite: suites/plain.md\ntest("adds", () => {\n  assert.equal(add(1, 2), 3);\n});\n',
+      '// Why: src/add.ts\n// Suite: suites/plain.md\ntest("adds", () => {\n  assert.equal(add(1, 2), 3);\n});\n\n// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(add(0, 0), 0);\n});\n',
+    ),
+  );
+  assert.notEqual(
+    fs.readFileSync(path.join(swapped, "scripts/cases.test.ts"), "utf8"),
+    fs.readFileSync(path.join(both, "scripts/cases.test.ts"), "utf8"),
+  );
+  assert.deepEqual(judged(both, swapped), []);
+});

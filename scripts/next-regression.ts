@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { type Conditions, evidence } from "../skills/testing/scripts/plan.js";
 import { acceptance, acceptedExclusions, acceptedProtection } from "./acceptance.js";
 import { featureRun, newPromises } from "./feature.js";
-import { caseSuites, PLAN, planEntries, repoCases } from "./links.js";
+import { type Case, caseSuites, PLAN, planEntries, repoCases } from "./links.js";
 import { type PlanRequirement, planError, planRequirements, readPlan } from "./plans.js";
 import { derivedFrom, successorErrors, unreplayable } from "./regression.js";
 
@@ -75,12 +75,7 @@ function planSettings(state: string): Pick<Protection, "conditions" | "proof" | 
 }
 
 /** Each of `state`'s cases for which `keep` holds, with only the commitments and suites of `protection` it names. */
-function heldCases(
-  state: string,
-  keep: (c: { file: string; title: string }) => boolean,
-  commitments: Set<string>,
-  suites: Set<string>,
-): Held[] {
+function heldCases(state: string, keep: (c: Case) => boolean, commitments: Set<string>, suites: Set<string>): Held[] {
   const joined = caseSuites(state);
   return repoCases(state).flatMap((c, i) =>
     keep(c)
@@ -194,10 +189,8 @@ export function nextRegression(
         ...heldCases(accepted, keptCase, commitments, suites),
         ...heldCases(
           candidate,
-          (c) =>
-            repoCases(candidate).some(
-              (k) => k.file === c.file && k.title === c.title && k.places.some((p) => proving.has(p)),
-            ),
+          // Each case by its own links: one at the same address as a case demonstrating a promise is not that case.
+          (c) => c.places.some((p) => proving.has(p)),
           commitments,
           suites,
         ),
@@ -271,27 +264,43 @@ export function carriedErrors(derived: Protection, own: Protection, promises: st
       errors.push(
         `${PLAN}: its ${key} are ${canonical(own[key] ?? null)}, but the regression's are ${canonical(derived[key] ?? null)}, which nothing gives up or adds to`,
       );
-  // Cases are matched one to one, so two cases at one address need two: each match is taken, never shared, and one
-  // keeping every relation is preferred to one that keeps fewer.
-  const left = [...own.cases];
-  for (const c of derived.cases) {
-    const at = `${c.file}: ${JSON.stringify(c.title)}`;
-    const keeps = (o: Held) =>
-      c.places.every((p) => o.places.includes(p)) && c.suites.every((s) => o.suites.includes(s));
-    const same = (o: Held) => o.file === c.file && o.title === c.title;
-    const i =
-      left.findIndex((o) => same(o) && keeps(o)) >= 0
-        ? left.findIndex((o) => same(o) && keeps(o))
-        : left.findIndex(same);
-    if (i < 0) {
-      errors.push(`${at}: in the regression, and no acceptance record excludes it, but the candidate no longer has it`);
-      continue;
-    }
-    const [is] = left.splice(i, 1);
-    for (const place of c.places.filter((p) => !is!.places.includes(p)))
-      errors.push(`${at}: helps prove ${place} in the regression, but no longer does in the candidate's`);
-    for (const suite of c.suites.filter((s) => !is!.suites.includes(s)))
-      errors.push(`${at}: belongs to ${suite} in the regression, but no longer does in the candidate's`);
+  // Cases are matched one to one, so two cases at one address need two. At each address the derived cases are paired
+  // with the candidate's by a complete matching that keeps every relation, found whatever order either lists them in;
+  // only what no such pairing can keep is reported.
+  const keeps = (d: Held, o: Held) =>
+    d.places.every((p) => o.places.includes(p)) && d.suites.every((s) => o.suites.includes(s));
+  const addresses = [...new Set(derived.cases.map((c) => `${c.file}\0${c.title}`))];
+  for (const address of addresses) {
+    const at = (c: Held) => `${c.file}\0${c.title}` === address;
+    const ds = derived.cases.filter(at);
+    const os = own.cases.filter(at);
+    // Each derived case's partner among the candidate's, as a matching grown by augmenting paths.
+    const partner: (number | undefined)[] = os.map(() => undefined);
+    const assign = (d: number, seen: Set<number>): boolean =>
+      os.some((o, k) => {
+        if (seen.has(k) || !keeps(ds[d]!, o)) return false;
+        seen.add(k);
+        if (partner[k] === undefined || assign(partner[k]!, seen)) return ((partner[k] = d), true);
+        return false;
+      });
+    const kept = new Set(ds.flatMap((_, d) => (assign(d, new Set()) ? [d] : [])));
+    // What is left unkept is paired with what the candidate has left at the address, if anything, and its losses said.
+    const spare = os.filter((_, k) => partner[k] === undefined);
+    ds.forEach((c, d) => {
+      if (kept.has(d)) return;
+      const name = `${c.file}: ${JSON.stringify(c.title)}`;
+      const is = spare.shift();
+      if (!is) {
+        errors.push(
+          `${name}: in the regression, and no acceptance record excludes it, but the candidate no longer has it`,
+        );
+        return;
+      }
+      for (const place of c.places.filter((p) => !is.places.includes(p)))
+        errors.push(`${name}: helps prove ${place} in the regression, but no longer does in the candidate's`);
+      for (const suite of c.suites.filter((s) => !is.suites.includes(s)))
+        errors.push(`${name}: belongs to ${suite} in the regression, but no longer does in the candidate's`);
+    });
   }
   return errors;
 }
