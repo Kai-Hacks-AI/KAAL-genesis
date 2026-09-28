@@ -64,25 +64,33 @@ export function planError(repo: string, place: string): string | undefined {
   return undefined;
 }
 
-/** Every suite `repo` states, by place, with the plans it says it serves and the lines that look like it but are not. */
-export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
+/** The entries where `repo` states its suites, by place: none where that is no directory. */
+function suiteEntries(repo: string): string[] {
   const dir = path.join(repo, SUITES);
-  // What is not a directory states no suite; the links check says so.
-  if (kindAt(dir) !== "directory") return [];
-  return (
-    fs
-      .readdirSync(dir)
-      .sort()
-      .map((name) => `${SUITES}/${name}`)
-      // A link to nothing states nothing, and is refused as such where suites are checked.
-      .filter((suite) => kindAt(path.join(repo, suite)) === "file")
-      .map((suite) => {
-        const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
-        const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
-        const stray = lines.flatMap((line, i) => (SERVES_LIKE.test(line) && !SERVES.test(line) ? [i + 1] : []));
-        return { suite, serves, stray };
-      })
-  );
+  return kindAt(dir) === "directory"
+    ? fs
+        .readdirSync(dir)
+        .sort()
+        .map((name) => `${SUITES}/${name}`)
+    : [];
+}
+
+/**
+ * Every suite `repo` states, by place, with the plans it says it serves and the
+ * lines that look like it but are not. Only a suite stated in its own place is
+ * read: an entry that is no suite's place, states nothing, or is reached
+ * through a link is refused where suites are checked, before anything reads
+ * where it leads.
+ */
+export function suitePlans(repo: string): { suite: string; serves: string[]; stray: number[] }[] {
+  return suiteEntries(repo)
+    .filter((suite) => !suiteError(repo, suite))
+    .map((suite) => {
+      const lines = fs.readFileSync(path.join(repo, suite), "utf8").split(/\r?\n/);
+      const serves = lines.flatMap((line) => SERVES.exec(line)?.[1] ?? []);
+      const stray = lines.flatMap((line, i) => (SERVES_LIKE.test(line) && !SERVES.test(line) ? [i + 1] : []));
+      return { suite, serves, stray };
+    });
 }
 
 /** What a plan says runs read of it: its sets of conditions, the proof other than cases it requires, and its data. */
@@ -233,6 +241,10 @@ export function planErrors(repo: string): string[] {
   const suites = kindAt(path.join(repo, SUITES));
   if (suites !== undefined && suites !== "directory")
     errors.push(`${SUITES}: not a directory, where KAAL states its suites`);
+  for (const suite of suiteEntries(repo)) {
+    const wrong = suiteError(repo, suite);
+    if (wrong) errors.push(wrong);
+  }
   const where = kindAt(path.join(repo, PLANS));
   if (where !== undefined && where !== "directory")
     errors.push(`${PLANS}: not a directory, where KAAL states its plans`);

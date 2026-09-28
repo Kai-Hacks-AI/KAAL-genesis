@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
-import { kindAt, planErrors } from "./plans.js";
+import { planErrors } from "./plans.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -338,18 +338,8 @@ export function linkErrors(repo: string): string[] {
     }
   }
   errors.push(...unnamedCases(repo).map((at) => `${at}: a case whose title cannot be read, so no link can follow it`));
-  // Every suite is stated in its own place. One no case belongs to yet is still that suite: its concern gives it its
-  // meaning, not its cases, and a run of it observes nothing, which is no evidence.
-  // Where suites are stated is no directory: said among the plans' errors, which runs of plans refuse too.
-  const suiteFiles =
-    kindAt(path.join(repo, SUITES)) === "directory"
-      ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
-      : [];
-  for (const suite of suiteFiles.sort()) {
-    const wrong = suiteError(repo, suite);
-    if (wrong) errors.push(wrong);
-  }
-  // Plans, and the suites that say they serve them, are read as KAAL reads its plans.
+  // Suites, the plans they serve, and those plans are read as KAAL reads its plans, whose errors runs of plans refuse
+  // too: every suite is stated in its own place, and one no case belongs to yet is still that suite.
   errors.push(...planErrors(repo));
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.

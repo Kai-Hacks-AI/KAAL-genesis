@@ -358,6 +358,12 @@ test("a suite says which plans it serves, strictly written, and only plans its s
   fs.rmSync(path.join(dangling, "suites", "ghost.md"));
   fs.symlinkSync("loop.md", path.join(dangling, "suites", "loop.md"));
   assert.deepEqual(linkErrors(dangling), ["suites/loop.md: no suite is stated there"]);
+  // A suite reached through a link is refused before anything reads where the link leads, even where that cannot be
+  // read, as a process's own memory cannot where a system shows it as a file.
+  fs.rmSync(path.join(dangling, "suites", "loop.md"));
+  const unreadable = fs.existsSync("/proc/self/mem") ? "/proc/self/mem" : path.join(dangling, "package.json");
+  fs.symlinkSync(unreadable, path.join(dangling, "suites", "linked.md"));
+  assert.deepEqual(linkErrors(dangling), ["suites/linked.md: a suite stated through a link"]);
   // Only the Regression Plan names commitments, whose cases say so through their links; another plan is carried by
   // the suites that serve it, so a commitment it names would be checked by nothing.
   fs.appendFileSync(
