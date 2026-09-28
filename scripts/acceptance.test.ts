@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { acceptance, acceptancePlan, named } from "./acceptance.js";
+import { acceptance, acceptedProtection, named } from "./acceptance.js";
 import { newPromises } from "./feature.js";
 import { PLAN } from "./links.js";
 import { layeredState } from "./test-data.js";
@@ -24,7 +24,7 @@ const REQUIRED = [
 const greetsFails = /inherited case not excluded: scripts\/cases\.test\.ts: "greets" failed/;
 
 // Why: requirements/inherited-reductions/requirement.md
-test("a candidate that gives up nothing holds the Acceptance Test Plan while every inherited case passes against it, whatever its own plan says", () => {
+test("a candidate that excludes nothing holds the accepted protection while every inherited case passes against it, whatever its own plan says", () => {
   const now = accepted();
   // A refactoring, a new promise, and a plan of its own that no longer requires Windows: none gives anything up.
   for (const layers of [["feature/refactored"], ["acceptance/extended"], ["acceptance/windowless"]])
@@ -34,7 +34,7 @@ test("a candidate that gives up nothing holds the Acceptance Test Plan while eve
       layers[0],
     );
   // What the accepted plan requires stays required under the conditions it states, whatever the candidate's says.
-  const { requires } = acceptancePlan(now, []);
+  const { requires } = acceptedProtection(now, []);
   assert.ok(requires.every((r) => r.kind === "proof" || r.under.some((c) => c.platform === "win32")));
 });
 

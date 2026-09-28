@@ -10,14 +10,15 @@ import { judge, runTrusted, unreplayable } from "./regression.js";
 /**
  * What a candidate is allowed to give up of the accepted regression, read from
  * both states' files alone: both are directories, and nothing here asks Git or
- * GitHub which is which. The Acceptance Test Plan is the accepted Regression
- * Plan, less the inherited cases and suites the candidate explicitly excludes:
- * it requires what the accepted plan requires, shown by the accepted
- * regression's own cases, replayed against the candidate, except those
- * excluded. What the candidate's own plan says is never read: it cannot
- * reduce what is inherited by saying less. A candidate excludes a case or a
- * suite only by naming it, and why, in an acceptance record it adds; whatever
- * it does not name, it retains, so silence never gives up anything. What
+ * GitHub which is which. Acceptance is only what a candidate explicitly
+ * excludes of the accepted regression: inherited cases and suites, each named,
+ * with why, in an acceptance record it adds; at best, nothing. What it does
+ * not name, it retains, so silence never gives up anything. The accepted
+ * protection is the accepted Regression Plan run without those exclusions:
+ * what the accepted plan requires, shown by the accepted regression's own
+ * cases, replayed against the candidate. New protection comes only with what
+ * the candidate newly promises, never from here. What the candidate's own plan
+ * says is never read: it cannot give up what is inherited by saying less. What
  * Acceptance is for KAAL is stated in
  * brain/learning/genesis/26/09/28/03/nodes/acceptance.md.
  */
@@ -128,7 +129,7 @@ export function acceptedExclusions(accepted: string, candidate: string): { accep
 }
 
 /**
- * The Acceptance Test Plan for `accepted` less `exclusions`: what the accepted
+ * The accepted protection of `accepted` less `exclusions`: what the accepted
  * Regression Plan requires, as KAAL reads any plan's requirements, less each
  * suite excluded and each commitment every inherited case of which is
  * excluded and which nothing but its cases shows; and the inherited cases that
@@ -137,7 +138,7 @@ export function acceptedExclusions(accepted: string, candidate: string): { accep
  * serves its plan; excluding a suite gives up only that requirement, never the
  * cases that belong to it, which still show what they help prove.
  */
-export function acceptancePlan(
+export function acceptedProtection(
   accepted: string,
   exclusions: Accepted[],
 ): { requires: PlanRequirement[]; given: PlanRequirement[]; cases: Case[]; errors: string[] } {
@@ -193,15 +194,16 @@ export function acceptancePlan(
 const requirementName = (r: PlanRequirement) => `${r.kind}: ${r.name}`;
 
 /**
- * Whether `candidate` holds the Acceptance Test Plan for `accepted`: every
+ * Whether `candidate` holds the accepted protection of `accepted`: every
  * inherited case not excluded passes, replayed against the candidate as the
  * accepted regression replays its cases, so nothing but an explicit exclusion
  * gives up an inherited case; each exclusion names what the accepted
  * regression has; and every Requirement the accepted plan names keeps its
  * record, which is history, even once every case of it is excluded. With what
- * the plan still requires, which is all the next regression needs to inherit.
- * A candidate that gives up nothing adds no record, and holds the plan only
- * when every inherited case passes against it.
+ * the accepted protection still requires, which is all the next regression
+ * inherits of the accepted one. A candidate that gives up nothing adds no
+ * record, the best acceptance there is, and holds the accepted protection
+ * only when every inherited case passes against it.
  */
 export function acceptance(
   accepted: string,
@@ -210,7 +212,7 @@ export function acceptance(
   for (const state of [accepted, candidate])
     if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
   const stated = acceptedExclusions(accepted, candidate);
-  const plan = acceptancePlan(accepted, stated.accepted);
+  const plan = acceptedProtection(accepted, stated.accepted);
   const errors = [...stated.errors, ...plan.errors];
   // Each Requirement the accepted plan names, directly or by a wildcard, as the links check finds what a place names.
   const requirementsNamed = [
