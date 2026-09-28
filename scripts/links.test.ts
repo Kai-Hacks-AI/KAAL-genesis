@@ -467,6 +467,19 @@ test("a suite says which plans it serves, strictly written, and only plans its s
       `${PLAN}: data: test-data/plan holds listed/greeting.txt, which cannot be read`,
     ]);
   fs.chmodSync(path.join(unsearchable, "test-data", "plan", "listed"), 0o755);
+  // Only the section headed exactly so is what runs read: not one whose heading only begins so, nor an example of one
+  // in a fenced block.
+  for (const example of [
+    "\n## As runs read it (draft)\n\n```yaml\nconditions: 5\n```\n",
+    "\n## Examples\n\n~~~markdown\n## As runs read it\n\n```yaml\nconditions: 5\n```\n~~~\n",
+  ]) {
+    const drafted = served("");
+    fs.appendFileSync(path.join(drafted, PLAN), example);
+    assert.deepEqual(linkErrors(drafted), [], example);
+  }
+  // Within it, a line in its yaml block that looks like a heading is part of the block, not the section's end.
+  const commented = served("", "conditions:\n## a comment, not a heading\n  - { platform: linux }");
+  assert.deepEqual(linkErrors(commented), []);
   // Nor a file within it that cannot be read.
   const closedFile = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });

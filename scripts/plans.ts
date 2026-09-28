@@ -174,12 +174,40 @@ const conditionSets = (value: unknown, what: string): Conditions[] => {
 };
 
 /**
+ * The section of a plan's text headed exactly `## As runs read it`, from its
+ * heading to the next heading, as it reads outside fenced blocks: a heading
+ * that only begins so, or one in a fenced example, is not it, and a line in a
+ * fenced block, such as a yaml comment, never ends it. Empty where there is none.
+ */
+function runsSection(text: string): string {
+  const lines = text.split("\n");
+  let fence: string | undefined;
+  let start: number | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const marker = /^(```|~~~)/.exec(line)?.[1];
+    if (fence) {
+      if (marker === fence) fence = undefined;
+      continue;
+    }
+    if (marker) {
+      fence = marker;
+      continue;
+    }
+    if (!/^## /.test(line)) continue;
+    if (start !== undefined) return `\n${lines.slice(start, i).join("\n")}`;
+    if (line.trimEnd() === `## ${AS_RUNS_READ_IT}`) start = i;
+  }
+  return start === undefined ? "" : `\n${lines.slice(start).join("\n")}`;
+}
+
+/**
  * What `plan`, in `repo`, says runs read of it, from the `yaml` block under its
  * `## As runs read it`; a plan without one requires no conditions, no other
  * proof and provides no data. Refused when that block cannot be read so.
  */
 export function readPlan(repo: string, plan: string): PlanReading {
-  const part = section(planText(repo, plan), AS_RUNS_READ_IT);
+  const part = runsSection(planText(repo, plan));
   if (!part) return { conditions: [], proof: {} };
   // The fence may close directly after it opens: a block with nothing in it.
   const found = /\n```yaml\n(?:([\s\S]*?)\n)?```/.exec(part);
@@ -348,7 +376,7 @@ export function planErrors(repo: string): string[] {
       // A plan that says how runs read it says it in full: every check it names as showing a commitment is proof it
       // requires. One that does not yet say how runs read it requires no proof of them.
       const text = planText(repo, plan);
-      const checks = section(text, AS_RUNS_READ_IT) ? planEntries(text).flatMap((e) => e.shownBy ?? []) : [];
+      const checks = runsSection(text) ? planEntries(text).flatMap((e) => e.shownBy ?? []) : [];
       for (const check of [...new Set(checks)].filter((c) => c !== "its cases" && !Object.hasOwn(proof, c)))
         errors.push(`${plan}: says ${check} show a commitment, but does not require them as proof`);
     } catch (e) {
