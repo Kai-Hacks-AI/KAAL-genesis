@@ -412,6 +412,51 @@ test("a suite says which plans it serves, strictly written, and only plans its s
     "suites: reached through a link, so it states no suite of the state's own",
     "plans: reached through a link, so it states no plan of the state's own",
   ]);
+  // So is one that cannot be listed, where the system has a directory no one may list, rather than failing to be read.
+  const closed = "/proc/1/map_files";
+  if (
+    fs.existsSync(closed) &&
+    !(() => {
+      try {
+        fs.readdirSync(closed);
+        return true;
+      } catch {
+        return false;
+      }
+    })()
+  ) {
+    const unlisted = regressionCandidate("kept");
+    for (const dir of ["plans", "suites"]) fs.symlinkSync(closed, path.join(unlisted, dir), "junction");
+    assert.deepEqual(linkErrors(unlisted), [
+      "suites: reached through a link, so it states no suite of the state's own",
+      "plans: reached through a link, so it states no plan of the state's own",
+    ]);
+  }
+  // One of the state's own that cannot be read states nothing that can be known either, where permissions can keep a
+  // directory from being read at all, as they cannot for an administrator.
+  const unread = regressionCandidate("kept");
+  for (const dir of ["plans", "suites"]) fs.mkdirSync(path.join(unread, dir), { mode: 0o000 });
+  const readable = (() => {
+    try {
+      fs.readdirSync(path.join(unread, "suites"));
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (!readable)
+    assert.deepEqual(linkErrors(unread), [
+      "suites: cannot be read, so which suites it states is unknown",
+      "plans: cannot be read, so which plans it states is unknown",
+    ]);
+  for (const dir of ["plans", "suites"]) fs.chmodSync(path.join(unread, dir), 0o755);
+  // Nor may a plan's data hold anything that cannot be read.
+  const closedData = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(closedData, "test-data", "plan", "closed"), { recursive: true });
+  fs.chmodSync(path.join(closedData, "test-data", "plan", "closed"), 0o000);
+  if (!readable)
+    assert.deepEqual(linkErrors(closedData), [`${PLAN}: data: test-data/plan holds closed, which cannot be read`]);
+  fs.chmodSync(path.join(closedData, "test-data", "plan", "closed"), 0o755);
   fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
   assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
 });

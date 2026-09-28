@@ -43,9 +43,26 @@ export function kindAt(at: string): "directory" | "file" | "other" | undefined {
   }
 }
 
-/** Whether `dir`, a directory, is reached through a link and holds nothing that could be refused as reached through it. */
-function emptyLink(dir: string): boolean {
-  return fs.lstatSync(dir).isSymbolicLink() && fs.readdirSync(dir).length === 0;
+/** The names in `dir`, sorted, or undefined where it cannot be listed, as where no one may read it. */
+function listed(dir: string): string[] | undefined {
+  try {
+    return fs.readdirSync(dir).sort();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Why the directory `dir`, where the state states its `what`, states none of
+ * the state's own, if it does not: it is reached through a link and holds
+ * nothing that could be refused as reached through it, or it cannot be read.
+ */
+function unstatedError(repo: string, dir: string, what: string): string | undefined {
+  const names = listed(path.join(repo, dir));
+  if (fs.lstatSync(path.join(repo, dir)).isSymbolicLink() && !names?.length)
+    return `${dir}: reached through a link, so it states no ${what} of the state's own`;
+  if (names === undefined) return `${dir}: cannot be read, so which ${what}s it states is unknown`;
+  return undefined;
 }
 
 /** A line meant to say its suite serves a plan, strictly written or not: any line that starts with "Serves". */
@@ -73,12 +90,7 @@ export function planError(repo: string, place: string): string | undefined {
 /** The entries where `repo` states its suites, by place: none where that is no directory. */
 function suiteEntries(repo: string): string[] {
   const dir = path.join(repo, SUITES);
-  return kindAt(dir) === "directory"
-    ? fs
-        .readdirSync(dir)
-        .sort()
-        .map((name) => `${SUITES}/${name}`)
-    : [];
+  return kindAt(dir) === "directory" ? (listed(dir) ?? []).map((name) => `${SUITES}/${name}`) : [];
 }
 
 /**
@@ -192,19 +204,22 @@ export function planDataError(repo: string, plan: string, data: string): string 
   if (real.split(path.sep).join("/") !== data.replace(/\/+$/, ""))
     return `${plan}: data: ${data} is reached through a link`;
   // Nor is anything within it, however deep, or a case could read what the state does not hold.
-  // Each directory is listed only once it is known to be no link, so what a link leads to is never read.
-  const linked = (within: string): string | undefined => {
-    for (const name of fs.readdirSync(path.join(at, within)).sort()) {
+  // Each directory is listed only once it is known to be no link, so what a link leads to is never read; one that
+  // cannot be listed holds what no case could be sure of reading.
+  const wrong = (within: string): string | undefined => {
+    const names = listed(path.join(at, within));
+    if (names === undefined) return `${within || "it"}, which cannot be read`;
+    for (const name of names) {
       const entry = within ? `${within}/${name}` : name;
       const stat = fs.lstatSync(path.join(at, entry));
-      if (stat.isSymbolicLink()) return entry;
-      const deeper = stat.isDirectory() ? linked(entry) : undefined;
+      if (stat.isSymbolicLink()) return `${entry}, reached through a link`;
+      const deeper = stat.isDirectory() ? wrong(entry) : undefined;
       if (deeper !== undefined) return deeper;
     }
     return undefined;
   };
-  const link = linked("");
-  if (link !== undefined) return `${plan}: data: ${data} holds ${link}, reached through a link`;
+  const held = wrong("");
+  if (held !== undefined) return `${plan}: data: ${data} holds ${held}`;
   return undefined;
 }
 
@@ -266,8 +281,8 @@ export function planErrors(repo: string): string[] {
   // One reached through a link states nothing of the state's own: each suite it holds is refused as stated through a
   // link, and one that holds none yet is refused itself, since whatever were put there later would change what plans
   // require.
-  if (suites === "directory" && emptyLink(path.join(repo, SUITES)))
-    errors.push(`${SUITES}: reached through a link, so it states no suite of the state's own`);
+  const unstatedSuites = suites === "directory" ? unstatedError(repo, SUITES, "suite") : undefined;
+  if (unstatedSuites) errors.push(unstatedSuites);
   for (const suite of suiteEntries(repo)) {
     const wrong = suiteError(repo, suite);
     if (wrong) errors.push(wrong);
@@ -275,16 +290,11 @@ export function planErrors(repo: string): string[] {
   const where = kindAt(path.join(repo, PLANS));
   if (where !== undefined && where !== "directory")
     errors.push(`${PLANS}: not a directory, where KAAL states its plans`);
-  if (where === "directory" && emptyLink(path.join(repo, PLANS)))
-    errors.push(`${PLANS}: reached through a link, so it states no plan of the state's own`);
+  const unstatedPlans = where === "directory" ? unstatedError(repo, PLANS, "plan") : undefined;
+  if (unstatedPlans) errors.push(unstatedPlans);
   const plans = [
     ...(fs.existsSync(path.join(repo, PLAN)) ? [PLAN] : []),
-    ...(where === "directory"
-      ? fs
-          .readdirSync(path.join(repo, PLANS))
-          .sort()
-          .map((name) => `${PLANS}/${name}`)
-      : []),
+    ...(where === "directory" ? (listed(path.join(repo, PLANS)) ?? []).map((name) => `${PLANS}/${name}`) : []),
   ];
   for (const plan of plans) {
     const wrong = planError(repo, plan);
