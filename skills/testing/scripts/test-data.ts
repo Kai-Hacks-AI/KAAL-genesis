@@ -25,3 +25,8 @@ export function runData(name: "cases" | "reports" | "observed"): unknown {
 export function suiteData(name: "cases" | "observations" | "reached"): unknown {
   return JSON.parse(fs.readFileSync(path.join(DATA, "suites", `${name}.json`), "utf8"));
 }
+
+/** Named plan data from test-data/plans: `evidence`, what a plan requires, what its runs showed, and what that demonstrates. */
+export function planData(name: "evidence"): unknown {
+  return JSON.parse(fs.readFileSync(path.join(DATA, "plans", `${name}.json`), "utf8"));
+}

@@ -17,6 +17,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
+import { planDataError, planError, readPlan } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
@@ -525,11 +526,20 @@ function isData(file: string, directory: boolean): boolean {
   return !directory && inCases && !/\.(ts|js|mjs|cjs|mts|cts)$/.test(file);
 }
 
+/** Where the regression's identity never looks: a repository's dependencies and Git's own files. */
+const UNLOOKED = ["node_modules", ".git"];
+
+/** Whether a directory, by its path from the repository's root, is test data the regression's identity finds. */
+export function keptAsData(directory: string): boolean {
+  const parts = directory.split("/");
+  return !UNLOOKED.includes(parts[0]!) && isData(directory, true);
+}
+
 /** The test data and test-data loaders of a repository, outside its dependencies and Git's own files. */
 function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
     const rel = dir ? `${dir}/${name}` : name;
-    if (rel === "node_modules" || rel === ".git") return [];
+    if (UNLOOKED.includes(rel)) return [];
     const directory = fs.lstatSync(at).isDirectory();
     if (isData(rel, directory)) return [[rel, at]];
     return directory ? dataOf(at, rel) : [];
@@ -555,6 +565,8 @@ function scratchCopy(repo: string, data: boolean): string {
 }
 
 /** The environment variables through which a run hands its cases the tested state, and says which testing state it is handed to. */
+/** How a run hands the cases it reaches the test data their plan provides: a directory, by its absolute path. */
+export const PLAN_DATA = "KAAL_PLAN_DATA";
 export const TESTED_STATE = "KAAL_TESTED_STATE";
 export const TESTING_STATE = "KAAL_TESTING_STATE";
 
@@ -566,9 +578,27 @@ export const TESTING_STATE = "KAAL_TESTING_STATE";
  * both states. With no files, nothing is run. A runner that does not
  * complete is refused, never read as having nothing more to report.
  */
-export function execute(code: string, files: string[], tested: string): Result[];
-export function execute(code: string, files: string[], tested: string, positions: true): Positioned[];
-export function execute(code: string, files: string[], tested: string, positions = false): Positioned[] {
+export function execute(
+  code: string,
+  files: string[],
+  tested: string,
+  positions?: false,
+  handed?: Record<string, string>,
+): Result[];
+export function execute(
+  code: string,
+  files: string[],
+  tested: string,
+  positions: true,
+  handed?: Record<string, string>,
+): Positioned[];
+export function execute(
+  code: string,
+  files: string[],
+  tested: string,
+  positions = false,
+  handed: Record<string, string> = {},
+): Positioned[] {
   // With no files to run, the test runner would look for cases of its own, which no state named: run nothing.
   if (!files.length) return [];
   const out = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-")), "results.jsonl");
@@ -583,6 +613,10 @@ export function execute(code: string, files: string[], tested: string, positions
       NODE_TEST_CONTEXT: undefined,
       NODE_OPTIONS: undefined,
       KAAL_REGRESSION_RESULTS: out,
+      // What else the run hands its cases, such as the test data a plan provides, and nothing a run it was started
+      // from handed its own.
+      [PLAN_DATA]: undefined,
+      ...handed,
       [TESTING_STATE]: path.resolve(code),
       [TESTED_STATE]: path.resolve(tested),
     },
@@ -660,7 +694,26 @@ export function runTrusted(trusted: string, candidate: string): Result[] {
   // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
   // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
   // its own, so no case sees more of it than the regression judges, or writes into it.
-  return execute(code, files, scratchCopy(candidate, true));
+  return execute(code, files, scratchCopy(candidate, true), false, plannedData(trusted, code));
+}
+
+/**
+ * What a run of `repo`'s regression hands its cases in `code`, a copy of it
+ * with its test data: the directory the Regression Plan provides as data, in
+ * that copy, where the plan provides one, as a run of the plan hands it. Data
+ * no run could hand, a plan's links check refuses, so its cases are handed
+ * none, and the regression says what is wrong rather than failing to run.
+ */
+function plannedData(repo: string, code: string): Record<string, string> {
+  if (!fs.existsSync(path.join(repo, PLAN)) || planError(repo, PLAN)) return {};
+  let data: string | undefined;
+  try {
+    data = readPlan(repo, PLAN).data;
+  } catch {
+    return {};
+  }
+  if (data === undefined || planDataError(repo, PLAN, data) || !keptAsData(data.replace(/\/+$/, ""))) return {};
+  return { [PLAN_DATA]: path.resolve(within(code, data.replace(/\/+$/, ""))) };
 }
 
 /** Whether `rel`, read as a path, stays inside `code` rather than climbing out of it. */
@@ -710,7 +763,7 @@ function runCandidate(candidate: string): Result[] {
   const files = caseFiles(candidate);
   if (!files.length) return [];
   const code = scratchCopy(candidate, true);
-  return execute(code, files, code);
+  return execute(code, files, code, false, plannedData(candidate, code));
 }
 
 /**

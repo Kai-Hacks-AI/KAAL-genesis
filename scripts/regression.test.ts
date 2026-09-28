@@ -125,6 +125,41 @@ test("a plan derived from anything but the accepted regression as it is now is r
   ]);
 });
 
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("the regression hands its cases the data its plan provides, both when it replays the accepted cases and when it runs the candidate's own", () => {
+  assert.deepEqual(regressionErrors(regressionCandidate("plan-data"), regressionCandidate("plan-data"), BASE), []);
+  // A candidate whose plan provides data no run could hand is refused with what is wrong with it, as the links check
+  // says it, not by failing to run: its cases run without the data.
+  const unhanded = regressionCandidate("plan-data");
+  const plan = path.join(unhanded, PLAN);
+  fs.writeFileSync(plan, fs.readFileSync(plan, "utf8").replace("data: test-data/plan", "data: missing"));
+  const errors = regressionErrors(regressionCandidate("plan-data"), unhanded, BASE);
+  assert.ok(
+    errors.includes(`as the next accepted regression, ${PLAN}: data: missing is no directory inside the state`),
+    errors.join("\n"),
+  );
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a plan's commitments are read from its section headed exactly so, wherever it begins, and never from a heading that only begins so or one in a fenced example", () => {
+  const entries =
+    "1. Adding. Stated in `src/add.ts`. Shown by its cases.\n2. Greeting. Stated in `brain/learning/k/26/01/01/01/nodes/greeting.md`. Shown by its cases.\n";
+  const decoy = "1. Decoy. Stated in `src/decoy.ts`. Shown by its cases.\n";
+  const real = ["src/add.ts", "brain/learning/k/26/01/01/01/nodes/greeting.md"];
+  for (const plan of [
+    `## Commitments\n\n${entries}`,
+    `# Plan\n\n## Commitments considered\n\n${decoy}\n## Commitments\n\n${entries}`,
+    `# Plan\n\n## Examples\n\n\`\`\`markdown\n## Commitments\n\n${decoy}\`\`\`\n\n## Commitments\n\n${entries}`,
+  ])
+    assert.deepEqual(planCommitments(plan), real, plan);
+  // So the regression reads an accepted plan that begins with its commitments as having them, as the links check does.
+  const trusted = regressionCandidate("kept");
+  const plan = path.join(trusted, PLAN);
+  const text = fs.readFileSync(plan, "utf8");
+  fs.writeFileSync(plan, text.slice(text.indexOf("## Commitments")));
+  assert.deepEqual(classify(trusted, regressionCandidate("kept"), BASE).retained, real);
+});
+
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("a trusted regression without a plan classifies nothing, so every one of its cases must hold", () => {
   const trusted = regressionCandidate("kept");

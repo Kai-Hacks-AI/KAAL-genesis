@@ -174,7 +174,11 @@ export function regressionCandidate(name: string): string {
  * them they belong to, one case both, one neither, and one skipped, beside
  * `suites-moved`, the same state with the case in both moved to another file
  * and retitled, and `suites-merged`, with the greeting's two cases merged
- * into one case over their data.
+ * into one case over their data; `plans`, stating plans of the greeting its
+ * suites serve, one providing data and required on two platforms, one sharing
+ * a suite with it, one no suite serves yet, and one served only by a case
+ * that is skipped; and `plans-decomposed`, the same state with the suites that
+ * carry the greeting plan replaced, and its plan unchanged.
  */
 export function runState(name: string): string {
   const to = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-state-")), name);

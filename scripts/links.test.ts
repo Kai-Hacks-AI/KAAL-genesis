@@ -324,3 +324,359 @@ test("a skill's case belongs to none of KAAL's suites, so the skill stays indepe
     "skills/demo/scripts/demo.test.ts:3: a skill's case points at nothing outside its skill",
   ]);
 });
+
+/** The suited fixture with `lines` added to its suite, and `section` to its plan. */
+function served(lines: string, section = ""): string {
+  const repo = suited();
+  fs.appendFileSync(path.join(repo, "suites", "greeting.md"), `\n${lines}\n`);
+  if (section) fs.appendFileSync(path.join(repo, PLAN), `\n## As runs read it\n\n\`\`\`yaml\n${section}\n\`\`\`\n`);
+  return repo;
+}
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a suite says which plans it serves, strictly written, and only plans its state states in their own places", () => {
+  assert.deepEqual(linkErrors(served(`Serves: ${PLAN}`)), []);
+  assert.deepEqual(linkErrors(served(`serves: ${PLAN}`)), [
+    `suites/greeting.md:5: a line that serves no plan, written as "Serves: <place>"`,
+  ]);
+  assert.deepEqual(linkErrors(served("Serves: plans/release.md")), [
+    "suites/greeting.md: serves plans/release.md: no plan is stated there",
+  ]);
+  assert.deepEqual(linkErrors(served("Serves: suites/greeting.md")), [
+    "suites/greeting.md: serves suites/greeting.md: not a plan's place, which is plans/<name>.md",
+  ]);
+  // A plan stated before anything serves it is a plan all the same.
+  const forward = suited();
+  fs.mkdirSync(path.join(forward, "plans"));
+  fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  assert.deepEqual(linkErrors(forward), []);
+  // A suite that is a link to nothing states nothing, and is said to, as any other place that is not a suite.
+  const dangling = served(`Serves: ${PLAN}`);
+  fs.symlinkSync("nowhere.md", path.join(dangling, "suites", "ghost.md"));
+  assert.deepEqual(linkErrors(dangling), ["suites/ghost.md: no suite is stated there"]);
+  // So does one that is a link looping back on itself, which cannot be read at all.
+  fs.rmSync(path.join(dangling, "suites", "ghost.md"));
+  fs.symlinkSync("loop.md", path.join(dangling, "suites", "loop.md"));
+  assert.deepEqual(linkErrors(dangling), ["suites/loop.md: no suite is stated there"]);
+  // A suite reached through a link is refused before anything reads where the link leads, even where that cannot be
+  // read, as a process's own memory cannot where a system shows it as a file.
+  fs.rmSync(path.join(dangling, "suites", "loop.md"));
+  const unreadable = fs.existsSync("/proc/self/mem") ? "/proc/self/mem" : path.join(dangling, "package.json");
+  fs.symlinkSync(unreadable, path.join(dangling, "suites", "linked.md"));
+  assert.deepEqual(linkErrors(dangling), ["suites/linked.md: a suite stated through a link"]);
+  // Only the Regression Plan names commitments, whose cases say so through their links; another plan is carried by
+  // the suites that serve it, so a commitment it names would be checked by nothing.
+  fs.appendFileSync(
+    path.join(forward, "plans", "release.md"),
+    "\n## Commitments\n\n1. Adding. Stated as `src/add.ts`. Shown by the seal checks.\n",
+  );
+  assert.deepEqual(linkErrors(forward), [
+    "plans/release.md: names commitments, which only the Regression Plan does; it is carried by the suites that serve it",
+  ]);
+  fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  // Only a section headed exactly so, outside fenced examples, names commitments.
+  for (const text of [
+    "\n## Commitments considered\n\n1. Adding. Stated in `src/add.ts`. Shown by its cases.\n",
+    "\n## Examples\n\n````markdown\n```\n## Commitments\n\n1. Adding. Stated in `src/add.ts`. Shown by its cases.\n````\n",
+  ]) {
+    fs.appendFileSync(path.join(forward, "plans", "release.md"), text);
+    assert.deepEqual(linkErrors(forward), [], text);
+    fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  }
+  // A section a plan begins with is read as any other.
+  fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## As runs read it\n\n```yaml\nconditions: linux\n```\n");
+  assert.deepEqual(linkErrors(forward), [
+    "plans/bare.md: conditions: not a list of sets of conditions, each naming its conditions' values",
+  ]);
+  fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## Commitments\n\n1. Adding. Stated in `src/add.ts`.\n");
+  assert.deepEqual(linkErrors(forward), [
+    "plans/bare.md: names commitments, which only the Regression Plan does; it is carried by the suites that serve it",
+  ]);
+  // A block with nothing in it at all requires nothing, as one that says nothing does.
+  fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## As runs read it\n\n```yaml\n```\n");
+  assert.deepEqual(linkErrors(forward), []);
+  fs.rmSync(path.join(forward, "plans", "bare.md"));
+  // Where plans and suites are stated is a directory, or the state says it is not.
+  const flat = regressionCandidate("kept");
+  fs.writeFileSync(path.join(flat, "plans"), "not a directory\n");
+  fs.writeFileSync(path.join(flat, "suites"), "not a directory\n");
+  assert.deepEqual(linkErrors(flat), [
+    "suites: not a directory, where KAAL states its suites",
+    "plans: not a directory, where KAAL states its plans",
+  ]);
+  // Also where a link loops back on itself, so nothing can be read there.
+  const looped = regressionCandidate("kept");
+  fs.symlinkSync("plans", path.join(looped, "plans"));
+  fs.symlinkSync("suites", path.join(looped, "suites"));
+  assert.deepEqual(linkErrors(looped), [
+    "suites: not a directory, where KAAL states its suites",
+    "plans: not a directory, where KAAL states its plans",
+  ]);
+  // A link to a directory elsewhere, even one that holds nothing yet, states nothing of the state's own: whatever were
+  // put there later would change what the state's plans require.
+  const elsewhere = regressionCandidate("kept");
+  for (const dir of ["plans", "suites"])
+    fs.symlinkSync(fs.mkdtempSync(path.join(os.tmpdir(), `kaal-${dir}-`)), path.join(elsewhere, dir), "junction");
+  assert.deepEqual(linkErrors(elsewhere), [
+    "suites: reached through a link, so it states no suite of the state's own",
+    "plans: reached through a link, so it states no plan of the state's own",
+  ]);
+  // So is one that cannot be listed, where the system has a directory no one may list, rather than failing to be read.
+  const closed = "/proc/1/map_files";
+  if (
+    fs.existsSync(closed) &&
+    !(() => {
+      try {
+        fs.readdirSync(closed);
+        return true;
+      } catch {
+        return false;
+      }
+    })()
+  ) {
+    const unlisted = regressionCandidate("kept");
+    for (const dir of ["plans", "suites"]) fs.symlinkSync(closed, path.join(unlisted, dir), "junction");
+    assert.deepEqual(linkErrors(unlisted), [
+      "suites: reached through a link, so it states no suite of the state's own",
+      "plans: reached through a link, so it states no plan of the state's own",
+    ]);
+  }
+  // One of the state's own that cannot be read states nothing that can be known either, where permissions can keep a
+  // directory from being read at all, as they cannot for an administrator.
+  const unread = regressionCandidate("kept");
+  for (const dir of ["plans", "suites"]) fs.mkdirSync(path.join(unread, dir), { mode: 0o000 });
+  const readable = (() => {
+    try {
+      fs.readdirSync(path.join(unread, "suites"));
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  if (!readable)
+    assert.deepEqual(linkErrors(unread), [
+      "suites: cannot be read, so which suites it states is unknown",
+      "plans: cannot be read, so which plans it states is unknown",
+    ]);
+  for (const dir of ["plans", "suites"]) fs.chmodSync(path.join(unread, dir), 0o755);
+  // Nor may a plan's data hold anything that cannot be read.
+  const closedData = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(closedData, "test-data", "plan", "closed"), { recursive: true });
+  fs.chmodSync(path.join(closedData, "test-data", "plan", "closed"), 0o000);
+  if (!readable)
+    assert.deepEqual(linkErrors(closedData), [`${PLAN}: data: test-data/plan holds closed, which cannot be read`]);
+  fs.chmodSync(path.join(closedData, "test-data", "plan", "closed"), 0o755);
+  // Nor one whose names can be listed but whose entries cannot be looked at.
+  const unsearchable = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(unsearchable, "test-data", "plan", "listed"), { recursive: true });
+  fs.writeFileSync(path.join(unsearchable, "test-data", "plan", "listed", "greeting.txt"), "hello\n");
+  fs.chmodSync(path.join(unsearchable, "test-data", "plan", "listed"), 0o444);
+  if (!readable)
+    assert.deepEqual(linkErrors(unsearchable), [
+      `${PLAN}: data: test-data/plan holds listed/greeting.txt, which cannot be read`,
+    ]);
+  fs.chmodSync(path.join(unsearchable, "test-data", "plan", "listed"), 0o755);
+  // Only the section headed exactly so is what runs read: not one whose heading only begins so, nor an example of one
+  // in a fenced block.
+  for (const example of [
+    "\n## As runs read it (draft)\n\n```yaml\nconditions: 5\n```\n",
+    "\n## Examples\n\n~~~markdown\n## As runs read it\n\n```yaml\nconditions: 5\n```\n~~~\n",
+  ]) {
+    const drafted = served("");
+    fs.appendFileSync(path.join(drafted, PLAN), example);
+    assert.deepEqual(linkErrors(drafted), [], example);
+  }
+  // Within it, a line in its yaml block that looks like a heading is part of the block, not the section's end.
+  const commented = served("", "conditions:\n## a comment, not a heading\n  - { platform: linux }");
+  assert.deepEqual(linkErrors(commented), []);
+  // A line that only begins as a fence does not close the block, so nothing after it goes unread.
+  const unclosed = served("", "conditions: []\n```draft\ndata: missing");
+  assert.notDeepEqual(linkErrors(unclosed), []);
+  // Nor does it close a fenced example, so a heading still inside the example is not the plan's own.
+  const example = served("");
+  fs.appendFileSync(
+    path.join(example, PLAN),
+    "\n## Examples\n\n```markdown\n```draft\n## As runs read it\n\n~~~yaml\nconditions: 5\n~~~\n```\n",
+  );
+  assert.deepEqual(linkErrors(example), []);
+  // A fence of more than three marks is closed only by as many, so the section after it is still read.
+  const longFence = served("", "conditions: 5");
+  const planPath = path.join(longFence, PLAN);
+  fs.writeFileSync(
+    planPath,
+    fs
+      .readFileSync(planPath, "utf8")
+      .replace("\n## As runs read it", "\n````markdown\n```\nan example\n````\n\n## As runs read it"),
+  );
+  assert.notDeepEqual(linkErrors(longFence), []);
+  // Its yaml block is the one outside fenced examples, so an example of one, even first, is never read in its place.
+  const exampled = served("");
+  fs.appendFileSync(
+    path.join(exampled, PLAN),
+    "\n## As runs read it\n\n````markdown\n```yaml\nconditions: []\n```\n````\n\n```yaml\nconditions: 5\n```\n",
+  );
+  assert.deepEqual(linkErrors(exampled), [
+    `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
+  ]);
+  // A backtick fence's info string holds no backtick, so a line such as ```draft``` opens no fence that could hide the
+  // section after it.
+  const inline = served("");
+  fs.appendFileSync(path.join(inline, PLAN), "\n```draft```\n\n## As runs read it\n\n```yaml\nconditions: 5\n```\n");
+  assert.deepEqual(linkErrors(inline), [
+    `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
+  ]);
+  // The Regression Plan is refused as any plan is, before it is read: as a directory, or through a link to what
+  // cannot be read, where a system shows a process's own memory as a file.
+  const notFile = served("");
+  fs.rmSync(path.join(notFile, PLAN));
+  fs.mkdirSync(path.join(notFile, PLAN));
+  assert.deepEqual(linkErrors(notFile), [`${PLAN}: no plan is stated there`]);
+  if (fs.existsSync("/proc/self/mem")) {
+    const linkedPlan = served("");
+    fs.rmSync(path.join(linkedPlan, PLAN));
+    fs.symlinkSync("/proc/self/mem", path.join(linkedPlan, PLAN));
+    assert.deepEqual(linkErrors(linkedPlan), [`${PLAN}: a plan stated through a link`]);
+  }
+  // Nor a file within it that cannot be read.
+  const closedFile = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });
+  fs.writeFileSync(path.join(closedFile, "test-data", "plan", "greeting.txt"), "hello\n");
+  fs.chmodSync(path.join(closedFile, "test-data", "plan", "greeting.txt"), 0o000);
+  if (!readable)
+    assert.deepEqual(linkErrors(closedFile), [
+      `${PLAN}: data: test-data/plan holds greeting.txt, which cannot be read`,
+    ]);
+  fs.chmodSync(path.join(closedFile, "test-data", "plan", "greeting.txt"), 0o644);
+  // Its data holds only files and directories: nothing, such as a pipe, that could supply bytes the state does not
+  // hold, where the system can make one.
+  const piped = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(piped, "test-data", "plan"), { recursive: true });
+  // Only where one is really made: some systems' mkfifo, such as Git Bash's on Windows, succeeds without making one
+  // where the state is.
+  const pipe = path.join(piped, "test-data", "plan", "pipe");
+  if (spawnSync("mkfifo", [pipe]).status === 0 && fs.lstatSync(pipe, { throwIfNoEntry: false })?.isFIFO())
+    assert.deepEqual(linkErrors(piped), [
+      `${PLAN}: data: test-data/plan holds pipe, which is neither a file nor a directory`,
+    ]);
+  // Nor may a suite or a plan be one that cannot be read, or what the state's plans require would be unknown.
+  const closedFiles = regressionCandidate("kept");
+  fs.mkdirSync(path.join(closedFiles, "plans"));
+  fs.mkdirSync(path.join(closedFiles, "suites"));
+  fs.writeFileSync(path.join(closedFiles, "plans", "p.md"), "# P\n");
+  fs.writeFileSync(path.join(closedFiles, "suites", "s.md"), "# S\n\nServes: plans/p.md\n");
+  for (const file of ["plans/p.md", "suites/s.md"]) fs.chmodSync(path.join(closedFiles, file), 0o000);
+  if (!readable)
+    assert.deepEqual(linkErrors(closedFiles), [
+      "suites/s.md: cannot be read, so which plans it serves is unknown",
+      "plans/p.md: cannot be read, so what the plan requires is unknown",
+    ]);
+  for (const file of ["plans/p.md", "suites/s.md"]) fs.chmodSync(path.join(closedFiles, file), 0o644);
+  fs.writeFileSync(path.join(forward, "plans", "con.md"), "# Con\n");
+  assert.deepEqual(linkErrors(forward), [`plans/con.md: a plan's name "con" is reserved on Windows`]);
+});
+
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("a plan that says how runs read it says it so they can, with its data inside its state, and requires as proof every check it says shows a commitment", () => {
+  assert.deepEqual(linkErrors(served("", "conditions:\n  - { platform: linux }\n  - { platform: win32 }")), []);
+  // A block that says nothing, or only comments, requires nothing.
+  assert.deepEqual(linkErrors(served("", "# nothing yet")), []);
+  assert.deepEqual(linkErrors(served("", "conditions: linux")), [
+    `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
+  ]);
+  assert.deepEqual(linkErrors(served("", "suites: [suites/greeting.md]")), [`${PLAN}: runs read no suites of a plan`]);
+  // A condition is named as a run can be given it, name=value, so a name is a plain word.
+  for (const name of ['""', "a=b", "two words"])
+    assert.deepEqual(
+      linkErrors(served("", `conditions:\n  - { ${name}: linux }`)),
+      [
+        `${PLAN}: conditions: ${JSON.stringify(name === '""' ? "" : name)} is no name a run can be given as a condition`,
+      ],
+      name,
+    );
+  // What runs read is a mapping of what they read: anything else would read as requiring nothing.
+  for (const block of ["false", "42", "[]", "null"])
+    assert.deepEqual(
+      linkErrors(served("", block)),
+      [`${PLAN}: As runs read it holds no mapping of what runs read`],
+      block,
+    );
+  assert.deepEqual(linkErrors(served("", "data: plan-data")), [
+    `${PLAN}: data: plan-data is no directory inside the state`,
+  ]);
+  // The Regression Plan's data is kept where the regression's identity finds test data, so the regression names it.
+  const kept = served("", "data: plan-data");
+  fs.mkdirSync(path.join(kept, "plan-data"));
+  assert.deepEqual(linkErrors(kept), [
+    `${PLAN}: data: plan-data is not kept where the regression's identity finds test data: under a test-data/ directory, outside node_modules and .git`,
+  ]);
+  const underTestData = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(underTestData, "test-data", "plan"), { recursive: true });
+  assert.deepEqual(linkErrors(underTestData), []);
+  // Nor where the regression's identity never looks, among the dependencies or Git's own files, whatever it is called.
+  for (const root of ["node_modules", ".git"]) {
+    const ignored = served("", `data: ${root}/test-data/plan`);
+    fs.mkdirSync(path.join(ignored, root, "test-data", "plan"), { recursive: true });
+    assert.deepEqual(
+      linkErrors(ignored),
+      [
+        `${PLAN}: data: ${root}/test-data/plan is not kept where the regression's identity finds test data: under a test-data/ directory, outside node_modules and .git`,
+      ],
+      root,
+    );
+  }
+  // Nothing within the data is reached through a link either, however deep, or a case could read what the state does
+  // not hold.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-data-"));
+  fs.writeFileSync(path.join(outside, "greeting.txt"), "hello\n");
+  for (const [link, target, type] of [
+    ["shared", outside, "junction"],
+    ["deeper/greeting.txt", path.join(outside, "greeting.txt"), "file"],
+  ] as const) {
+    const nested = served("", "data: test-data/plan");
+    fs.mkdirSync(path.join(nested, "test-data", "plan", "deeper"), { recursive: true });
+    fs.symlinkSync(target, path.join(nested, "test-data", "plan", link), type);
+    assert.deepEqual(linkErrors(nested), [`${PLAN}: data: test-data/plan holds ${link}, reached through a link`], link);
+  }
+  // A link is refused where it is, never followed, so what it leads to is never read, however large, looping or closed.
+  const beyond = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-beyond-data-"));
+  fs.symlinkSync(beyond, path.join(beyond, "again"), "junction");
+  // Where the system has a directory no one may list, as Linux has for another process's mapped files, the link to it
+  // is refused like any other rather than failing to be read.
+  const closed = "/proc/1/map_files";
+  const unlistable = (() => {
+    try {
+      fs.readdirSync(closed);
+      return false;
+    } catch {
+      return fs.existsSync(closed);
+    }
+  })();
+  if (unlistable) fs.symlinkSync(closed, path.join(beyond, "closed"), "junction");
+  const leading = served("", "data: test-data/plan");
+  fs.mkdirSync(path.join(leading, "test-data", "plan"), { recursive: true });
+  fs.symlinkSync(beyond, path.join(leading, "test-data", "plan", "beyond"), "junction");
+  assert.deepEqual(linkErrors(leading), [`${PLAN}: data: test-data/plan holds beyond, reached through a link`]);
+  // Nothing a plan says runs read is ever null, and its data is a place of its own in the state, never the state itself.
+  assert.deepEqual(linkErrors(served("", "proof: null")), [`${PLAN}: proof: not proofs by name`]);
+  for (const data of ['""', ".", "./", "src/.."])
+    assert.deepEqual(
+      linkErrors(served("", `data: ${data}`)),
+      [
+        `${PLAN}: data: ${JSON.parse(data.startsWith('"') ? data : JSON.stringify(data))} is not a place of its own in the state`,
+      ],
+      data,
+    );
+  const checked = served("", "proof:\n  the seal checks:\n    - { platform: linux }");
+  assert.deepEqual(linkErrors(checked), []);
+  const unchecked = served("", "conditions: []");
+  const plan = path.join(unchecked, PLAN);
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace("`src/add.ts`. Shown by its cases.", "`src/add.ts`. Shown by its cases and the seal checks."),
+  );
+  assert.deepEqual(linkErrors(unchecked), [
+    `${PLAN}: says the seal checks show a commitment, but does not require them as proof`,
+  ]);
+});

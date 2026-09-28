@@ -170,6 +170,37 @@ test("copied out of Git, KAAL runs a suite of a plain directory's cases, reachin
 });
 
 // Suite: suites/without-git.md
+// Why: brain/learning/genesis/26/09/27/07/nodes/plan.md
+test("copied out of Git, KAAL runs a plan of a plain directory's cases and says what that run demonstrates of the plan", () => {
+  const kaalState = plainCopy(KAAL);
+  const greeting = kaal(
+    kaalState,
+    "scripts/run.ts",
+    "--plan",
+    "plans/greeting.md",
+    "--condition",
+    "checkout=plain",
+    runState("plans"),
+  );
+  assert.equal(greeting.status, 0, greeting.out);
+  const { run, evidence } = JSON.parse(greeting.out) as {
+    run: { plan: string; conditions: Record<string, string>; requirements: { name: string }[] };
+    evidence: { verdict: string; requirements: { under: { conditions: { platform: string }; verdict: string }[] }[] };
+  };
+  assert.equal(run.plan, "plans/greeting.md");
+  assert.equal(run.conditions.checkout, "plain");
+  assert.deepEqual(
+    run.requirements.map((r) => r.name),
+    ["suites/greeting.md", "suites/names.md"],
+  );
+  // One run, on one platform: the plan requires two, so it is not demonstrated, though all this run reached held.
+  assert.equal(evidence.verdict, "not demonstrated");
+  assert.ok(evidence.requirements.every((r) => r.under.some((u) => u.verdict === "held")));
+  // A plan no suite serves yet reaches nothing: no evidence, never reported as a success.
+  assert.equal(kaal(kaalState, "scripts/run.ts", "--plan", "plans/farewell.md", runState("plans")).status, 1);
+});
+
+// Suite: suites/without-git.md
 // Why: brain/learning/genesis/26/09/26/03/nodes/testing.md
 test("copied out of Git, an accepted state judges a candidate state with its own checker, both plain directories", () => {
   // The accepted state carries KAAL's checker, as main does, and judges with it.

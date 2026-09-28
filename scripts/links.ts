@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
+import { planError, planErrors } from "./plans.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -24,13 +25,42 @@ export const SKILL_CASES = "skills/*/SKILL.md";
  */
 const SHOWN_BY = ["its cases", "the seal checks"];
 
-/** The section of a plan under `heading`, up to the next `## ` heading. */
+/**
+ * The fence a line opens, if it opens one: three or more backticks or tildes,
+ * indented by at most three spaces; after backticks, nothing more of them, as
+ * a line such as ```draft``` opens none.
+ */
+export function fenceOpened(line: string): string | undefined {
+  return /^ {0,3}(`{3,})[^`]*$/.exec(line)?.[1] ?? /^ {0,3}(~{3,})/.exec(line)?.[1];
+}
+
+/** Whether a line closes the fence `fence` opened: the same mark, at least as long, and nothing else. */
+export function fenceClosed(fence: string, line: string): boolean {
+  const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+  return !!closing && closing[0] === fence[0] && closing.length >= fence.length;
+}
+
+/** The section of a plan headed exactly `## heading`, up to the next `## ` heading, both read outside fenced blocks. */
 export function section(plan: string, heading: string): string {
-  const start = plan.indexOf(`\n## ${heading}`);
-  if (start < 0) return "";
-  const rest = plan.slice(start + 1);
-  const end = rest.indexOf("\n## ", 1);
-  return end < 0 ? rest : rest.slice(0, end);
+  // A section is headed exactly so, wherever it begins, even at the plan's very start, as it reads outside fenced
+  // blocks: a heading that only begins so, or one in a fenced example, is not it, and a line in a fenced block never
+  // ends it. A fence opens with three or more backticks or tildes and closes only on a line of the same mark, at least
+  // as long, and nothing else.
+  const lines = plan.split("\n");
+  let fence: string | undefined;
+  let start: number | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (fence) {
+      if (fenceClosed(fence, line)) fence = undefined;
+      continue;
+    }
+    fence = fenceOpened(line);
+    if (fence || !/^## /.test(line)) continue;
+    if (start !== undefined) return lines.slice(start, i).join("\n");
+    if (line.trimEnd() === `## ${heading}`) start = i;
+  }
+  return start === undefined ? "" : lines.slice(start).join("\n");
 }
 
 /** The place each commitment of a plan is stated in, in the plan's order. */
@@ -258,18 +288,15 @@ export function placeError(repo: string, place: string): string | undefined {
 }
 
 /**
- * Everything that makes a checkout's testing links incoherent, read from its
- * files alone. Every commitment its plan states is at a place that exists and
- * says what shows it; a commitment its cases show has at least one case
- * pointing at it. Every case KAAL keeps outside its skills points at least at
- * one commitment, and only at places the plan states. A skill's cases prove
- * its own SKILL.md and never point at KAAL. A link that belongs to no case,
- * or a case whose title cannot be read, would be lost without a trace when
- * the case changes or moves, so both are refused too.
+ * Everything that makes the Regression Plan's own entries incoherent: each
+ * commitment says where it is stated, at a place that exists inside the
+ * repository, and what shows it, which is always its cases and maybe checks
+ * KAAL knows besides; with the places that do not exist, whose cases are then
+ * not looked for.
  */
-export function linkErrors(repo: string): string[] {
-  if (!fs.existsSync(path.join(repo, PLAN))) return [`${PLAN}: there is no plan, so no link can be read`];
-  const entries = planEntries(fs.readFileSync(path.join(repo, PLAN), "utf8"));
+export function planEntryErrors(repo: string): { errors: string[]; unplaced: Set<string> } {
+  // Read as if it began on a new line, so a plan that begins with its commitments is read as any other.
+  const entries = planEntries(`\n${fs.readFileSync(path.join(repo, PLAN), "utf8")}`);
   const errors: string[] = [];
   const unplaced = new Set<string>();
   for (const { line, place, shownBy } of entries) {
@@ -291,6 +318,26 @@ export function linkErrors(repo: string): string[] {
         `${place}: the plan says only ${shownBy.join(" and ")} show it, but only cases say which commitment they show`,
       );
   }
+  return { errors, unplaced };
+}
+
+/**
+ * Everything that makes a checkout's testing links incoherent, read from its
+ * files alone. Every commitment its plan states is at a place that exists and
+ * says what shows it; a commitment its cases show has at least one case
+ * pointing at it. Every case KAAL keeps outside its skills points at least at
+ * one commitment, and only at places the plan states. A skill's cases prove
+ * its own SKILL.md and never point at KAAL. A link that belongs to no case,
+ * or a case whose title cannot be read, would be lost without a trace when
+ * the case changes or moves, so both are refused too.
+ */
+export function linkErrors(repo: string): string[] {
+  if (!fs.existsSync(path.join(repo, PLAN))) return [`${PLAN}: there is no plan, so no link can be read`];
+  // Refused as any plan is before it is read, so one that is no file, or reached through a link, is said to be so.
+  const notPlan = planError(repo, PLAN);
+  if (notPlan) return [notPlan];
+  const entries = planEntries(`\n${fs.readFileSync(path.join(repo, PLAN), "utf8")}`);
+  const { errors, unplaced } = planEntryErrors(repo);
   const stated = new Set(entries.flatMap((e) => (e.place ? [e.place] : [])));
   for (const file of caseFiles(repo)) {
     const { cases, stray, suites, straySuites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
@@ -323,15 +370,9 @@ export function linkErrors(repo: string): string[] {
     }
   }
   errors.push(...unnamedCases(repo).map((at) => `${at}: a case whose title cannot be read, so no link can follow it`));
-  // Every suite is stated in its own place. One no case belongs to yet is still that suite: its concern gives it its
-  // meaning, not its cases, and a run of it observes nothing, which is no evidence.
-  const suiteFiles = fs.existsSync(path.join(repo, SUITES))
-    ? fs.readdirSync(path.join(repo, SUITES)).map((name) => `${SUITES}/${name}`)
-    : [];
-  for (const suite of suiteFiles.sort()) {
-    const wrong = suiteError(repo, suite);
-    if (wrong) errors.push(wrong);
-  }
+  // Suites, the plans they serve, and those plans are read as KAAL reads its plans, whose errors runs of plans refuse
+  // too: every suite is stated in its own place, and one no case belongs to yet is still that suite.
+  errors.push(...planErrors(repo));
   const proven = new Set(repoCases(repo).flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
   const ownProof = new Set(
