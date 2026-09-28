@@ -40,6 +40,27 @@ test("what a candidate adds, rewrites in code, or rearranges in its testing redu
   const now = accepted();
   for (const layers of [[], ["acceptance/extended"], ["feature/refactored"], ["feature/decomposed"]])
     assert.deepEqual(reduced(now, candidate(...layers)), { reductions: [], errors: [] }, layers.join(" + "));
+  // Conditions written as a set naming none, or not at all, both require a run under any: neither reduces the other,
+  // and a stricter set, such as a later version of the same runtime, reduces neither.
+  const [anyConditions, unconditioned] = [
+    candidate("acceptance/any-conditions"),
+    candidate("acceptance/unconditioned"),
+  ];
+  for (const [from, to] of [
+    [anyConditions, unconditioned],
+    [unconditioned, anyConditions],
+    [anyConditions, candidate("acceptance/windowless")],
+    [candidate("acceptance/node-22"), candidate("acceptance/later-node")],
+  ])
+    assert.deepEqual(reduced(from!, to!), { reductions: [], errors: [] });
+  // Laxer is a reduction: a later version required is not kept by an earlier one, nor any set by none.
+  assert.deepEqual(reduced(candidate("acceptance/later-node"), candidate("acceptance/node-22")).reductions, [
+    'conditions: {"platform":"linux","runtime":"node v22.4"}',
+  ]);
+  assert.deepEqual(reduced(now, unconditioned).reductions, [
+    'conditions: {"platform":"linux"}',
+    'conditions: {"platform":"win32"}',
+  ]);
 });
 
 // Why: requirements/inherited-reductions/requirement.md

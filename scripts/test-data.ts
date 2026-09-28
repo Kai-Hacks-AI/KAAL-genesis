@@ -186,8 +186,11 @@ export function featureState(...layers: string[]): string {
  * seal checks of adding, and the plain suite's service; `extended`, one more
  * Requirement newly named and proven; `accepts-…`, a record accepting the
  * loss of the like-named piece; `overreaching`, one also accepting the loss
- * of adding, which nothing loses; `reasonless`, one that says not why; and
- * `history`, a state holding the record `accepts-unnamed` adds.
+ * of adding, which nothing loses; `reasonless`, one that says not why;
+ * `history`, a state holding the record `accepts-unnamed` adds;
+ * `any-conditions` and `unconditioned`, the protection required under a set
+ * naming no condition, and under no set at all; and `node-22` and
+ * `later-node`, it required on Linux with Node 22, and with Node 22.4.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

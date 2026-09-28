@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
-import type { Conditions } from "../skills/testing/scripts/plan.js";
+import { type Conditions, satisfies } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import { PLAN, planCommitments, planEntries, SUITES, suiteError } from "./links.js";
 import { kindAt, planError, readPlan, suitePlans } from "./plans.js";
@@ -132,7 +132,10 @@ export function protection(state: string): { protects: Protection[]; errors: str
     for (const check of (shownBy ?? []).filter((c) => c !== "its cases"))
       if (place) protects.push({ proof: check, of: place });
   try {
-    for (const conditions of readPlan(state, PLAN).conditions) protects.push({ conditions });
+    // A set naming no condition is met by any run, as no set at all is, so every other set implies it: requiring it
+    // protects nothing another set, or none, does not, and it is never a reduction.
+    for (const conditions of readPlan(state, PLAN).conditions)
+      if (Object.keys(conditions).length) protects.push({ conditions });
   } catch (e) {
     errors.push(`${state}: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -169,7 +172,13 @@ export function reductions(accepted: string, candidate: string): { reductions: P
   const errors = [...before.errors, ...after.errors];
   if (errors.length) return { reductions: [], errors };
   const kept = new Set(after.protects.map(named));
-  const lost = new Set(before.protects.filter((p) => !kept.has(named(p))).map(named));
+  // A set of conditions is kept by any set of the candidate every run meeting which meets it too, as a plan's evidence
+  // judges runs: the same set, or a stricter one, such as a later version of the same runtime. With none, the candidate
+  // requires its testing under any conditions, which keeps only what requires none.
+  const sets = after.protects.flatMap((p) => ("conditions" in p ? [p.conditions] : []));
+  const keeps = (p: Protection) =>
+    "conditions" in p ? (sets.length ? sets : [{}]).some((c) => satisfies(c, p.conditions)) : kept.has(named(p));
+  const lost = new Set(before.protects.filter((p) => !keeps(p)).map(named));
   // A file a wildcard names is reduced on its own only while the candidate still names the wildcard: losing the whole
   // commitment is one reduction, not one for each file it covered.
   const reduced = before.protects.filter(
