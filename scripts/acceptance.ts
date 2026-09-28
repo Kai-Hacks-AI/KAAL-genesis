@@ -206,6 +206,29 @@ export function acceptedProtection(
   return { requires, given: requirements.filter((r) => !requires.includes(r)), cases, errors };
 }
 
+/**
+ * Every link in `state`, beside its dependencies and Git's own files, whose
+ * target lies outside it: the replay copies links as they are, so an inherited
+ * case following one would run or read what the state does not hold.
+ */
+function escapingLinks(state: string): string[] {
+  const root = path.resolve(state);
+  const found: string[] = [];
+  const walk = (dir: string, rel: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const at = rel ? `${rel}/${entry.name}` : entry.name;
+      if (!rel && (entry.name === "node_modules" || entry.name === ".git")) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        const target = path.relative(root, path.resolve(dir, fs.readlinkSync(full)));
+        if (!target || target === ".." || target.startsWith(`..${path.sep}`) || path.isAbsolute(target)) found.push(at);
+      } else if (entry.isDirectory()) walk(full, at);
+    }
+  };
+  walk(root, "");
+  return found.sort();
+}
+
 /** A requirement named for reading: its kind and name. */
 const requirementName = (r: PlanRequirement) => `${r.kind}: ${r.name}`;
 
@@ -268,10 +291,20 @@ export function acceptance(
   }
   if (!errors.length && plan.cases.length) {
     const unfaithful = unreplayable(accepted);
+    const escaping = escapingLinks(candidate);
     if (unfaithful) errors.push(unfaithful);
+    else if (escaping.length)
+      errors.push(
+        `the candidate links outside its state (${escaping.join(", ")}), so its inherited cases would not judge it alone`,
+      );
     else {
       const excluded = (file: string, title: string) => !plan.cases.some((c) => c.file === file && c.title === title);
-      const results = runTrusted(accepted, candidate).filter((r) => !excluded(r.file, r.name) || r.name === r.file);
+      // A file's own report, as when it does not load, still counts while it holds a case not excluded; one whose
+      // every case is excluded has nothing left to judge.
+      const kept = (file: string) => plan.cases.some((c) => c.file === file);
+      const results = runTrusted(accepted, candidate).filter((r) =>
+        r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
+      );
       errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
     }
   }

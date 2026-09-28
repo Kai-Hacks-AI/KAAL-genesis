@@ -189,9 +189,11 @@ export function featureState(...layers: string[]): string {
  * record `excludes-greets` adds; `wild-requirements`, a Regression Plan
  * naming every Requirement by a wildcard, with a case that helps prove them;
  * `twice-greets`, a second case titled `greets` in the same file;
- * `stray-link`, a link in that file belonging to no case; and `twice-named`,
+ * `stray-link`, a link in that file belonging to no case; `twice-named`,
  * a Regression Plan naming adding twice, only its second entry also shown by
- * the seal checks.
+ * the seal checks; `waving`, a case file of its own showing greeting by
+ * waving, with the code it imports; and `excludes-waving`, a record
+ * excluding that case.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

@@ -81,6 +81,14 @@ test("an excluded inherited case is given up, and a commitment only once every c
     candidate("acceptance/twice-named", "feature/refactored", "acceptance/excludes-adding"),
   );
   assert.deepEqual([twice.errors, twice.requires.includes("commitment: src/add.ts")], [[], true]);
+  // A file whose every inherited case is excluded is not judged, even once it no longer loads against the candidate.
+  const waving = candidate("acceptance/waving");
+  const gone = candidate("acceptance/waving", "acceptance/excludes-waving");
+  fs.rmSync(path.join(gone, "src", "wave.ts"));
+  assert.deepEqual(acceptance(waving, gone).errors, []);
+  const unexcluded = candidate("acceptance/waving");
+  fs.rmSync(path.join(unexcluded, "src", "wave.ts"));
+  assert.match(acceptance(waving, unexcluded).errors.join("\n"), /scripts\/wave\.test\.ts/);
   // Excluding a suite gives up that requirement, never the cases that show what they help prove.
   const unplain = acceptance(now, candidate("acceptance/excludes-plain"));
   assert.deepEqual([unplain.errors, unplain.requires], [[], REQUIRED.filter((r) => r !== "suite: suites/plain.md")]);
@@ -187,6 +195,13 @@ test("what either state keeps through a link is not its own, and is refused rath
   const linkedRecords = candidate("regression/candidates/withdrawn");
   fs.symlinkSync(path.join(elsewhere, "acceptance"), path.join(linkedRecords, "acceptance"), "junction");
   assert.match(acceptance(accepted(), linkedRecords).errors.join("\n"), /acceptance: not a directory of its own/);
+  // The candidate's own code reaching outside it, whose inherited cases would then judge more than the candidate.
+  const reaching = candidate();
+  fs.symlinkSync(path.join(elsewhere, "src"), path.join(reaching, "src", "shared"), "junction");
+  assert.match(
+    acceptance(accepted(), reaching).errors.join("\n"),
+    /the candidate links outside its state \(src\/shared\)/,
+  );
   // The accepted Regression Plan kept elsewhere; a file link needs privileges on Windows, so this is shown where one
   // can be made.
   if (process.platform !== "win32") {
