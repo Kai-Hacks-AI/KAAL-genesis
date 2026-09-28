@@ -3,7 +3,17 @@ import path from "node:path";
 import YAML from "yaml";
 import type { Conditions, Requirement } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planCommitments, planEntries, planEntryErrors, section, SUITES, suiteError } from "./links.js";
+import {
+  fenceClosed,
+  fenceOpened,
+  PLAN,
+  planCommitments,
+  planEntries,
+  planEntryErrors,
+  section,
+  SUITES,
+  suiteError,
+} from "./links.js";
 import { keptAsData } from "./regression.js";
 
 /**
@@ -181,12 +191,24 @@ const conditionSets = (value: unknown, what: string): Conditions[] => {
 export function readPlan(repo: string, plan: string): PlanReading {
   const part = section(planText(repo, plan), AS_RUNS_READ_IT);
   if (!part) return { conditions: [], proof: {} };
-  // The block opens on a line that is exactly its fence and closes on the next line that is only the fence, maybe
-  // directly after it opens: a block with nothing in it. A line that only begins as a fence closes nothing.
+  // The block is the first fence outside any other that opens on a line that is exactly `\`\`\`yaml`, read as fences
+  // are, so one shown inside a fenced example is never taken for it; it closes as a fence does, maybe directly after it
+  // opens: a block with nothing in it. A line that only begins as a fence closes nothing.
+  let block: string | undefined;
+  let fence: string | undefined;
+  let open = -1;
   const lines = part.split("\n");
-  const open = lines.findIndex((line) => line.trimEnd() === "```yaml");
-  const close = open < 0 ? -1 : lines.findIndex((line, i) => i > open && line.trimEnd() === "```");
-  const block = close < 0 ? undefined : lines.slice(open + 1, close).join("\n");
+  for (let i = 0; i < lines.length && block === undefined; i++) {
+    const line = lines[i]!;
+    if (fence) {
+      if (!fenceClosed(fence, line)) continue;
+      if (open >= 0) block = lines.slice(open + 1, i).join("\n");
+      fence = undefined;
+      continue;
+    }
+    fence = fenceOpened(line);
+    open = fence && line.trimEnd() === "```yaml" ? i : -1;
+  }
   if (block === undefined) throw new Error(`${plan}: ${AS_RUNS_READ_IT} holds no yaml block`);
   // A block that says nothing, or holds only comments, requires nothing; anything else must say what runs read.
   const says = block.split("\n").some((line) => line.trim() && !line.trim().startsWith("#"));

@@ -25,6 +25,17 @@ export const SKILL_CASES = "skills/*/SKILL.md";
  */
 const SHOWN_BY = ["its cases", "the seal checks"];
 
+/** The fence a line opens, if it opens one: three or more backticks or tildes, indented by at most three spaces. */
+export function fenceOpened(line: string): string | undefined {
+  return /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+}
+
+/** Whether a line closes the fence `fence` opened: the same mark, at least as long, and nothing else. */
+export function fenceClosed(fence: string, line: string): boolean {
+  const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+  return !!closing && closing[0] === fence[0] && closing.length >= fence.length;
+}
+
 /** The section of a plan headed exactly `## heading`, up to the next `## ` heading, both read outside fenced blocks. */
 export function section(plan: string, heading: string): string {
   // A section is headed exactly so, wherever it begins, even at the plan's very start, as it reads outside fenced
@@ -37,11 +48,10 @@ export function section(plan: string, heading: string): string {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (fence) {
-      const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)?.[1];
-      if (closing && closing[0] === fence[0] && closing.length >= fence.length) fence = undefined;
+      if (fenceClosed(fence, line)) fence = undefined;
       continue;
     }
-    fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    fence = fenceOpened(line);
     if (fence || !/^## /.test(line)) continue;
     if (start !== undefined) return lines.slice(start, i).join("\n");
     if (line.trimEnd() === `## ${heading}`) start = i;

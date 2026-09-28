@@ -509,6 +509,15 @@ test("a suite says which plans it serves, strictly written, and only plans its s
       .replace("\n## As runs read it", "\n````markdown\n```\nan example\n````\n\n## As runs read it"),
   );
   assert.notDeepEqual(linkErrors(longFence), []);
+  // Its yaml block is the one outside fenced examples, so an example of one, even first, is never read in its place.
+  const exampled = served("");
+  fs.appendFileSync(
+    path.join(exampled, PLAN),
+    "\n## As runs read it\n\n````markdown\n```yaml\nconditions: []\n```\n````\n\n```yaml\nconditions: 5\n```\n",
+  );
+  assert.deepEqual(linkErrors(exampled), [
+    `${PLAN}: conditions: not a list of sets of conditions, each naming its conditions' values`,
+  ]);
   // Nor a file within it that cannot be read.
   const closedFile = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });
