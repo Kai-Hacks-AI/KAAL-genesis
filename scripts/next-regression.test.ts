@@ -214,3 +214,32 @@ test("which suites serve the regression is part of it, so a change to them chang
   edited(R0, "suites/plain.md", (t) => t.replace("Serves: test/regression-plan.md\n", ""));
   assert.notEqual(regressionIdentity(R0), before);
 });
+
+// Why: requirements/derived-regression/requirement.md
+test("the regression's cases are carried one to one, and its sets of conditions as sets, in whatever order", () => {
+  // Two inherited cases at one address are two cases: leaving either out is leaving one out.
+  const twice = edited(
+    r0(),
+    "scripts/cases.test.ts",
+    (t) => `${t}\n// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(1 + 1, 2);\n});\n`,
+  );
+  const once = edited(
+    succeeding(twice),
+    "scripts/cases.test.ts",
+    (t) => t.slice(0, t.lastIndexOf('\n// Why: src/add.ts\ntest("adds"')) + "\n",
+  );
+  assert.ok(
+    judged(twice, once).includes(
+      'scripts/cases.test.ts: "adds": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
+    ),
+  );
+  // The sets of conditions the plan requires are the same however they are listed.
+  const R0 = r0();
+  const reordered = edited(succeeding(R0), PLAN, (t) =>
+    t.replace(
+      "  - { platform: linux }\n  - { platform: win32 }\n",
+      "  - { platform: win32 }\n  - { platform: linux }\n",
+    ),
+  );
+  assert.deepEqual(judged(R0, reordered), []);
+});

@@ -209,6 +209,15 @@ export function nextRegression(
   };
 }
 
+/** Sets of conditions as the sets they are, in no order. */
+const asSets = (sets: Conditions[]) => [...new Set(sets.map((set) => canonical(set)))].sort();
+/** What a plan says runs read of it, each set of conditions in no order. */
+const settings = (p: Protection) => ({
+  conditions: asSets(p.conditions),
+  proof: Object.fromEntries(Object.entries(p.proof).map(([name, under]) => [name, asSets(under)])),
+  data: p.data ?? null,
+});
+
 /** Values the same once written the same way, whatever order their keys were written in. */
 const canonical = (value: unknown): string =>
   JSON.stringify(value, (_, v: unknown) =>
@@ -256,21 +265,32 @@ export function carriedErrors(derived: Protection, own: Protection, promises: st
     errors.push(
       `${suite}: serves the candidate's regression, but nothing newly promised brings it into the regression`,
     );
+  const [ownSettings, derivedSettings] = [settings(own), settings(derived)];
   for (const key of ["conditions", "proof", "data"] as const)
-    if (canonical(own[key] ?? null) !== canonical(derived[key] ?? null))
+    if (canonical(ownSettings[key]) !== canonical(derivedSettings[key]))
       errors.push(
         `${PLAN}: its ${key} are ${canonical(own[key] ?? null)}, but the regression's are ${canonical(derived[key] ?? null)}, which nothing gives up or adds to`,
       );
+  // Cases are matched one to one, so two cases at one address need two: each match is taken, never shared, and one
+  // keeping every relation is preferred to one that keeps fewer.
+  const left = [...own.cases];
   for (const c of derived.cases) {
-    const is = own.cases.filter((o) => o.file === c.file && o.title === c.title);
     const at = `${c.file}: ${JSON.stringify(c.title)}`;
-    if (!is.length) {
+    const keeps = (o: Held) =>
+      c.places.every((p) => o.places.includes(p)) && c.suites.every((s) => o.suites.includes(s));
+    const same = (o: Held) => o.file === c.file && o.title === c.title;
+    const i =
+      left.findIndex((o) => same(o) && keeps(o)) >= 0
+        ? left.findIndex((o) => same(o) && keeps(o))
+        : left.findIndex(same);
+    if (i < 0) {
       errors.push(`${at}: in the regression, and no acceptance record excludes it, but the candidate no longer has it`);
       continue;
     }
-    for (const place of c.places.filter((p) => !is.some((o) => o.places.includes(p))))
+    const [is] = left.splice(i, 1);
+    for (const place of c.places.filter((p) => !is!.places.includes(p)))
       errors.push(`${at}: helps prove ${place} in the regression, but no longer does in the candidate's`);
-    for (const suite of c.suites.filter((s) => !is.some((o) => o.suites.includes(s))))
+    for (const suite of c.suites.filter((s) => !is!.suites.includes(s)))
       errors.push(`${at}: belongs to ${suite} in the regression, but no longer does in the candidate's`);
   }
   return errors;
