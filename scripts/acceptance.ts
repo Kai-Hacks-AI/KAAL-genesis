@@ -14,15 +14,7 @@ import {
   unnamedCases,
 } from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
-import {
-  judge,
-  runCandidate,
-  runTrusted,
-  SKIP_LIMIT,
-  skipArguments,
-  unmatchedCases,
-  unreplayable,
-} from "./regression.js";
+import { caseInventory, judge, runTrusted, SKIP_LIMIT, skipArguments, skippable, unreplayable } from "./regression.js";
 
 /**
  * What a candidate is allowed to give up of the accepted regression, read from
@@ -181,18 +173,6 @@ export function acceptedProtection(
           unnamed.map((at) => `${at}: a case whose title cannot be read, so it cannot be inherited`).join("\n"),
         );
     }
-    // The runner runs a case titled with nothing at all under another name, so no result could be told to be its, and
-    // it could not be kept from running beside the cases kept: its title names nothing that runs.
-    const untitled = repoCases(accepted).filter((c) => c.title === "");
-    if (untitled.length)
-      throw new Error(
-        untitled
-          .map(
-            (c) =>
-              `${c.file}: a case titled with nothing at all, which runs under another name, so it cannot be inherited`,
-          )
-          .join("\n"),
-      );
   } catch (e) {
     return {
       requires: [],
@@ -283,29 +263,6 @@ function escapingLinks(state: string): string[] {
   return found.sort();
 }
 
-/**
- * What the accepted regression runs, in each file a case is excluded from,
- * that its source does not name, or names without it running: an exclusion
- * gives up a case by its title, which is how the runner is told to pass it
- * over, so a test run under that title without being named, such as one
- * registered through `it`, would be given up with it unnamed. The accepted
- * regression refuses any such test as the next regression, so an accepted
- * state holding one is refused. The files are run as the accepted state's own.
- */
-function unaddressed(accepted: string, exclusions: Accepted[]): string[] {
-  const files = [...new Set(exclusions.flatMap((a) => ("case" in a.exclusion ? [a.exclusion.case.file] : [])))].sort();
-  if (!files.length) return [];
-  const unmatched = unmatchedCases(
-    repoCases(accepted).filter((c) => files.includes(c.file)),
-    runCandidate(accepted, files),
-  );
-  return unmatched.length
-    ? [
-        `the accepted regression runs what it does not name beside an excluded case (${unmatched.join(", ")}), so no title can say which case is given up`,
-      ]
-    : [];
-}
-
 /** A requirement named for reading: its kind and name. */
 const requirementName = (r: PlanRequirement) => `${r.kind}: ${r.name}`;
 
@@ -384,7 +341,10 @@ export function acceptance(
     return !own.length || own.some((c) => !excluded(c.file, c.title));
   };
   const running = clean ? caseFiles(accepted).filter(kept) : [];
-  if (running.length) {
+  // A case the runner cannot be told to pass over by its title leaves no replay that could keep it from running; the
+  // inventory below says why such a regression is not one KAAL accepts.
+  const unskippable = stated.accepted.some((a) => "case" in a.exclusion && !skippable(a.exclusion.case.title));
+  if (running.length && !unskippable) {
     const escaping = escapingLinks(candidate);
     if (escaping.length)
       errors.push(
@@ -416,10 +376,18 @@ export function acceptance(
       }
     }
   }
-  // So is one running what it does not name where a case is excluded, even from a file not run at all. Its own run of
-  // those files runs the excluded cases too, so it comes after the replay: nothing they leave, even outside the copy
-  // they run in, can reach what the replay judges.
-  if (clean) errors.push(...unaddressed(accepted, stated.accepted));
+  // Which cases the accepted state has, and which test each address names, is Testing's to say: its inventory, the cases
+  // the state names shown by its own run to be exactly the tests it runs. A regression KAAL accepts has no
+  // disagreement there, and with one, no title could say which test an exclusion gives up. Its own run runs the excluded
+  // cases too, so it comes after the replay: nothing they leave, even outside the copy they run in, can reach what the
+  // replay judges.
+  if (clean) {
+    const own = caseInventory(accepted).errors;
+    if (own.length)
+      errors.push(
+        `the accepted regression's own run does not match the cases it names (${own.join(", ")}), so no title can say which case is given up`,
+      );
+  }
   return { excluded: stated.accepted, requires: plan.requires.map(requirementName), errors };
 }
 

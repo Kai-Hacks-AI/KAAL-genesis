@@ -510,6 +510,13 @@ export function judge(cases: Case[], results: Result[], superseded: Set<string>)
   return [...expected, ...unaccounted];
 }
 
+/**
+ * Whether the runner can be told to pass over a case by its title: not when it
+ * is titled with nothing at all, which the runner runs under another name, and
+ * reads a pattern matching nothing as matching every case of its file.
+ */
+export const skippable = (title: string): boolean => title !== "";
+
 /** The most the runner's command line may spend naming the cases it passes over: well within what every platform carries. */
 export const SKIP_LIMIT = 8192;
 
@@ -630,7 +637,7 @@ export function execute(
   // A case to skip is named by its whole title, so no other case whose title only contains it is skipped with it. An
   // empty title names no case: the runner runs such a case under another name, and reads a pattern matching nothing as
   // matching every case of the file.
-  if (skip.includes("")) throw new Error("a case titled with nothing at all cannot be skipped by its title");
+  if (!skip.every(skippable)) throw new Error("a case titled with nothing at all cannot be skipped by its title");
   const skipping = skipArguments(skip);
   const run = spawnSync(process.execPath, [TSX, "--test", `--test-reporter=${REPORTER}`, ...skipping, ...files], {
     cwd: code,
@@ -841,6 +848,20 @@ export function unmatchedCases(cases: Case[], results: Result[]): string[] {
   return [...ghosts, ...unnamed];
 }
 
+/**
+ * The cases `state` has, as a regression knows them: those its source names,
+ * each shown by the state's own run, by the trusted runner and reporter, to be
+ * one test run under that name, one to one. With that run's results and, where
+ * what it names and what it runs disagree, each disagreement. A regression KAAL
+ * accepts has none, so the cases of an accepted state are exactly those it
+ * names, and a case's address says which test it is.
+ */
+export function caseInventory(state: string): { cases: Case[]; results: Result[]; errors: string[] } {
+  const cases = repoCases(state);
+  const results = runCandidate(state);
+  return { cases, results, errors: unmatchedCases(cases, results) };
+}
+
 /** The candidate's cases that point at a commitment replacing one of the accepted regression's must each pass: a skip proves nothing. */
 function replacementErrors(cases: Case[], results: Result[], successors: Set<string>): string[] {
   const proving = cases.filter((c) => c.places.some((p) => successors.has(p)));
@@ -875,10 +896,9 @@ export function regressionErrors(trusted: string, candidate: string, base: strin
     // Its links are what choose which of its cases protect which commitment, so they must hold from its files.
     ...linkErrors(candidate).map((error) => `as the next accepted regression, ${error}`),
   ];
-  const candidateCases = repoCases(candidate);
-  const candidateResults = runCandidate(candidate);
+  const { cases: candidateCases, results: candidateResults, errors: unmatched } = caseInventory(candidate);
   successor.push(
-    ...unmatchedCases(candidateCases, candidateResults).map((error) => `as the next accepted regression, ${error}`),
+    ...unmatched.map((error) => `as the next accepted regression, ${error}`),
     // As the accepted regression, its cases are replayed by this runner, so each must pass under it, whatever its own npm test did.
     ...candidateResults
       .filter((r) => r.outcome !== "pass" && r.name.split("\\").join("/") !== r.file)

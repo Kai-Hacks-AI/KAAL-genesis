@@ -118,7 +118,7 @@ test("an excluded inherited case is given up, and a commitment only once every c
       candidate("acceptance/shadowed", "regression/candidates/withdrawn", "acceptance/excludes-shadowed"),
     ).errors,
     [
-      'the accepted regression runs what it does not name beside an excluded case (scripts/shadowed.test.ts: "drops" runs but is not named), so no title can say which case is given up',
+      'the accepted regression\'s own run does not match the cases it names (scripts/shadowed.test.ts: "drops" runs but is not named), so no title can say which case is given up',
     ],
   );
   // So it is where every case of that file is excluded, and the file is not run against the candidate at all.
@@ -127,7 +127,7 @@ test("an excluded inherited case is given up, and a commitment only once every c
       shadowed,
       candidate("acceptance/shadowed", "regression/candidates/withdrawn", "acceptance/excludes-shadowed-whole"),
     ).errors.join("\n"),
-    /runs what it does not name beside an excluded case \(scripts\/shadowed\.test\.ts: "drops" runs but is not named\)/,
+    /own run does not match the cases it names \(scripts\/shadowed\.test\.ts: "drops" runs but is not named\)/,
   );
   // The runner passes over, with a case, one whose title differs only by the space around it, so a case is excluded
   // beside such a case only with it.
@@ -168,7 +168,7 @@ test("an excluded inherited case is given up, and a commitment only once every c
       candidate("acceptance/untitled-beside", "regression/candidates/withdrawn", "acceptance/excludes-untitled-beside"),
     ).errors,
     [
-      `${beside}: scripts/beside.test.ts: a case titled with nothing at all, which runs under another name, so it cannot be inherited`,
+      'the accepted regression\'s own run does not match the cases it names (scripts/beside.test.ts: "" is named but does not run, scripts/beside.test.ts: "<anonymous>" runs but is not named), so no title can say which case is given up',
     ],
   );
 
