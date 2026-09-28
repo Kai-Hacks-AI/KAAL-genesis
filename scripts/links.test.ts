@@ -374,6 +374,15 @@ test("a suite says which plans it serves, strictly written, and only plans its s
     "plans/release.md: names commitments, which only the Regression Plan does; it is carried by the suites that serve it",
   ]);
   fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  // Only a section headed exactly so, outside fenced examples, names commitments.
+  for (const text of [
+    "\n## Commitments considered\n\n1. Adding. Stated in `src/add.ts`. Shown by its cases.\n",
+    "\n## Examples\n\n````markdown\n```\n## Commitments\n\n1. Adding. Stated in `src/add.ts`. Shown by its cases.\n````\n",
+  ]) {
+    fs.appendFileSync(path.join(forward, "plans", "release.md"), text);
+    assert.deepEqual(linkErrors(forward), [], text);
+    fs.writeFileSync(path.join(forward, "plans", "release.md"), "# Release\n\nWhat a release must show.\n");
+  }
   // A section a plan begins with is read as any other.
   fs.writeFileSync(path.join(forward, "plans", "bare.md"), "## As runs read it\n\n```yaml\nconditions: linux\n```\n");
   assert.deepEqual(linkErrors(forward), [
@@ -490,6 +499,16 @@ test("a suite says which plans it serves, strictly written, and only plans its s
     "\n## Examples\n\n```markdown\n```draft\n## As runs read it\n\n~~~yaml\nconditions: 5\n~~~\n```\n",
   );
   assert.deepEqual(linkErrors(example), []);
+  // A fence of more than three marks is closed only by as many, so the section after it is still read.
+  const longFence = served("", "conditions: 5");
+  const planPath = path.join(longFence, PLAN);
+  fs.writeFileSync(
+    planPath,
+    fs
+      .readFileSync(planPath, "utf8")
+      .replace("\n## As runs read it", "\n````markdown\n```\nan example\n````\n\n## As runs read it"),
+  );
+  assert.notDeepEqual(linkErrors(longFence), []);
   // Nor a file within it that cannot be read.
   const closedFile = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(closedFile, "test-data", "plan"), { recursive: true });

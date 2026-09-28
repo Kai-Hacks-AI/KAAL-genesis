@@ -3,7 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import type { Conditions, Requirement } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planCommitments, planEntries, planEntryErrors, section, SUITES, suiteError } from "./links.js";
+import { PLAN, planCommitments, planEntries, planEntryErrors, SUITES, suiteError } from "./links.js";
 import { keptAsData } from "./regression.js";
 
 /**
@@ -144,7 +144,7 @@ export type PlanReading = {
  * commitments alone, so one another plan named would be checked by nothing.
  */
 function commitmentsError(repo: string, plan: string): string | undefined {
-  return plan !== PLAN && section(planText(repo, plan), "Commitments")
+  return plan !== PLAN && headedSection(planText(repo, plan), "Commitments")
     ? `${plan}: names commitments, which only the Regression Plan does; it is carried by the suites that serve it`
     : undefined;
 }
@@ -174,30 +174,32 @@ const conditionSets = (value: unknown, what: string): Conditions[] => {
 };
 
 /**
- * The section of a plan's text headed exactly `## As runs read it`, from its
- * heading to the next heading, as it reads outside fenced blocks: a heading
- * that only begins so, or one in a fenced example, is not it, and a line in a
- * fenced block, such as a yaml comment, never ends it. Empty where there is none.
+ * The section of a plan's text headed exactly `## <heading>`, from its heading
+ * to the next heading, as it reads outside fenced blocks: a heading that only
+ * begins so, or one in a fenced example, is not it, and a line in a fenced
+ * block, such as a yaml comment, never ends it. A fence opens with three or
+ * more backticks or tildes and closes only on a line of the same mark, at
+ * least as long, and nothing else. Empty where there is none.
  */
-function runsSection(text: string): string {
+function headedSection(text: string, heading: string): string {
   const lines = text.split("\n");
   let fence: string | undefined;
   let start: number | undefined;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    const marker = /^(```|~~~)/.exec(line)?.[1];
+    const marks = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
     if (fence) {
-      // Only a line that is the fence and nothing else closes it.
-      if (line.trimEnd() === fence) fence = undefined;
+      const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+      if (closing && closing[0] === fence[0] && closing.length >= fence.length) fence = undefined;
       continue;
     }
-    if (marker) {
-      fence = marker;
+    if (marks) {
+      fence = marks;
       continue;
     }
     if (!/^## /.test(line)) continue;
     if (start !== undefined) return `\n${lines.slice(start, i).join("\n")}`;
-    if (line.trimEnd() === `## ${AS_RUNS_READ_IT}`) start = i;
+    if (line.trimEnd() === `## ${heading}`) start = i;
   }
   return start === undefined ? "" : `\n${lines.slice(start).join("\n")}`;
 }
@@ -208,7 +210,7 @@ function runsSection(text: string): string {
  * proof and provides no data. Refused when that block cannot be read so.
  */
 export function readPlan(repo: string, plan: string): PlanReading {
-  const part = runsSection(planText(repo, plan));
+  const part = headedSection(planText(repo, plan), AS_RUNS_READ_IT);
   if (!part) return { conditions: [], proof: {} };
   // The block opens on a line that is exactly its fence and closes on the next line that is only the fence, maybe
   // directly after it opens: a block with nothing in it. A line that only begins as a fence closes nothing.
@@ -380,7 +382,7 @@ export function planErrors(repo: string): string[] {
       // A plan that says how runs read it says it in full: every check it names as showing a commitment is proof it
       // requires. One that does not yet say how runs read it requires no proof of them.
       const text = planText(repo, plan);
-      const checks = runsSection(text) ? planEntries(text).flatMap((e) => e.shownBy ?? []) : [];
+      const checks = headedSection(text, AS_RUNS_READ_IT) ? planEntries(text).flatMap((e) => e.shownBy ?? []) : [];
       for (const check of [...new Set(checks)].filter((c) => c !== "its cases" && !Object.hasOwn(proof, c)))
         errors.push(`${plan}: says ${check} show a commitment, but does not require them as proof`);
     } catch (e) {
