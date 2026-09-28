@@ -25,13 +25,28 @@ export const SKILL_CASES = "skills/*/SKILL.md";
  */
 const SHOWN_BY = ["its cases", "the seal checks"];
 
-/** The section of a plan under `heading`, up to the next `## ` heading. */
+/** The section of a plan headed exactly `## heading`, up to the next `## ` heading, both read outside fenced blocks. */
 export function section(plan: string, heading: string): string {
-  const start = plan.indexOf(`\n## ${heading}`);
-  if (start < 0) return "";
-  const rest = plan.slice(start + 1);
-  const end = rest.indexOf("\n## ", 1);
-  return end < 0 ? rest : rest.slice(0, end);
+  // A section is headed exactly so, wherever it begins, even at the plan's very start, as it reads outside fenced
+  // blocks: a heading that only begins so, or one in a fenced example, is not it, and a line in a fenced block never
+  // ends it. A fence opens with three or more backticks or tildes and closes only on a line of the same mark, at least
+  // as long, and nothing else.
+  const lines = plan.split("\n");
+  let fence: string | undefined;
+  let start: number | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (fence) {
+      const closing = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+      if (closing && closing[0] === fence[0] && closing.length >= fence.length) fence = undefined;
+      continue;
+    }
+    fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (fence || !/^## /.test(line)) continue;
+    if (start !== undefined) return lines.slice(start, i).join("\n");
+    if (line.trimEnd() === `## ${heading}`) start = i;
+  }
+  return start === undefined ? "" : lines.slice(start).join("\n");
 }
 
 /** The place each commitment of a plan is stated in, in the plan's order. */
