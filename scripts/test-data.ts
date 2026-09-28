@@ -180,10 +180,12 @@ export function featureState(...layers: string[]): string {
  * directory. Those in test-data/acceptance are: `protected`, a Regression Plan
  * that protects adding, also shown by the seal checks, greeting, and greeting
  * by name, on Linux and on Windows, served by the suite `suites/plain.md`;
- * `unnamed`, `moved`, `replaced`, `windowless`, `unsealed` and `unserved`,
- * each that protection with one piece of it no longer required: greeting by
- * name, greeting by name at its old place, greeting with hello, Windows, the
- * seal checks of adding, and the plain suite's service; `extended`, one more
+ * `unnamed`, `moved`, `replaced`, `windowless`, `unsealed`, `unserved` and
+ * `sealed-elsewhere`, each that protection with one piece of it no longer
+ * required: greeting by name, greeting by name at its old place, greeting with
+ * hello, Windows, the seal checks showing adding, the plain suite's service,
+ * and the seal checks on Linux, required on Windows instead; `sealless`, the
+ * seal checks no longer required at all; `extended`, one more
  * Requirement newly named and proven; `accepts-…`, a record accepting the
  * loss of the like-named piece; `overreaching`, one also accepting the loss
  * of adding, which nothing loses; `reasonless`, one that says not why;

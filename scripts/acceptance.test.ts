@@ -26,6 +26,7 @@ test("a candidate reduces each piece of protection the accepted Regression Plan 
     [["acceptance/windowless"], 'conditions: {"platform":"win32"}'],
     [["acceptance/unsealed"], "proof: the seal checks of src/add.ts"],
     [["acceptance/unserved"], "suite: suites/plain.md"],
+    [["acceptance/sealed-elsewhere"], 'proof: the seal checks under {"platform":"linux"}'],
     [["feature/moved", "acceptance/moved"], `commitment: ${BY_NAME}`],
     [
       ["regression/candidates/replaced", "acceptance/replaced"],
@@ -33,6 +34,11 @@ test("a candidate reduces each piece of protection the accepted Regression Plan 
     ],
   ] as [string[], string][])
     assert.deepEqual(reduced(now, candidate(...layers)), { reductions: [reduction], errors: [] }, layers.join(" + "));
+  // A requirement lost is one reduction, beside what else the candidate's plan no longer says of what it keeps.
+  assert.deepEqual(reduced(now, candidate("acceptance/sealless")), {
+    reductions: ["proof: the seal checks of src/add.ts", "proof: the seal checks"],
+    errors: [],
+  });
 });
 
 // Why: requirements/inherited-reductions/requirement.md
@@ -57,9 +63,14 @@ test("what a candidate adds, rewrites in code, or rearranges in its testing redu
   assert.deepEqual(reduced(candidate("acceptance/later-node"), candidate("acceptance/node-22")).reductions, [
     'conditions: {"platform":"linux","runtime":"node v22.4"}',
   ]);
+  // Required under no set, each requirement loses each set it had; one nothing is required under any more is lost
+  // once, and one the seal checks are still required under is lost only by what no longer requires it.
   assert.deepEqual(reduced(now, unconditioned).reductions, [
-    'conditions: {"platform":"linux"}',
+    'commitment: src/add.ts under {"platform":"linux"}',
     'conditions: {"platform":"win32"}',
+    'commitment: brain/learning/k/26/01/01/01/nodes/greeting.md under {"platform":"linux"}',
+    `commitment: ${BY_NAME} under {"platform":"linux"}`,
+    'suite: suites/plain.md under {"platform":"linux"}',
   ]);
 });
 
@@ -100,7 +111,7 @@ test("silence retains: a reduction no record the candidate adds accepts is refus
 });
 
 // Why: requirements/accepted-reductions/requirement.md
-test("a reduction is accepted by an entry of a record the candidate adds that names it and says why", () => {
+test("a reduction is accepted by an entry of a record the candidate adds that names it, or the whole it is part of, and says why", () => {
   const now = accepted();
   for (const [layers, reduction] of [
     [["acceptance/unnamed", "acceptance/accepts-unnamed"], `commitment: ${BY_NAME}`],
@@ -111,10 +122,18 @@ test("a reduction is accepted by an entry of a record the candidate adds that na
     const result = acceptance(now, candidate(...layers));
     assert.deepEqual(result.errors, [], layers.join(" + "));
     assert.deepEqual(
-      result.accepted.map((a) => [named(a.protection), a.record]),
+      result.accepted.map((a) => [named(a.reduction), a.record]),
       [[reduction, `acceptance/${recordOf(layers[1]!)}`]],
     );
     assert.ok(result.accepted.every((a) => a.because.length > 0));
+  }
+  // An entry accepts the whole of what it names: all of a proof, or a set of conditions wherever it is lost.
+  for (const layers of [
+    ["acceptance/sealless", "acceptance/accepts-sealless"],
+    ["acceptance/unconditioned", "acceptance/accepts-unconditioned"],
+  ]) {
+    assert.ok(reduced(now, candidate(layers[0]!)).reductions.length > 1, layers[0]);
+    assert.deepEqual(acceptance(now, candidate(...layers)).errors, [], layers.join(" + "));
   }
 });
 
@@ -190,7 +209,7 @@ test("a replacement is two decisions: Feature names what the candidate newly pro
     assert.equal(acceptance(now, without).errors.length, 1);
     assert.deepEqual(acceptance(now, withRecord).errors, []);
     assert.deepEqual(
-      acceptance(now, withRecord).accepted.map((a) => named(a.protection)),
+      acceptance(now, withRecord).accepted.map((a) => named(a.reduction)),
       [`commitment: ${lost}`],
     );
   }
@@ -210,8 +229,8 @@ test("what a state protects or accepts through a link is not its own, and is ref
   const linkedSuites = candidate();
   fs.rmSync(path.join(linkedSuites, "suites"), { recursive: true });
   fs.symlinkSync(path.join(elsewhere, "suites"), path.join(linkedSuites, "suites"), "junction");
-  assert.match(reduced(now, linkedSuites).errors.join("\n"), /suites: reached through a link/);
-  assert.match(reduced(linkedSuites, now).errors.join("\n"), /suites: reached through a link/);
+  assert.match(reduced(now, linkedSuites).errors.join("\n"), /suites\/plain\.md: a suite stated through a link/);
+  assert.match(reduced(linkedSuites, now).errors.join("\n"), /suites\/plain\.md: a suite stated through a link/);
   // A place outside the state, named plainly or by a wildcard, is never read, in either state.
   const beside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-beside-"));
   const outside = path.join(beside, "state");
@@ -219,8 +238,14 @@ test("what a state protects or accepts through a link is not its own, and is ref
   fs.mkdirSync(path.join(beside, "shared"));
   fs.writeFileSync(path.join(beside, "shared", "file.md"), "shared\n");
   for (const errors of [reduced(now, outside).errors, reduced(outside, now).errors]) {
-    assert.match(errors.join("\n"), /\.\.\/shared\/file\.md: not a place inside the state/);
-    assert.match(errors.join("\n"), /\.\.\/shared\/\*\.md: not a place inside the state/);
+    assert.match(
+      errors.join("\n"),
+      /\.\.\/shared\/file\.md: the plan names it, but it is not a place inside the repository/,
+    );
+    assert.match(
+      errors.join("\n"),
+      /\.\.\/shared\/\*\.md: the plan names it, but it is not a place inside the repository/,
+    );
   }
   // A file a wildcard names, reached through a link, however its place reads.
   const linkedSkill = candidate("acceptance/skilled");
@@ -235,7 +260,10 @@ test("what a state protects or accepts through a link is not its own, and is ref
   const linkedSkills = candidate("acceptance/skilled", "acceptance/skill-c");
   fs.renameSync(path.join(linkedSkills, "skills"), path.join(elsewhere, "skills"));
   fs.symlinkSync(path.join(elsewhere, "skills"), path.join(linkedSkills, "skills"), "junction");
-  assert.match(reduced(skilled, linkedSkills).errors.join("\n"), /: skills: a commitment stated through a link/);
+  assert.match(
+    reduced(skilled, linkedSkills).errors.join("\n"),
+    /skills\/\*\/SKILL\.md: the plan names it, but it is not a place inside the repository/,
+  );
   // A Regression Plan kept elsewhere; a file link needs privileges on Windows, so this is shown where one can be made.
   if (process.platform !== "win32") {
     const linkedPlan = candidate();
@@ -247,8 +275,14 @@ test("what a state protects or accepts through a link is not its own, and is ref
     const linkedCode = candidate();
     fs.rmSync(path.join(linkedCode, "src", "add.ts"));
     fs.symlinkSync(path.join(elsewhere, "src", "add.ts"), path.join(linkedCode, "src", "add.ts"));
-    assert.match(reduced(now, linkedCode).errors.join("\n"), /src\/add\.ts: a commitment stated through a link/);
-    assert.match(reduced(linkedCode, now).errors.join("\n"), /src\/add\.ts: a commitment stated through a link/);
+    assert.match(
+      reduced(now, linkedCode).errors.join("\n"),
+      /src\/add\.ts: the plan names it, but it is not a place inside the repository/,
+    );
+    assert.match(
+      reduced(linkedCode, now).errors.join("\n"),
+      /src\/add\.ts: the plan names it, but it is not a place inside the repository/,
+    );
     // One suite reached through a link, which would otherwise be passed over as serving nothing.
     const linkedSuite = candidate();
     fs.rmSync(path.join(linkedSuite, "suites", "plain.md"));

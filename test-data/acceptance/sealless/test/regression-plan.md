@@ -20,7 +20,4 @@ Derived from: the accepted regression `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 conditions:
   - { platform: linux }
   - { platform: win32 }
-proof:
-  the seal checks:
-    - { platform: linux }
 ```

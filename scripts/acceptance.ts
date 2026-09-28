@@ -4,63 +4,64 @@ import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { type Conditions, satisfies } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planCommitments, planEntries, SUITES, suiteError } from "./links.js";
-import { kindAt, planError, readPlan, suitePlans } from "./plans.js";
+import { PLAN, planEntries } from "./links.js";
+import { kindAt, type PlanRequirement, planRequirements } from "./plans.js";
 
 /**
  * What a candidate would reduce of the accepted regression, and which of those
  * reductions it explicitly accepts, read from both states' files alone: both
  * are directories, and nothing here asks Git or GitHub which is which. What
- * the accepted regression protects is what its Regression Plan requires: the
- * commitments it names, each file a place it names by a wildcard, the checks
- * it says show each of them, the sets of conditions it must be shown under,
- * and the suites that serve it. A reduction is any of those the candidate's
- * Regression Plan no longer requires. A candidate accepts a reduction only by
- * naming it, and why, in an acceptance record it adds; whatever it does not
- * name, it retains, so silence never accepts a reduction. What Acceptance is
- * for KAAL is stated in brain/learning/genesis/26/09/28/03/nodes/acceptance.md.
+ * the accepted regression protects is what its Regression Plan requires, read
+ * as KAAL reads any plan's requirements: its commitments, the suites that serve
+ * it and its proof other than cases, each under the sets of conditions it is
+ * required under; with what the plan says shows each commitment, and each file
+ * a wildcard commitment covers. A reduction is any of those the candidate's
+ * Regression Plan no longer requires. Cases are evidence for those
+ * requirements, not requirements, so they are never a reduction. A candidate
+ * accepts a reduction only by naming it, or the whole it is part of, and why,
+ * in an acceptance record it adds; whatever it does not name, it retains, so
+ * silence never accepts a reduction. What Acceptance is for KAAL is stated in
+ * brain/learning/genesis/26/09/28/03/nodes/acceptance.md.
  */
 
 /** Where KAAL keeps its acceptance records: one file each, `acceptance/<name>.md`, never rewritten. */
 export const ACCEPTANCE = "acceptance";
 const REQUIREMENT_PLACE = /^requirements\/[^/]+\/requirement\.md$/;
 
-/** One piece of the accepted regression's protection: a commitment, a check showing one, a set of conditions, or a suite. */
-export type Protection =
-  | { commitment: string; within?: string }
-  | { proof: string; of: string }
-  | { conditions: Conditions }
-  | { suite: string };
+/**
+ * A reduction of what the accepted Regression Plan requires, one of: a
+ * requirement it no longer requires at all; one it no longer requires under a
+ * set of conditions; a check it no longer says shows a commitment; a file a
+ * wildcard commitment no longer covers; or a set of conditions it no longer
+ * requires anything under.
+ */
+export type Reduction =
+  | { kind: PlanRequirement["kind"]; name: string; under?: Conditions; of?: string; within?: string }
+  | { kind: "conditions"; conditions: Conditions };
 
-/** An entry of an acceptance record: the protection it accepts losing, and why. */
-export type Accepted = { protection: Protection; because: string; record: string };
+/** An entry of an acceptance record: the reduction it accepts, and why. */
+export type Accepted = { reduction: Reduction; because: string; record: string };
 
-/** A protection named the same way however it was written, so a reduction and its acceptance can be matched. */
-export function named(p: Protection): string {
-  if ("commitment" in p) return `commitment: ${p.commitment}`;
-  if ("proof" in p) return `proof: ${p.proof} of ${p.of}`;
-  if ("suite" in p) return `suite: ${p.suite}`;
-  const sorted = Object.fromEntries(Object.entries(p.conditions).sort(([a], [b]) => a.localeCompare(b)));
-  return `conditions: ${JSON.stringify(sorted)}`;
+const setName = (c: Conditions) =>
+  JSON.stringify(Object.fromEntries(Object.entries(c).sort(([a], [b]) => a.localeCompare(b))));
+
+/** A reduction named the same way however it was written, so it can be reported and matched. */
+export function named(r: Reduction): string {
+  if (r.kind === "conditions") return `conditions: ${setName(r.conditions)}`;
+  if (r.of !== undefined) return `proof: ${r.name} of ${r.of}`;
+  return `${r.kind}: ${r.name}${r.under ? ` under ${setName(r.under)}` : ""}`;
 }
 
-/**
- * Why the commitment `state` states at `place`, a file, is not stated there by
- * the state's own files, if it is not: nothing is there, it is no file, or it
- * is reached through a link, anywhere along its path.
- */
-function placeError(state: string, place: string): string | undefined {
-  const at = path.join(state, place);
-  if (!fs.lstatSync(at, { throwIfNoEntry: false })) return `${state}: ${place}: nothing is stated there`;
-  let real: string;
-  try {
-    real = path.relative(fs.realpathSync(state), fs.realpathSync(at)).split(path.sep).join("/");
-  } catch {
-    return `${state}: ${place}: cannot be read`;
-  }
-  if (real !== place) return `${state}: ${place}: a commitment stated through a link`;
-  if (!fs.statSync(at).isFile()) return `${state}: ${place}: no file`;
-  return undefined;
+/** Whether the entry `e` accepts the reduction `r`: exactly it, or the whole of what `r` reduces a part of. */
+function covers(e: Reduction, r: Reduction): boolean {
+  if (e.kind === "conditions")
+    return r.kind === "conditions"
+      ? setName(r.conditions) === setName(e.conditions)
+      : !!r.under && setName(r.under) === setName(e.conditions);
+  if (r.kind === "conditions") return false;
+  if (e.kind === "commitment") return r.kind === "commitment" && (r.name === e.name || r.within === e.name);
+  if (e.kind === "proof" && e.of !== undefined) return r.kind === "proof" && r.name === e.name && r.of === e.of;
+  return r.kind === e.kind && r.name === e.name;
 }
 
 /**
@@ -98,138 +99,127 @@ function expanded(state: string, place: string, errors: string[]): string[] {
   return found.sort();
 }
 
-/** The Regression Plan's text as its sections are read, or why `state` states none of its own. */
-function planOf(state: string): { text?: string; error?: string } {
-  if (!fs.lstatSync(path.join(state, PLAN), { throwIfNoEntry: false })) return {};
-  const wrong = planError(state, PLAN);
-  if (wrong) return { error: `${state}: ${wrong}` };
-  return { text: `\n${fs.readFileSync(path.join(state, PLAN), "utf8").replace(/\r\n/g, "\n")}` };
-}
+/** A requirement of a Regression Plan as Acceptance reads it: what generic Plan reads, with what its plan says shows a commitment, and the files a wildcard commitment covers. */
+type Required = PlanRequirement & { shownBy: string[]; files: string[] };
 
 /**
- * Everything `state`'s Regression Plan protects, by name, in its order, and
- * why it cannot be read from the state's own files, if it cannot. A state
- * without a Regression Plan protects nothing.
+ * What `state`'s Regression Plan requires, as KAAL reads any plan's
+ * requirements, so what the links check refuses of it, such as a place outside
+ * the state or a suite reached through a link, is refused here too; with, for
+ * each commitment, the checks other than cases its plan says show it, and the
+ * files a wildcard place covers. A state without a Regression Plan requires
+ * nothing.
  */
-export function protection(state: string): { protects: Protection[]; errors: string[] } {
-  const { text, error } = planOf(state);
-  if (error) return { protects: [], errors: [error] };
-  if (text === undefined) return { protects: [], errors: [] };
-  const errors: string[] = [];
-  const protects: Protection[] = [];
-  for (const place of planCommitments(text)) {
-    // A place is a path inside the state, of plain segments with * the one wildcard, as the links check reads places:
-    // never absolute, never . or .., so neither it nor what a wildcard lists can lie outside the state.
-    if (!/^[\w*-][\w.*-]*(\/[\w*-][\w.*-]*)*$/.test(place) || place.split("/").some((s) => s === "." || s === "..")) {
-      errors.push(`${state}: ${place}: not a place inside the state`);
-      continue;
-    }
-    protects.push({ commitment: place });
-    // A place named by a wildcard, such as each skill's SKILL.md, protects each file it names, each on its own.
-    const files = place.includes("*") ? expanded(state, place, errors) : [place];
-    for (const file of files) {
-      // A commitment stated through a link is not the state's own, however its name reads.
-      const wrong = placeError(state, file);
-      if (wrong) errors.push(wrong);
-      if (file !== place) protects.push({ commitment: file, within: place });
-    }
-  }
-  for (const { place, shownBy } of planEntries(text))
-    for (const check of (shownBy ?? []).filter((c) => c !== "its cases"))
-      if (place) protects.push({ proof: check, of: place });
+export function required(state: string): { required: Required[]; errors: string[] } {
+  if (!fs.lstatSync(path.join(state, PLAN), { throwIfNoEntry: false })) return { required: [], errors: [] };
+  let requirements: PlanRequirement[];
   try {
-    // A set naming no condition is met by any run, as no set at all is, so every other set implies it: requiring it
-    // protects nothing another set, or none, does not, and it is never a reduction.
-    for (const conditions of readPlan(state, PLAN).conditions)
-      if (Object.keys(conditions).length) protects.push({ conditions });
+    requirements = planRequirements(state, PLAN);
   } catch (e) {
-    errors.push(`${state}: ${e instanceof Error ? e.message : String(e)}`);
+    return { required: [], errors: [`${state}: ${e instanceof Error ? e.message : String(e)}`] };
   }
-  // Suites reached through a link are not the state's own, and would be read as serving nothing: the directory, or any
-  // one suite in it, which would otherwise be passed over as serving no plan.
-  const suites = path.join(state, SUITES);
-  const suitesKind = fs.lstatSync(suites, { throwIfNoEntry: false });
-  if (suitesKind?.isSymbolicLink()) errors.push(`${state}: ${SUITES}: reached through a link`);
-  else if (suitesKind?.isDirectory())
-    for (const name of fs.readdirSync(suites).sort()) {
-      const wrong = suiteError(state, `${SUITES}/${name}`);
-      if (wrong) errors.push(`${state}: ${wrong}`);
-    }
-  for (const { suite, serves } of suitePlans(state)) if (serves.includes(PLAN)) protects.push({ suite });
-  return { protects, errors };
+  const entries = planEntries(`\n${fs.readFileSync(path.join(state, PLAN), "utf8").replace(/\r\n/g, "\n")}`);
+  const errors: string[] = [];
+  return {
+    required: requirements.map((r) => ({
+      ...r,
+      // Required under no set of conditions, a requirement is required under any.
+      under: r.under.length ? r.under : [{}],
+      shownBy:
+        r.kind === "commitment"
+          ? (entries.find((e) => e.place === r.name)?.shownBy ?? []).filter((c) => c !== "its cases")
+          : [],
+      files: r.kind === "commitment" && r.name.includes("*") ? expanded(state, r.name, errors) : [],
+    })),
+    errors,
+  };
 }
 
 /**
- * What `candidate` would reduce of the protection `accepted` states: each
- * protection the accepted Regression Plan requires that the candidate's no
- * longer does, in the accepted plan's order; and what cannot be accepted at
- * all: a Requirement the accepted plan names that the candidate still names
- * but has rewritten, since a Requirement never changes, so its inherited
- * meaning would be lost at a place that seems to keep it. Only the two
- * Regression Plans, and those Requirements, are read, never a diff of files:
- * what a candidate adds, moves or rearranges reduces nothing unless the
- * candidate's plan stops requiring something.
+ * What `candidate` would reduce of what `accepted`'s Regression Plan requires,
+ * in the accepted plan's order: each requirement the candidate's plan no longer
+ * requires, or no longer under a set of conditions, as a plan's evidence judges
+ * runs, so a stricter set, such as a later version of the same runtime, keeps
+ * it; each check it no longer says shows a commitment it keeps; and each file
+ * a wildcard it keeps no longer covers. A requirement lost is one reduction,
+ * not one for each of its parts, and a set of conditions nothing is required
+ * under any more is one reduction, not one for each requirement. What cannot
+ * be accepted at all is refused: a Requirement the accepted plan names, removed
+ * or rewritten, since a Requirement never changes and an accepted loss leaves
+ * its record as history. Cases are not read: they are evidence for what is
+ * required, so moving, merging or rewriting them reduces nothing it requires.
  */
-export function reductions(accepted: string, candidate: string): { reductions: Protection[]; errors: string[] } {
+export function reductions(accepted: string, candidate: string): { reductions: Reduction[]; errors: string[] } {
   for (const state of [accepted, candidate])
     if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
-  const before = protection(accepted);
-  const after = protection(candidate);
+  const before = required(accepted);
+  const after = required(candidate);
   const errors = [...before.errors, ...after.errors];
   if (errors.length) return { reductions: [], errors };
-  const kept = new Set(after.protects.map(named));
-  // A set of conditions is kept by any set of the candidate every run meeting which meets it too, as a plan's evidence
-  // judges runs: the same set, or a stricter one, such as a later version of the same runtime. With none, the candidate
-  // requires its testing under any conditions, which keeps only what requires none.
-  const sets = after.protects.flatMap((p) => ("conditions" in p ? [p.conditions] : []));
-  const keeps = (p: Protection) =>
-    "conditions" in p ? (sets.length ? sets : [{}]).some((c) => satisfies(c, p.conditions)) : kept.has(named(p));
-  const lost = new Set(before.protects.filter((p) => !keeps(p)).map(named));
-  // A file a wildcard names is reduced on its own only while the candidate still names the wildcard: losing the whole
-  // commitment is one reduction, not one for each file it covered.
-  const reduced = before.protects.filter(
-    (p) => lost.has(named(p)) && !("within" in p && p.within && lost.has(`commitment: ${p.within}`)),
-  );
+  const sets = after.required.flatMap((r) => r.under);
+  const found: Reduction[] = [];
+  const dropped = new Set<string>();
+  for (const r of before.required) {
+    const kept = after.required.find((c) => c.kind === r.kind && c.name === r.name);
+    if (!kept) {
+      found.push({ kind: r.kind, name: r.name });
+      continue;
+    }
+    for (const set of r.under.filter((s) => !kept.under.some((c) => satisfies(c, s)))) {
+      // A set the candidate requires nothing under any more is one reduction of the plan's conditions.
+      if (sets.some((c) => satisfies(c, set))) found.push({ kind: r.kind, name: r.name, under: set });
+      else if (!dropped.has(setName(set))) {
+        dropped.add(setName(set));
+        found.push({ kind: "conditions", conditions: set });
+      }
+    }
+    for (const check of r.shownBy.filter((c) => !kept.shownBy.includes(c)))
+      found.push({ kind: "proof", name: check, of: r.name });
+    for (const file of r.files.filter((f) => !kept.files.includes(f)))
+      found.push({ kind: "commitment", name: file, within: r.name });
+  }
   // A Requirement the accepted regression protects stays as it was, whether or not the candidate still names it: an
   // accepted loss lets its commitment leave the regression, never its record, which is history.
-  for (const p of before.protects) {
-    if (!("commitment" in p) || !REQUIREMENT_PLACE.test(p.commitment)) continue;
-    const is = path.join(candidate, p.commitment);
-    if (!fs.lstatSync(is, { throwIfNoEntry: false }))
+  for (const r of before.required) {
+    if (r.kind !== "commitment" || !REQUIREMENT_PLACE.test(r.name)) continue;
+    const is = path.join(candidate, r.name);
+    const kind = fs.lstatSync(is, { throwIfNoEntry: false });
+    if (!kind)
       errors.push(
-        `${p.commitment}: removed, which no acceptance can accept: a Requirement is history, so its record stays when the loss of its commitment is accepted`,
+        `${r.name}: removed, which no acceptance can accept: a Requirement is history, so its record stays when the loss of its commitment is accepted`,
       );
-    else if (placeError(candidate, p.commitment))
-      errors.push(`${placeError(candidate, p.commitment)}, so whether its record was kept cannot be read`);
-    else if (!fs.readFileSync(path.join(accepted, p.commitment)).equals(fs.readFileSync(is)))
+    else if (!kind.isFile())
+      errors.push(`${r.name}: not a file of its own in the candidate, so whether its record was kept cannot be read`);
+    else if (!fs.readFileSync(path.join(accepted, r.name)).equals(fs.readFileSync(is)))
       errors.push(
-        `${p.commitment}: rewritten, which no acceptance can accept: a Requirement never changes, so state the new commitment as a new Requirement and accept losing this one`,
+        `${r.name}: rewritten, which no acceptance can accept: a Requirement never changes, so state the new commitment as a new Requirement and accept losing this one`,
       );
   }
-  return { reductions: reduced, errors };
+  return { reductions: found, errors };
 }
 
-/** The entry of an acceptance record as written, read as the protection it names, or why it names none. */
-function entryOf(entry: unknown): Protection | string {
+/** The entry of an acceptance record as written, read as the reduction it accepts, or why it names none. */
+function entryOf(entry: unknown): Reduction | string {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "not a mapping";
   const { because: _, ...rest } = entry as Record<string, unknown>;
-  const keys = Object.keys(rest).sort();
+  const keys = Object.keys(rest).sort().join();
   const text = (v: unknown) => typeof v === "string" && v.trim() !== "";
-  if (keys.join() === "commitment" && text(rest.commitment)) return { commitment: rest.commitment as string };
-  if (keys.join() === "suite" && text(rest.suite)) return { suite: rest.suite as string };
-  if (keys.join() === "of,proof" && text(rest.proof) && text(rest.of))
-    return { proof: rest.proof as string, of: rest.of as string };
+  if (keys === "commitment" && text(rest.commitment)) return { kind: "commitment", name: rest.commitment as string };
+  if (keys === "suite" && text(rest.suite)) return { kind: "suite", name: rest.suite as string };
+  if (keys === "proof" && text(rest.proof)) return { kind: "proof", name: rest.proof as string };
+  if (keys === "of,proof" && text(rest.proof) && text(rest.of))
+    return { kind: "proof", name: rest.proof as string, of: rest.of as string };
   const c = rest.conditions;
   if (
-    keys.join() === "conditions" &&
+    keys === "conditions" &&
     c &&
     typeof c === "object" &&
     !Array.isArray(c) &&
     Object.keys(c).length &&
     Object.values(c).every((v) => typeof v === "string")
   )
-    return { conditions: c as Conditions };
-  return "names no protection: exactly one of commitment, suite, conditions, or proof with of";
+    return { kind: "conditions", conditions: c as Conditions };
+  return "names no reduction: exactly one of commitment, suite, proof (maybe with of), or conditions";
 }
 
 /**
@@ -283,12 +273,12 @@ function accepts(place: string, bytes: Buffer): { accepted: Accepted[]; errors: 
   const accepted: Accepted[] = [];
   const errors: string[] = [];
   list.forEach((entry, i) => {
-    const protection = entryOf(entry);
+    const reduction = entryOf(entry);
     const because = (entry as { because?: unknown } | null)?.because;
-    if (typeof protection === "string") errors.push(`${place}: entry ${i + 1} ${protection}`);
+    if (typeof reduction === "string") errors.push(`${place}: entry ${i + 1} ${reduction}`);
     else if (typeof because !== "string" || !because.trim())
       errors.push(`${place}: entry ${i + 1} says not why its loss is accepted, as because: <why>`);
-    else accepted.push({ protection, because: because.trim(), record: place });
+    else accepted.push({ reduction, because: because.trim(), record: place });
   });
   return { accepted, errors };
 }
@@ -333,20 +323,20 @@ export function acceptedReductions(accepted: string, candidate: string): { accep
 export function acceptance(
   accepted: string,
   candidate: string,
-): { reductions: Protection[]; accepted: Accepted[]; errors: string[] } {
+): { reductions: Reduction[]; accepted: Accepted[]; errors: string[] } {
   const observed = reductions(accepted, candidate);
   const stated = acceptedReductions(accepted, candidate);
   const errors = [...observed.errors, ...stated.errors];
-  const reduced = new Set(observed.reductions.map(named));
   const seen = new Set<string>();
   for (const a of stated.accepted) {
-    const n = named(a.protection);
+    const n = named(a.reduction);
     if (seen.has(n)) errors.push(`${a.record}: accepts losing ${n} again`);
-    else if (!reduced.has(n)) errors.push(`${a.record}: accepts losing ${n}, which the candidate does not reduce`);
+    else if (!observed.reductions.some((r) => covers(a.reduction, r)))
+      errors.push(`${a.record}: accepts losing ${n}, which the candidate does not reduce`);
     seen.add(n);
   }
   for (const r of observed.reductions)
-    if (!seen.has(named(r)))
+    if (!stated.accepted.some((a) => covers(a.reduction, r)))
       errors.push(`${named(r)}: the candidate reduces it, but no acceptance record it adds accepts that`);
   return { reductions: observed.reductions, accepted: stated.accepted, errors };
 }
@@ -364,7 +354,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           {
             reductions: result.reductions.map(named),
             accepted: result.accepted.map((a) => ({
-              reduction: named(a.protection),
+              reduction: named(a.reduction),
               because: a.because,
               record: a.record,
             })),
