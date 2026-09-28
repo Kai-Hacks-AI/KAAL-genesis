@@ -44,6 +44,59 @@ export function named(p: Protection): string {
   return `conditions: ${JSON.stringify(sorted)}`;
 }
 
+/**
+ * Why the commitment `state` states at `place`, a file, is not stated there by
+ * the state's own files, if it is not: nothing is there, it is no file, or it
+ * is reached through a link, anywhere along its path.
+ */
+function placeError(state: string, place: string): string | undefined {
+  const at = path.join(state, place);
+  if (!fs.lstatSync(at, { throwIfNoEntry: false })) return `${state}: ${place}: nothing is stated there`;
+  let real: string;
+  try {
+    real = path.relative(fs.realpathSync(state), fs.realpathSync(at)).split(path.sep).join("/");
+  } catch {
+    return `${state}: ${place}: cannot be read`;
+  }
+  if (real !== place) return `${state}: ${place}: a commitment stated through a link`;
+  if (!fs.statSync(at).isFile()) return `${state}: ${place}: no file`;
+  return undefined;
+}
+
+/**
+ * The files `place`, a path whose segments may hold the wildcard *, names in
+ * `state`, sorted. Each segment with a wildcard is matched against the names
+ * its directory lists, never a hidden one unless the segment is, and any match
+ * reached through a link is refused into `errors` rather than read through or
+ * passed over, as a glob would pass it over.
+ */
+function expanded(state: string, place: string, errors: string[]): string[] {
+  let found = [""];
+  for (const segment of place.split("/")) {
+    if (!segment.includes("*")) {
+      found = found.map((at) => (at ? `${at}/${segment}` : segment));
+      continue;
+    }
+    const matches = new RegExp(`^${segment.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`);
+    found = found.flatMap((at) => {
+      const dir = path.join(state, at);
+      if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
+      return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((e) => matches.test(e.name) && (segment.startsWith(".") || !e.name.startsWith(".")))
+        .flatMap((e) => {
+          const rel = at ? `${at}/${e.name}` : e.name;
+          if (e.isSymbolicLink()) {
+            errors.push(`${state}: ${rel}: a commitment stated through a link`);
+            return [];
+          }
+          return [rel];
+        });
+    });
+  }
+  return found.filter((f) => fs.lstatSync(path.join(state, f), { throwIfNoEntry: false })).sort();
+}
+
 /** The Regression Plan's text as its sections are read, or why `state` states none of its own. */
 function planOf(state: string): { text?: string; error?: string } {
   if (!fs.lstatSync(path.join(state, PLAN), { throwIfNoEntry: false })) return {};
@@ -66,12 +119,13 @@ export function protection(state: string): { protects: Protection[]; errors: str
   for (const place of planCommitments(text)) {
     protects.push({ commitment: place });
     // A place named by a wildcard, such as each skill's SKILL.md, protects each file it names, each on its own.
-    if (place.includes("*"))
-      for (const file of fs
-        .globSync(place, { cwd: state })
-        .map((f) => f.split(path.sep).join("/"))
-        .sort())
-        protects.push({ commitment: file, within: place });
+    const files = place.includes("*") ? expanded(state, place, errors) : [place];
+    for (const file of files) {
+      // A commitment stated through a link is not the state's own, however its name reads.
+      const wrong = placeError(state, file);
+      if (wrong) errors.push(wrong);
+      if (file !== place) protects.push({ commitment: file, within: place });
+    }
   }
   for (const { place, shownBy } of planEntries(text))
     for (const check of (shownBy ?? []).filter((c) => c !== "its cases"))
@@ -120,15 +174,20 @@ export function reductions(accepted: string, candidate: string): { reductions: P
   const reduced = before.protects.filter(
     (p) => lost.has(named(p)) && !("within" in p && p.within && lost.has(`commitment: ${p.within}`)),
   );
+  // A Requirement the accepted regression protects stays as it was, whether or not the candidate still names it: an
+  // accepted loss lets its commitment leave the regression, never its record, which is history.
   for (const p of before.protects) {
-    if (!("commitment" in p) || !REQUIREMENT_PLACE.test(p.commitment) || !kept.has(named(p))) continue;
-    const [was, is] = [accepted, candidate].map((s) => path.join(s, p.commitment));
-    const file = (at: string) => fs.lstatSync(at, { throwIfNoEntry: false })?.isFile();
-    if (!file(was) || !file(is))
-      errors.push(`${p.commitment}: not a file of its own in both states, so whether it was kept cannot be read`);
-    else if (!fs.readFileSync(was).equals(fs.readFileSync(is)))
+    if (!("commitment" in p) || !REQUIREMENT_PLACE.test(p.commitment)) continue;
+    const is = path.join(candidate, p.commitment);
+    if (!fs.lstatSync(is, { throwIfNoEntry: false }))
       errors.push(
-        `${p.commitment}: rewritten in place, which no acceptance can accept: a Requirement never changes, so state the new commitment as a new Requirement and accept losing this one`,
+        `${p.commitment}: removed, which no acceptance can accept: a Requirement is history, so its record stays when the loss of its commitment is accepted`,
+      );
+    else if (placeError(candidate, p.commitment))
+      errors.push(`${placeError(candidate, p.commitment)}, so whether its record was kept cannot be read`);
+    else if (!fs.readFileSync(path.join(accepted, p.commitment)).equals(fs.readFileSync(is)))
+      errors.push(
+        `${p.commitment}: rewritten, which no acceptance can accept: a Requirement never changes, so state the new commitment as a new Requirement and accept losing this one`,
       );
   }
   return { reductions: reduced, errors };

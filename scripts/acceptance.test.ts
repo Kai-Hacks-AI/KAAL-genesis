@@ -53,11 +53,20 @@ test("a place named by a wildcard is reduced once when dropped, and file by file
 });
 
 // Why: requirements/inherited-reductions/requirement.md
-test("a Requirement the accepted plan names, rewritten in place, is a loss no acceptance can accept", () => {
+test("a Requirement the accepted plan names stays as it was, rewritten or removed, even once the loss of its commitment is accepted", () => {
   const now = accepted();
-  const why = /requirement\.md: rewritten in place, which no acceptance can accept/;
-  assert.match(reduced(now, candidate("feature/rewritten")).errors.join("\n"), why);
-  assert.match(acceptance(now, candidate("feature/rewritten", "acceptance/accepts-unnamed")).errors.join("\n"), why);
+  const rewritten = /greets-by-name\/requirement\.md: rewritten, which no acceptance can accept/;
+  assert.match(reduced(now, candidate("feature/rewritten")).errors.join("\n"), rewritten);
+  // No longer named, and its loss accepted: its commitment may leave the regression, never its record.
+  const unnamed = ["acceptance/unnamed", "acceptance/accepts-unnamed"];
+  assert.match(acceptance(now, candidate(...unnamed, "feature/rewritten")).errors.join("\n"), rewritten);
+  const removed = candidate(...unnamed);
+  fs.rmSync(path.join(removed, "requirements", "greets-by-name"), { recursive: true });
+  assert.match(
+    acceptance(now, removed).errors.join("\n"),
+    /greets-by-name\/requirement\.md: removed, which no acceptance can accept/,
+  );
+  assert.deepEqual(acceptance(now, candidate(...unnamed)).errors, []);
 });
 
 // Why: requirements/accepted-reductions/requirement.md
@@ -182,6 +191,15 @@ test("what a state protects or accepts through a link is not its own, and is ref
   fs.symlinkSync(path.join(elsewhere, "suites"), path.join(linkedSuites, "suites"), "junction");
   assert.match(reduced(now, linkedSuites).errors.join("\n"), /suites: reached through a link/);
   assert.match(reduced(linkedSuites, now).errors.join("\n"), /suites: reached through a link/);
+  // A file a wildcard names, reached through a link, however its place reads.
+  const linkedSkill = candidate("acceptance/skilled");
+  fs.mkdirSync(path.join(elsewhere, "c"));
+  fs.cpSync(path.join(layeredState("acceptance/skill-c"), "skills", "c"), path.join(elsewhere, "c"), {
+    recursive: true,
+  });
+  fs.symlinkSync(path.join(elsewhere, "c"), path.join(linkedSkill, "skills", "c"), "junction");
+  const skilled = candidate("acceptance/skilled", "acceptance/skill-c");
+  assert.match(reduced(skilled, linkedSkill).errors.join("\n"), /skills\/c: a commitment stated through a link/);
   // A Regression Plan kept elsewhere; a file link needs privileges on Windows, so this is shown where one can be made.
   if (process.platform !== "win32") {
     const linkedPlan = candidate();
@@ -189,6 +207,12 @@ test("what a state protects or accepts through a link is not its own, and is ref
     fs.symlinkSync(path.join(elsewhere, PLAN), path.join(linkedPlan, PLAN));
     assert.match(reduced(now, linkedPlan).errors.join("\n"), /a plan stated through a link/);
     assert.match(reduced(linkedPlan, now).errors.join("\n"), /a plan stated through a link/);
+    // A commitment's file reached through a link, its name unchanged.
+    const linkedCode = candidate();
+    fs.rmSync(path.join(linkedCode, "src", "add.ts"));
+    fs.symlinkSync(path.join(elsewhere, "src", "add.ts"), path.join(linkedCode, "src", "add.ts"));
+    assert.match(reduced(now, linkedCode).errors.join("\n"), /src\/add\.ts: a commitment stated through a link/);
+    assert.match(reduced(linkedCode, now).errors.join("\n"), /src\/add\.ts: a commitment stated through a link/);
     // One suite reached through a link, which would otherwise be passed over as serving nothing.
     const linkedSuite = candidate();
     fs.rmSync(path.join(linkedSuite, "suites", "plain.md"));
