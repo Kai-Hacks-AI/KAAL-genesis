@@ -172,7 +172,7 @@ export function readPlan(repo: string, plan: string): PlanReading {
 
 /**
  * Why the data `plan` provides is not a place its runs can hand its cases, if
- * it is not: a directory inside the state, reached through no link.
+ * it is not: a directory inside the state, it and all it holds reached through no link.
  */
 export function planDataError(repo: string, plan: string, data: string): string | undefined {
   // A place of its own: plain path segments, none of them . or .., so never the state itself nor anything above it.
@@ -185,6 +185,12 @@ export function planDataError(repo: string, plan: string, data: string): string 
     return `${plan}: data: ${data} is no directory inside the state`;
   if (real.split(path.sep).join("/") !== data.replace(/\/+$/, ""))
     return `${plan}: data: ${data} is reached through a link`;
+  // Nor is anything within it, however deep, or a case could read what the state does not hold.
+  const linked = (fs.readdirSync(at, { recursive: true }) as string[])
+    .sort()
+    .find((within) => fs.lstatSync(path.join(at, within)).isSymbolicLink());
+  if (linked !== undefined)
+    return `${plan}: data: ${data} holds ${linked.split(path.sep).join("/")}, reached through a link`;
   return undefined;
 }
 

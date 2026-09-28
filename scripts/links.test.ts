@@ -444,6 +444,19 @@ test("a plan that says how runs read it says it so they can, with its data insid
   const underTestData = served("", "data: test-data/plan");
   fs.mkdirSync(path.join(underTestData, "test-data", "plan"), { recursive: true });
   assert.deepEqual(linkErrors(underTestData), []);
+  // Nothing within the data is reached through a link either, however deep, or a case could read what the state does
+  // not hold.
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-outside-data-"));
+  fs.writeFileSync(path.join(outside, "greeting.txt"), "hello\n");
+  for (const [link, target, type] of [
+    ["shared", outside, "junction"],
+    ["deeper/greeting.txt", path.join(outside, "greeting.txt"), "file"],
+  ] as const) {
+    const nested = served("", "data: test-data/plan");
+    fs.mkdirSync(path.join(nested, "test-data", "plan", "deeper"), { recursive: true });
+    fs.symlinkSync(target, path.join(nested, "test-data", "plan", link), type);
+    assert.deepEqual(linkErrors(nested), [`${PLAN}: data: test-data/plan holds ${link}, reached through a link`], link);
+  }
   // Nothing a plan says runs read is ever null, and its data is a place of its own in the state, never the state itself.
   assert.deepEqual(linkErrors(served("", "proof: null")), [`${PLAN}: proof: not proofs by name`]);
   for (const data of ['""', ".", "./", "src/.."])
