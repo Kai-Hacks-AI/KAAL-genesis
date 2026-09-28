@@ -1,13 +1,13 @@
 ---
-holds: a candidate may reduce inherited protection only where an acceptance
-  record it adds names that reduction, or the whole it is part of, and why;
-  whatever it does not so accept, it retains
+holds: a candidate gives up an inherited case or suite only where an acceptance
+  record it adds excludes it, and why; whatever it does not so exclude, it
+  retains
 ---
 
-A candidate may reduce what the accepted regression protects only where it explicitly accepts that reduction. It accepts one only by an entry of an acceptance record it adds: a record in `acceptance/` that the accepted state does not hold, whose entries each name a reduction, or the whole it is part of, such as all of a requirement, all of a proof, or a set of conditions wherever it is lost, and say why its loss is accepted. Whatever the candidate does not so accept, it retains: silence, omission, and a record the accepted state already holds never accept a reduction.
+A candidate gives up something of the accepted regression only where it explicitly excludes it: an inherited case, named by its file and title in the accepted regression, or a suite that serves the accepted Regression Plan, each in an entry of an acceptance record it adds to `acceptance/` that the accepted state does not hold, saying why. Whatever it does not so exclude, it retains: silence, omission, its own plan saying less, and a record the accepted state already holds never give anything up.
 
-The candidate is acceptable as a reduction only when every reduction it makes is accepted by an entry of its records, and every entry accepts a reduction it makes; no entry is written twice. A candidate that reduces nothing adds no record and needs none; an empty acceptance accepts no reduction at all. An acceptance record, once the accepted state holds it, is history: it accepts nothing more, and is never rewritten or removed.
+The candidate holds its Acceptance Test Plan only when every inherited case it does not exclude passes against it, and every exclusion names a case or suite the accepted regression has, once. What the plan still requires is what the accepted Regression Plan requires, less each suite excluded, and less each commitment every inherited case of which is excluded and which nothing but its cases shows. A candidate that gives up nothing adds no record; an empty acceptance gives up nothing at all. An acceptance record, once the accepted state holds it, is history: it excludes nothing more, and is never rewritten or removed. A Requirement the accepted plan names is never rewritten or removed, even once every case of it is excluded.
 
-What the candidate newly promises is not part of this: accepting the loss of one commitment neither proves nor requires its successor, and showing a successor never accepts the loss of what it replaces.
+What the candidate newly promises is not part of this: excluding what is replaced neither proves nor requires its successor, and showing a successor never excludes what it replaces.
 
-Where this ends: whether a reduction is wise is the judgement of whoever accepts the candidate; this states only that it was made explicitly, exactly and for a stated reason, before that judgement.
+Where this ends: whether giving something up is wise is the judgement of whoever accepts the candidate; this states only that it was done explicitly, against this accepted state, and for a stated reason.

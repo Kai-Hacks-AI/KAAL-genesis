@@ -177,24 +177,16 @@ export function featureState(...layers: string[]): string {
  * A state of the trusted repository in test-data/regression with layers laid
  * over it in order, each named by its place in test-data, such as
  * `feature/promised` or `regression/candidates/replaced`, in a scratch
- * directory. Those in test-data/acceptance are: `protected`, a Regression Plan
- * that protects adding, also shown by the seal checks, greeting, and greeting
- * by name, on Linux and on Windows, served by the suite `suites/plain.md`;
- * `unnamed`, `moved`, `replaced`, `windowless`, `unsealed`, `unserved` and
- * `sealed-elsewhere`, each that protection with one piece of it no longer
- * required: greeting by name, greeting by name at its old place, greeting with
- * hello, Windows, the seal checks showing adding, the plain suite's service,
- * and the seal checks on Linux, required on Windows instead; `sealless`, the
- * seal checks no longer required at all; `extended`, one more
- * Requirement newly named and proven; `accepts-…`, a record accepting the
- * loss of the like-named piece; `overreaching`, one also accepting the loss
- * of adding, which nothing loses; `reasonless`, one that says not why;
- * `history`, a state holding the record `accepts-unnamed` adds;
- * `any-conditions` and `unconditioned`, the protection required under a set
- * naming no condition, and under no set at all; `node-22` and
- * `later-node`, it required on Linux with Node 22, and with Node 22.4; and
- * `outside`, the protection with commitments stated outside the state, plainly
- * and by a wildcard.
+ * directory. Those in test-data/acceptance are: `protected`, a Regression
+ * Plan that protects adding, also shown by the seal checks, greeting, and
+ * greeting by name, on Linux and on Windows, served by the suite
+ * `suites/plain.md`; `windowless`, that plan no longer requiring Windows;
+ * `extended`, one more Requirement newly named and proven; `excludes-…`, a
+ * record excluding the inherited case `greets`, the case `adds`, both cases
+ * of adding, the plain
+ * suite, or a case `waves` the regression never had; `reasonless`, one
+ * excluding `greets` without saying why; and `history`, a state holding the
+ * record `excludes-greets` adds.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

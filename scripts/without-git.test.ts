@@ -104,24 +104,21 @@ test("copied out of Git, KAAL names what a candidate newly promises and runs its
 // Suite: suites/without-git.md
 // Why: requirements/inherited-reductions/requirement.md
 // Why: requirements/accepted-reductions/requirement.md
-test("copied out of Git, KAAL names what a candidate reduces and refuses what it does not accept", () => {
+test("copied out of Git, KAAL gives up only the inherited cases a candidate excludes, and refuses the rest", () => {
   const kaalState = plainCopy(KAAL);
-  const accepted = layeredState("feature/promised", "acceptance/protected");
-  const silent = layeredState("feature/promised", "acceptance/protected", "acceptance/unnamed");
+  const protectedState = ["feature/promised", "acceptance/protected"];
+  const accepted = layeredState(...protectedState);
+  const silent = layeredState(...protectedState, "regression/candidates/withdrawn");
   const refused = kaal(kaalState, "scripts/acceptance.ts", accepted, silent);
   assert.equal(refused.status, 1, refused.out);
-  assert.match(refused.out, /no acceptance record it adds accepts that/);
-  const explicit = layeredState(
-    "feature/promised",
-    "acceptance/protected",
-    "acceptance/unnamed",
-    "acceptance/accepts-unnamed",
+  assert.match(refused.out, /inherited case not excluded: scripts\/cases\.test\.ts: "greets" failed/);
+  const explicit = layeredState(...protectedState, "regression/candidates/withdrawn", "acceptance/excludes-greets");
+  const given = kaal(kaalState, "scripts/acceptance.ts", accepted, explicit);
+  assert.equal(given.status, 0, given.out);
+  assert.deepEqual(
+    (JSON.parse(given.out) as { excluded: { excludes: string }[] }).excluded.map((e) => e.excludes),
+    ['case: scripts/cases.test.ts: "greets"'],
   );
-  const named = kaal(kaalState, "scripts/acceptance.ts", accepted, explicit);
-  assert.equal(named.status, 0, named.out);
-  assert.deepEqual((JSON.parse(named.out) as { reductions: string[] }).reductions, [
-    "commitment: requirements/greets-by-name/requirement.md",
-  ]);
 });
 
 // Suite: suites/without-git.md

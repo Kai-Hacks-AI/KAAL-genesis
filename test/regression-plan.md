@@ -23,8 +23,8 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 15. KAAL's plans. Owned by KAAL's testing; stated in `brain/learning/genesis/26/09/27/07/nodes/plan.md`. Shown by its cases.
 16. What a candidate newly promises. Owned by KAAL's testing; stated in `requirements/new-promises/requirement.md`. Shown by its cases.
 17. What demonstrates a candidate's new promises. Owned by KAAL's testing; stated in `requirements/new-promises-demonstrated/requirement.md`. Shown by its cases.
-18. What a candidate would reduce of the accepted regression. Owned by KAAL's testing; stated in `requirements/inherited-reductions/requirement.md`. Shown by its cases.
-19. Which reductions a candidate explicitly accepts. Owned by KAAL's testing; stated in `requirements/accepted-reductions/requirement.md`. Shown by its cases.
+18. Which inherited cases no longer hold against a candidate. Owned by KAAL's testing; stated in `requirements/inherited-reductions/requirement.md`. Shown by its cases.
+19. What a candidate explicitly gives up of the accepted regression. Owned by KAAL's testing; stated in `requirements/accepted-reductions/requirement.md`. Shown by its cases.
 
 ## How this regression differs from the one it was derived from
 
@@ -34,7 +34,7 @@ This section names the regression a plan was derived from and what the plan does
 
 - Replaces: nothing.
 - Withdraws: nothing.
-- Adds: commitments 18 and 19, what a candidate would reduce of the accepted regression and which of those reductions it explicitly accepts, which the accepted regression does not have. `npm run feature -- <accepted>` names them from the files; `npm run acceptance -- <accepted>` names no reduction, and this candidate adds no acceptance record.
+- Adds: commitments 18 and 19, which inherited cases no longer hold against a candidate and what a candidate explicitly gives up of the accepted regression, which the accepted regression does not have. `npm run feature -- <accepted>` names them from the files; `npm run acceptance -- <accepted>` holds with nothing excluded, and this candidate adds no acceptance record.
 
 ## How a commitment's cases are found
 

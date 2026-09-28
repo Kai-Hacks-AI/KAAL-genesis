@@ -2,25 +2,23 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
-import { type Conditions, satisfies } from "../skills/testing/scripts/plan.js";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import { PLAN, planEntries } from "./links.js";
-import { kindAt, type PlanRequirement, planRequirements } from "./plans.js";
+import { type Case, PLAN, planCommitments, planEntries, repoCases } from "./links.js";
+import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
+import { judge, runTrusted, unreplayable } from "./regression.js";
 
 /**
- * What a candidate would reduce of the accepted regression, and which of those
- * reductions it explicitly accepts, read from both states' files alone: both
- * are directories, and nothing here asks Git or GitHub which is which. What
- * the accepted regression protects is what its Regression Plan requires, read
- * as KAAL reads any plan's requirements: its commitments, the suites that serve
- * it and its proof other than cases, each under the sets of conditions it is
- * required under; with what the plan says shows each commitment, and each file
- * a wildcard commitment covers. A reduction is any of those the candidate's
- * Regression Plan no longer requires. Cases are evidence for those
- * requirements, not requirements, so they are never a reduction. A candidate
- * accepts a reduction only by naming it, or the whole it is part of, and why,
- * in an acceptance record it adds; whatever it does not name, it retains, so
- * silence never accepts a reduction. What Acceptance is for KAAL is stated in
+ * What a candidate is allowed to give up of the accepted regression, read from
+ * both states' files alone: both are directories, and nothing here asks Git or
+ * GitHub which is which. The Acceptance Test Plan is the accepted Regression
+ * Plan, less the inherited cases and suites the candidate explicitly excludes:
+ * it requires what the accepted plan requires, shown by the accepted
+ * regression's own cases, replayed against the candidate, except those
+ * excluded. What the candidate's own plan says is never read: it cannot
+ * reduce what is inherited by saying less. A candidate excludes a case or a
+ * suite only by naming it, and why, in an acceptance record it adds; whatever
+ * it does not name, it retains, so silence never gives up anything. What
+ * Acceptance is for KAAL is stated in
  * brain/learning/genesis/26/09/28/03/nodes/acceptance.md.
  */
 
@@ -28,198 +26,27 @@ import { kindAt, type PlanRequirement, planRequirements } from "./plans.js";
 export const ACCEPTANCE = "acceptance";
 const REQUIREMENT_PLACE = /^requirements\/[^/]+\/requirement\.md$/;
 
-/**
- * A reduction of what the accepted Regression Plan requires, one of: a
- * requirement it no longer requires at all; one it no longer requires under a
- * set of conditions; a check it no longer says shows a commitment; a file a
- * wildcard commitment no longer covers; or a set of conditions it no longer
- * requires anything under.
- */
-export type Reduction =
-  | { kind: PlanRequirement["kind"]; name: string; under?: Conditions; of?: string; within?: string }
-  | { kind: "conditions"; conditions: Conditions };
+/** What an acceptance record excludes of the accepted regression: one of its cases, by its address there, or a suite that serves its plan. */
+export type Exclusion = { case: { file: string; title: string } } | { suite: string };
 
-/** An entry of an acceptance record: the reduction it accepts, and why. */
-export type Accepted = { reduction: Reduction; because: string; record: string };
+/** An entry of an acceptance record: what it excludes, and why. */
+export type Accepted = { exclusion: Exclusion; because: string; record: string };
 
-const setName = (c: Conditions) =>
-  JSON.stringify(Object.fromEntries(Object.entries(c).sort(([a], [b]) => a.localeCompare(b))));
-
-/** A reduction named the same way however it was written, so it can be reported and matched. */
-export function named(r: Reduction): string {
-  if (r.kind === "conditions") return `conditions: ${setName(r.conditions)}`;
-  if (r.of !== undefined) return `proof: ${r.name} of ${r.of}`;
-  return `${r.kind}: ${r.name}${r.under ? ` under ${setName(r.under)}` : ""}`;
+/** An exclusion named the same way however it was written. */
+export function named(e: Exclusion): string {
+  return "case" in e ? `case: ${e.case.file}: ${JSON.stringify(e.case.title)}` : `suite: ${e.suite}`;
 }
 
-/** Whether the entry `e` accepts the reduction `r`: exactly it, or the whole of what `r` reduces a part of. */
-function covers(e: Reduction, r: Reduction): boolean {
-  if (e.kind === "conditions")
-    return r.kind === "conditions"
-      ? setName(r.conditions) === setName(e.conditions)
-      : !!r.under && setName(r.under) === setName(e.conditions);
-  if (r.kind === "conditions") return false;
-  if (e.kind === "commitment") return r.kind === "commitment" && (r.name === e.name || r.within === e.name);
-  if (e.kind === "proof" && e.of !== undefined) return r.kind === "proof" && r.name === e.name && r.of === e.of;
-  return r.kind === e.kind && r.name === e.name;
-}
-
-/**
- * The files `place`, a path whose segments may hold the wildcard *, names in
- * `state`, sorted. Each segment with a wildcard is matched against the names
- * its directory lists, never a hidden one unless the segment is, and any match
- * reached through a link is refused into `errors` rather than read through or
- * passed over, as a glob would pass it over.
- */
-function expanded(state: string, place: string, errors: string[]): string[] {
-  // Every path walked through, whether a segment names it or a wildcard matched it, is the state's own or refused:
-  // one reached through a link is neither read through nor passed over as holding nothing.
-  const own = (rel: string): boolean => {
-    const kind = fs.lstatSync(path.join(state, rel), { throwIfNoEntry: false });
-    if (kind?.isSymbolicLink()) errors.push(`${state}: ${rel}: a commitment stated through a link`);
-    return !!kind && !kind.isSymbolicLink();
-  };
-  let found = [""];
-  for (const segment of place.split("/")) {
-    if (!segment.includes("*")) {
-      found = found.map((at) => (at ? `${at}/${segment}` : segment)).filter(own);
-      continue;
-    }
-    const matches = new RegExp(`^${segment.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*")}$`);
-    found = found.flatMap((at) => {
-      const dir = path.join(state, at);
-      if (!fs.lstatSync(dir).isDirectory()) return [];
-      return fs
-        .readdirSync(dir)
-        .filter((name) => matches.test(name) && (segment.startsWith(".") || !name.startsWith(".")))
-        .map((name) => (at ? `${at}/${name}` : name))
-        .filter(own);
-    });
-  }
-  return found.sort();
-}
-
-/** A requirement of a Regression Plan as Acceptance reads it: what generic Plan reads, with what its plan says shows a commitment, and the files a wildcard commitment covers. */
-type Required = PlanRequirement & { shownBy: string[]; files: string[] };
-
-/**
- * What `state`'s Regression Plan requires, as KAAL reads any plan's
- * requirements, so what the links check refuses of it, such as a place outside
- * the state or a suite reached through a link, is refused here too; with, for
- * each commitment, the checks other than cases its plan says show it, and the
- * files a wildcard place covers. A state without a Regression Plan requires
- * nothing.
- */
-export function required(state: string): { required: Required[]; errors: string[] } {
-  if (!fs.lstatSync(path.join(state, PLAN), { throwIfNoEntry: false })) return { required: [], errors: [] };
-  let requirements: PlanRequirement[];
-  try {
-    requirements = planRequirements(state, PLAN);
-  } catch (e) {
-    return { required: [], errors: [`${state}: ${e instanceof Error ? e.message : String(e)}`] };
-  }
-  const entries = planEntries(`\n${fs.readFileSync(path.join(state, PLAN), "utf8").replace(/\r\n/g, "\n")}`);
-  const errors: string[] = [];
-  return {
-    required: requirements.map((r) => ({
-      ...r,
-      // Required under no set of conditions, a requirement is required under any.
-      under: r.under.length ? r.under : [{}],
-      shownBy:
-        r.kind === "commitment"
-          ? (entries.find((e) => e.place === r.name)?.shownBy ?? []).filter((c) => c !== "its cases")
-          : [],
-      files: r.kind === "commitment" && r.name.includes("*") ? expanded(state, r.name, errors) : [],
-    })),
-    errors,
-  };
-}
-
-/**
- * What `candidate` would reduce of what `accepted`'s Regression Plan requires,
- * in the accepted plan's order: each requirement the candidate's plan no longer
- * requires, or no longer under a set of conditions, as a plan's evidence judges
- * runs, so a stricter set, such as a later version of the same runtime, keeps
- * it; each check it no longer says shows a commitment it keeps; and each file
- * a wildcard it keeps no longer covers. A requirement lost is one reduction,
- * not one for each of its parts, and a set of conditions nothing is required
- * under any more is one reduction, not one for each requirement. What cannot
- * be accepted at all is refused: a Requirement the accepted plan names, removed
- * or rewritten, since a Requirement never changes and an accepted loss leaves
- * its record as history. Cases are not read: they are evidence for what is
- * required, so moving, merging or rewriting them reduces nothing it requires.
- */
-export function reductions(accepted: string, candidate: string): { reductions: Reduction[]; errors: string[] } {
-  for (const state of [accepted, candidate])
-    if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
-  const before = required(accepted);
-  const after = required(candidate);
-  const errors = [...before.errors, ...after.errors];
-  if (errors.length) return { reductions: [], errors };
-  const sets = after.required.flatMap((r) => r.under);
-  const found: Reduction[] = [];
-  const dropped = new Set<string>();
-  for (const r of before.required) {
-    const kept = after.required.find((c) => c.kind === r.kind && c.name === r.name);
-    if (!kept) {
-      found.push({ kind: r.kind, name: r.name });
-      continue;
-    }
-    for (const set of r.under.filter((s) => !kept.under.some((c) => satisfies(c, s)))) {
-      // A set the candidate requires nothing under any more is one reduction of the plan's conditions.
-      if (sets.some((c) => satisfies(c, set))) found.push({ kind: r.kind, name: r.name, under: set });
-      else if (!dropped.has(setName(set))) {
-        dropped.add(setName(set));
-        found.push({ kind: "conditions", conditions: set });
-      }
-    }
-    for (const check of r.shownBy.filter((c) => !kept.shownBy.includes(c)))
-      found.push({ kind: "proof", name: check, of: r.name });
-    for (const file of r.files.filter((f) => !kept.files.includes(f)))
-      found.push({ kind: "commitment", name: file, within: r.name });
-  }
-  // A Requirement the accepted regression protects stays as it was, whether or not the candidate still names it: an
-  // accepted loss lets its commitment leave the regression, never its record, which is history.
-  for (const r of before.required) {
-    if (r.kind !== "commitment" || !REQUIREMENT_PLACE.test(r.name)) continue;
-    const is = path.join(candidate, r.name);
-    const kind = fs.lstatSync(is, { throwIfNoEntry: false });
-    if (!kind)
-      errors.push(
-        `${r.name}: removed, which no acceptance can accept: a Requirement is history, so its record stays when the loss of its commitment is accepted`,
-      );
-    else if (!kind.isFile())
-      errors.push(`${r.name}: not a file of its own in the candidate, so whether its record was kept cannot be read`);
-    else if (!fs.readFileSync(path.join(accepted, r.name)).equals(fs.readFileSync(is)))
-      errors.push(
-        `${r.name}: rewritten, which no acceptance can accept: a Requirement never changes, so state the new commitment as a new Requirement and accept losing this one`,
-      );
-  }
-  return { reductions: found, errors };
-}
-
-/** The entry of an acceptance record as written, read as the reduction it accepts, or why it names none. */
-function entryOf(entry: unknown): Reduction | string {
+/** The entry of an acceptance record as written, read as what it excludes, or why it excludes nothing it can say. */
+function entryOf(entry: unknown): Exclusion | string {
   if (!entry || typeof entry !== "object" || Array.isArray(entry)) return "not a mapping";
   const { because: _, ...rest } = entry as Record<string, unknown>;
   const keys = Object.keys(rest).sort().join();
   const text = (v: unknown) => typeof v === "string" && v.trim() !== "";
-  if (keys === "commitment" && text(rest.commitment)) return { kind: "commitment", name: rest.commitment as string };
-  if (keys === "suite" && text(rest.suite)) return { kind: "suite", name: rest.suite as string };
-  if (keys === "proof" && text(rest.proof)) return { kind: "proof", name: rest.proof as string };
-  if (keys === "of,proof" && text(rest.proof) && text(rest.of))
-    return { kind: "proof", name: rest.proof as string, of: rest.of as string };
-  const c = rest.conditions;
-  if (
-    keys === "conditions" &&
-    c &&
-    typeof c === "object" &&
-    !Array.isArray(c) &&
-    Object.keys(c).length &&
-    Object.values(c).every((v) => typeof v === "string")
-  )
-    return { kind: "conditions", conditions: c as Conditions };
-  return "names no reduction: exactly one of commitment, suite, proof (maybe with of), or conditions";
+  if (keys === "case,title" && text(rest.case) && text(rest.title))
+    return { case: { file: rest.case as string, title: rest.title as string } };
+  if (keys === "suite" && text(rest.suite)) return { suite: rest.suite as string };
+  return "excludes nothing: either a case, with its title, or a suite";
 }
 
 /**
@@ -252,7 +79,7 @@ function records(state: string): { records: Map<string, Buffer>; errors: string[
   return { records: found, errors };
 }
 
-/** The entries a record accepts, or why it accepts nothing it can say. */
+/** The entries a record holds, or why it holds nothing it can say. */
 function accepts(place: string, bytes: Buffer): { accepted: Accepted[]; errors: string[] } {
   const text = bytes.toString("utf8");
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
@@ -262,37 +89,25 @@ function accepts(place: string, bytes: Buffer): { accepted: Accepted[]; errors: 
   } catch {
     data = undefined;
   }
-  if (!data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).join() !== "accepts")
-    return { accepted: [], errors: [`${place}: its frontmatter says only what it accepts, as accepts: [...]`] };
-  const list = (data as { accepts: unknown }).accepts;
+  if (!data || typeof data !== "object" || Array.isArray(data) || Object.keys(data).join() !== "excludes")
+    return { accepted: [], errors: [`${place}: its frontmatter says only what it excludes, as excludes: [...]`] };
+  const list = (data as { excludes: unknown }).excludes;
   if (!Array.isArray(list) || !list.length)
-    return {
-      accepted: [],
-      errors: [`${place}: accepts nothing; a candidate that accepts no reduction adds no record`],
-    };
+    return { accepted: [], errors: [`${place}: excludes nothing; a candidate that gives up nothing adds no record`] };
   const accepted: Accepted[] = [];
   const errors: string[] = [];
   list.forEach((entry, i) => {
-    const reduction = entryOf(entry);
+    const exclusion = entryOf(entry);
     const because = (entry as { because?: unknown } | null)?.because;
-    if (typeof reduction === "string") errors.push(`${place}: entry ${i + 1} ${reduction}`);
+    if (typeof exclusion === "string") errors.push(`${place}: entry ${i + 1} ${exclusion}`);
     else if (typeof because !== "string" || !because.trim())
-      errors.push(`${place}: entry ${i + 1} says not why its loss is accepted, as because: <why>`);
-    else accepted.push({ reduction, because: because.trim(), record: place });
+      errors.push(`${place}: entry ${i + 1} says not why it is given up, as because: <why>`);
+    else accepted.push({ exclusion, because: because.trim(), record: place });
   });
   return { accepted, errors };
 }
 
-/**
- * What `candidate` explicitly accepts losing of what `accepted` protects: the
- * entries of the acceptance records it adds, those it holds that the accepted
- * state does not. A record the accepted state holds is history: it accepted
- * reductions of an earlier regression, and accepts nothing more, so a waiver
- * never waits for a later loss; rewritten or removed, it is refused, so the
- * same record can never be added again as if new. With no record added, the
- * candidate accepts no reduction at all.
- */
-export function acceptedReductions(accepted: string, candidate: string): { accepted: Accepted[]; errors: string[] } {
+export function acceptedExclusions(accepted: string, candidate: string): { accepted: Accepted[]; errors: string[] } {
   const before = records(accepted);
   const after = records(candidate);
   const errors = [...before.errors, ...after.errors];
@@ -313,32 +128,107 @@ export function acceptedReductions(accepted: string, candidate: string): { accep
 }
 
 /**
- * Whether `candidate` may reduce what `accepted` protects: every reduction it
- * would make is accepted by an entry of a record it adds, and every such entry
- * accepts a reduction it makes, once; with the reductions and what accepts
- * them, which are all the next regression needs to know of what was given up.
- * A candidate that reduces nothing and accepts nothing is acceptable; one that
- * reduces anything it does not name is not.
+ * The Acceptance Test Plan for `accepted` less `exclusions`: what the accepted
+ * Regression Plan requires, as KAAL reads any plan's requirements, less each
+ * suite excluded and each commitment every inherited case of which is
+ * excluded and which nothing but its cases shows; and the inherited cases that
+ * show it, less those excluded. An exclusion must name what the accepted
+ * regression has: a case it keeps, at its address there, or a suite that
+ * serves its plan; excluding a suite gives up only that requirement, never the
+ * cases that belong to it, which still show what they help prove.
+ */
+export function acceptancePlan(
+  accepted: string,
+  exclusions: Accepted[],
+): { requires: PlanRequirement[]; cases: Case[]; errors: string[] } {
+  const errors: string[] = [];
+  if (!fs.lstatSync(path.join(accepted, PLAN), { throwIfNoEntry: false })) return { requires: [], cases: [], errors };
+  let requirements: PlanRequirement[];
+  try {
+    requirements = planRequirements(accepted, PLAN);
+  } catch (e) {
+    return { requires: [], cases: [], errors: [`${accepted}: ${e instanceof Error ? e.message : String(e)}`] };
+  }
+  const inherited = repoCases(accepted);
+  const serving = new Set(suitePlans(accepted).flatMap((s) => (s.serves.includes(PLAN) ? [s.suite] : [])));
+  const excludedCase = (c: { file: string; title: string }) =>
+    exclusions.some(
+      (a) => "case" in a.exclusion && a.exclusion.case.file === c.file && a.exclusion.case.title === c.title,
+    );
+  const seen = new Set<string>();
+  for (const { exclusion, record } of exclusions) {
+    const n = named(exclusion);
+    if (seen.has(n)) errors.push(`${record}: excludes ${n} again`);
+    else if (
+      "case" in exclusion &&
+      !inherited.some((c) => c.file === exclusion.case.file && c.title === exclusion.case.title)
+    )
+      errors.push(`${record}: excludes ${n}, which the accepted regression has no case of`);
+    else if ("suite" in exclusion && !serving.has(exclusion.suite))
+      errors.push(`${record}: excludes ${n}, which serves no Regression Plan of the accepted regression`);
+    seen.add(n);
+  }
+  const cases = inherited.filter((c) => !excludedCase(c));
+  const text = `\n${fs.readFileSync(path.join(accepted, PLAN), "utf8").replace(/\r\n/g, "\n")}`;
+  const onlyCases = (place: string) =>
+    (planEntries(text).find((e) => e.place === place)?.shownBy ?? ["its cases"]).every((by) => by === "its cases");
+  const requires = requirements.filter((r) => {
+    if (r.kind === "suite") return !exclusions.some((a) => "suite" in a.exclusion && a.exclusion.suite === r.name);
+    if (r.kind !== "commitment") return true;
+    // A commitment its cases alone show is given up once every inherited case of it is excluded, never by less.
+    const own = inherited.filter((c) => c.places.includes(r.name));
+    return !(own.length && own.every(excludedCase) && onlyCases(r.name));
+  });
+  return { requires, cases, errors };
+}
+
+/** A requirement named for reading: its kind and name. */
+const requirementName = (r: PlanRequirement) => `${r.kind}: ${r.name}`;
+
+/**
+ * Whether `candidate` holds the Acceptance Test Plan for `accepted`: every
+ * inherited case not excluded passes, replayed against the candidate as the
+ * accepted regression replays its cases, so nothing but an explicit exclusion
+ * gives up an inherited case; each exclusion names what the accepted
+ * regression has; and every Requirement the accepted plan names keeps its
+ * record, which is history, even once every case of it is excluded. With what
+ * the plan still requires, which is all the next regression needs to inherit.
+ * A candidate that gives up nothing adds no record, and holds the plan only
+ * when every inherited case passes against it.
  */
 export function acceptance(
   accepted: string,
   candidate: string,
-): { reductions: Reduction[]; accepted: Accepted[]; errors: string[] } {
-  const observed = reductions(accepted, candidate);
-  const stated = acceptedReductions(accepted, candidate);
-  const errors = [...observed.errors, ...stated.errors];
-  const seen = new Set<string>();
-  for (const a of stated.accepted) {
-    const n = named(a.reduction);
-    if (seen.has(n)) errors.push(`${a.record}: accepts losing ${n} again`);
-    else if (!observed.reductions.some((r) => covers(a.reduction, r)))
-      errors.push(`${a.record}: accepts losing ${n}, which the candidate does not reduce`);
-    seen.add(n);
+): { excluded: Accepted[]; requires: string[]; errors: string[] } {
+  for (const state of [accepted, candidate])
+    if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
+  const stated = acceptedExclusions(accepted, candidate);
+  const plan = acceptancePlan(accepted, stated.accepted);
+  const errors = [...stated.errors, ...plan.errors];
+  for (const place of planCommitments(
+    fs.existsSync(path.join(accepted, PLAN)) ? fs.readFileSync(path.join(accepted, PLAN), "utf8") : "",
+  ).filter((p) => REQUIREMENT_PLACE.test(p))) {
+    const is = fs.lstatSync(path.join(candidate, place), { throwIfNoEntry: false });
+    if (!is)
+      errors.push(
+        `${place}: removed; a Requirement is history, so its record stays even once it is no longer required`,
+      );
+    else if (
+      !is.isFile() ||
+      !fs.readFileSync(path.join(accepted, place)).equals(fs.readFileSync(path.join(candidate, place)))
+    )
+      errors.push(`${place}: rewritten; a Requirement never changes, so a new commitment is a new Requirement`);
   }
-  for (const r of observed.reductions)
-    if (!stated.accepted.some((a) => covers(a.reduction, r)))
-      errors.push(`${named(r)}: the candidate reduces it, but no acceptance record it adds accepts that`);
-  return { reductions: observed.reductions, accepted: stated.accepted, errors };
+  if (!errors.length && plan.cases.length) {
+    const unfaithful = unreplayable(accepted);
+    if (unfaithful) errors.push(unfaithful);
+    else {
+      const excluded = (file: string, title: string) => !plan.cases.some((c) => c.file === file && c.title === title);
+      const results = runTrusted(accepted, candidate).filter((r) => !excluded(r.file, r.name) || r.name === r.file);
+      errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
+    }
+  }
+  return { excluded: stated.accepted, requires: plan.requires.map(requirementName), errors };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -352,12 +242,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.log(
         JSON.stringify(
           {
-            reductions: result.reductions.map(named),
-            accepted: result.accepted.map((a) => ({
-              reduction: named(a.reduction),
+            excluded: result.excluded.map((a) => ({
+              excludes: named(a.exclusion),
               because: a.because,
               record: a.record,
             })),
+            requires: result.requires,
           },
           null,
           2,
