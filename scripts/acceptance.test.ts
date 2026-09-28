@@ -72,6 +72,15 @@ test("an excluded inherited case is given up, and a commitment only once every c
     result.requires,
     REQUIRED.filter((r) => r !== `commitment: ${GREETING}`),
   );
+  // A case titled with nothing at all can be excluded as any other, by the title it has.
+  const untitled = candidate("acceptance/untitled");
+  assert.deepEqual(
+    acceptance(
+      untitled,
+      candidate("acceptance/untitled", "regression/candidates/withdrawn", "acceptance/excludes-untitled"),
+    ).errors,
+    [],
+  );
   // Where its cases alone show adding, excluding one of its two cases gives up that case, never adding.
   const byCases = layeredState("feature/promised");
   const once = acceptance(

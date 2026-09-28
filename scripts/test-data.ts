@@ -196,7 +196,9 @@ export function featureState(...layers: string[]): string {
  * that case; `marking`, that code leaving a mark where KAAL_WAVE_MARK says
  * whenever it is loaded; `built-title`, a case whose title is built while it
  * runs; `mixed`, a file of a case `marks`, whose code leaves that mark when
- * called, beside a case kept; and `excludes-marks`, a record excluding it.
+ * called, beside a case kept; `excludes-marks`, a record excluding it;
+ * `untitled`, a case of greeting titled with nothing at all; and
+ * `excludes-untitled`, a record excluding it and `greets`.
  */
 export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));

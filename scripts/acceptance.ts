@@ -44,7 +44,8 @@ function entryOf(entry: unknown): Exclusion | string {
   const { because: _, ...rest } = entry as Record<string, unknown>;
   const keys = Object.keys(rest).sort().join();
   const text = (v: unknown) => typeof v === "string" && v.trim() !== "";
-  if (keys === "case,title" && text(rest.case) && text(rest.title))
+  // A title is whatever the case is titled, even nothing at all, as a case can be.
+  if (keys === "case,title" && text(rest.case) && typeof rest.title === "string")
     return { case: { file: rest.case as string, title: rest.title as string } };
   if (keys === "suite" && text(rest.suite)) return { suite: rest.suite as string };
   return "excludes nothing: either a case, with its title, or a suite";
