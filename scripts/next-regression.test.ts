@@ -233,7 +233,7 @@ test("a regression is derived from the accepted one as it is now, and an old acc
 });
 
 // Why: requirements/derived-regression/requirement.md
-test("which suites serve the regression is part of it, so a change to them changes its identity, and to no other suite", () => {
+test("which suites serve the regression, and every Requirement it records, are part of its identity, and no other suite", () => {
   const R0 = r0();
   const before = regressionIdentity(R0);
   // A suite serving no Regression Plan is none of the regression's, however it changes.
@@ -245,7 +245,11 @@ test("which suites serve the regression is part of it, so a change to them chang
   const serving = regressionIdentity(edited(R0, "suites/other.md", (t) => `${t}\nServes: test/regression-plan.md\n`));
   assert.notEqual(serving, before);
   edited(R0, "suites/plain.md", (t) => t.replace("Serves: test/regression-plan.md\n", ""));
-  assert.notEqual(regressionIdentity(R0), serving);
+  const unserved = regressionIdentity(R0);
+  assert.notEqual(unserved, serving);
+  // A Requirement it records but its plan does not name decides what a candidate newly promises, so it is part of it.
+  fs.cpSync(path.join(LAYERS, "waves/requirements/waves"), path.join(R0, "requirements/waves"), { recursive: true });
+  assert.notEqual(regressionIdentity(R0), unserved);
 });
 
 // Why: requirements/derived-regression/requirement.md
@@ -347,6 +351,20 @@ test("an inherited case that comes to demonstrate a new promise is carried once,
     ),
   );
   assert.deepEqual(judged(both, second), []);
+  // A duplicate added before the inherited case, demonstrating the promise, enters beside it as a case of its own.
+  const added = edited(succeeding(R0, "next-regression/waves"), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      "// Why: src/add.ts\n// Suite: suites/plain.md\n",
+      `// Why: src/add.ts\n// Why: ${WAVES}\n// Suite: suites/plain.md\ntest("adds", () => {\n  assert.equal(add(2, 2), 4);\n});\n\n// Why: src/add.ts\n// Suite: suites/plain.md\n`,
+    ),
+  );
+  assert.deepEqual(judged(R0, added), []);
+  assert.deepEqual(
+    nextRegression(R0, added)
+      .protection.cases.filter((c) => c.title === "adds")
+      .map((c) => c.places),
+    [["src/add.ts"], [WAVES, "src/add.ts"].sort()],
+  );
 });
 
 // Why: requirements/derived-regression/requirement.md

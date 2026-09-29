@@ -146,18 +146,27 @@ export function protectionOf(state: string): { protection: Protection; errors: s
  * A complete one-to-one pairing of `left` with `right`, as large as can be,
  * where each pair `fits`: for each of `left`, the index of its partner in
  * `right`, or nothing. Grown by augmenting paths, so it does not depend on the
- * order either is listed in.
+ * order either is listed in, and with as many partners that are `preferred`
+ * as a complete pairing can have.
  */
-function pairing<L, R>(left: L[], right: R[], fits: (l: L, r: R) => boolean): (number | undefined)[] {
+function pairing<L, R>(
+  left: L[],
+  right: R[],
+  fits: (l: L, r: R) => boolean,
+  preferred: (r: R) => boolean = () => true,
+): (number | undefined)[] {
   const owner: (number | undefined)[] = right.map(() => undefined);
-  const assign = (l: number, seen: Set<number>): boolean =>
+  const assign = (l: number, seen: Set<number>, may: (r: R) => boolean): boolean =>
     right.some((r, k) => {
-      if (seen.has(k) || !fits(left[l]!, r)) return false;
+      if (seen.has(k) || !may(r) || !fits(left[l]!, r)) return false;
       seen.add(k);
-      if (owner[k] === undefined || assign(owner[k]!, seen)) return ((owner[k] = l), true);
+      if (owner[k] === undefined || assign(owner[k]!, seen, may)) return ((owner[k] = l), true);
       return false;
     });
-  left.forEach((_, l) => assign(l, new Set()));
+  // First among the preferred alone, then among all: a path that grows a matching never frees what it has matched,
+  // so as many preferred as can be are kept, and the matching is still complete where one can be.
+  left.forEach((_, l) => assign(l, new Set(), preferred));
+  left.forEach((_, l) => owner.includes(l) || assign(l, new Set(), () => true));
   return left.map((_, l) => {
     const k = owner.indexOf(l);
     return k < 0 ? undefined : k;
@@ -186,7 +195,14 @@ function carriedCases(inherited: Held[], candidate: Held[], proving: Set<string>
   for (const at of new Set(inherited.map(address))) {
     const is = inherited.filter((c) => address(c) === at);
     const slots = candidate.flatMap((c, k) => (address(c) === at ? [k] : []));
-    const partner = pairing(is, slots, (c, k) => keepsAll(c, candidate[k]!));
+    // A case demonstrating a new promise carries an inherited one only where no other case at the address can, so a
+    // demonstrating duplicate added beside the inherited case enters as the new case it is.
+    const partner = pairing(
+      is,
+      slots,
+      (c, k) => keepsAll(c, candidate[k]!),
+      (k) => !demonstrates(candidate[k]!),
+    );
     is.forEach((c, i) => {
       const k = partner[i] === undefined ? undefined : slots[partner[i]!];
       if (k === undefined) cases.push(c);
