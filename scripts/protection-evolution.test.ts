@@ -375,13 +375,38 @@ test("a case is defined by its claim, what its file states around its cases, the
     ),
     redefinedAll,
   );
-  // A module the file did not load, loaded now: its code runs beside the cases.
-  assert.deepEqual(
+  // A module the file did not load, loaded now: its code runs beside the cases. An import of it used for nothing, or
+  // only as a type, loads nothing, as the module is compiled.
+  const importing = (line: string) =>
     cases(
       edited(succeeding(withVerify), CASES, (t) =>
+        t.replace('import test from "node:test";\n', `import test from "node:test";\n${line}\n`),
+      ),
+    );
+  assert.deepEqual(importing('import "../src/bye.js";'), redefinedAll);
+  assert.deepEqual(importing('import { bye } from "../src/bye.js";'), []);
+  // Imported only as a type in the accepted file, the module was never loaded there: loading it now is loading anew.
+  const typed = succeeding(
+    edited(withVerify, CASES, (t) =>
+      t.replace(
+        'import test from "node:test";\n',
+        'import test from "node:test";\nimport type { bye } from "../src/bye.js";\n',
+      ),
+    ),
+  );
+  const wasTyped = new Map(definitions(typed).map((d) => [`${d.file}: ${d.title}`, d]));
+  const againstTyped = (candidate: string) =>
+    definitions(candidate).flatMap((d) => {
+      const was = wasTyped.get(`${d.file}: ${d.title}`);
+      const why = d.file === CASES && was && redefined(was, d, candidate);
+      return why ? [`${d.title}: ${why}`] : [];
+    });
+  assert.deepEqual(
+    againstTyped(
+      edited(succeeding(typed), CASES, (t) =>
         t.replace(
-          'import test from "node:test";\n',
-          'import test from "node:test";\nimport { bye } from "../src/bye.js";\n',
+          'import type { bye } from "../src/bye.js";\n',
+          'import type { bye } from "../src/bye.js";\nimport "../src/bye.js";\n',
         ),
       ),
     ),

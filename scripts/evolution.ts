@@ -191,11 +191,36 @@ function frameOf(text: string, whole = text): Frame {
     else rest.push(code(statement));
   }
   return {
-    loads: [...new Set(imports.map((b) => b.split("|")[0]!))],
+    loads: loadsOf(whole),
     imports: sorted(imports),
     statements: rest.filter(Boolean),
     names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
   };
+}
+
+/**
+ * The modules `text` loads as it is evaluated, in the order it loads them:
+ * read from the module as the transformer that runs it compiles it, never
+ * from its source, since an import only of types, or of names used only as
+ * types, loads nothing. A module that does not compile loads nothing KAAL can
+ * know of.
+ */
+function loadsOf(text: string): string[] {
+  let compiled: string;
+  try {
+    compiled = transformSync(text, { loader: "ts", format: "esm" }).code;
+  } catch {
+    return [];
+  }
+  const loads: string[] = [];
+  for (const statement of statements(compiled)) {
+    const first = statement[0]?.text;
+    if (first !== "import" && first !== "export") continue;
+    if (statement[1]?.text === "(" || statement[1]?.text === ".") continue;
+    const named = moduleReferences(statement).find((r) => r.at !== undefined);
+    if (named && named.at !== undefined && !loads.includes(named.value)) loads.push(named.value);
+  }
+  return loads;
 }
 
 /** The index of the bracket closing the one opened at `open` in `toks`, or -1 where none does. */
@@ -280,12 +305,17 @@ function keepsFrame(before: Frame, after: Frame): boolean {
   if (!before.imports.every((b) => after.imports.includes(b))) return false;
   // Imported modules are evaluated in the order they are first imported, so what they do in that order is kept only
   // where it still is that order.
-  if (canonical(after.loads.filter((m) => before.loads.includes(m))) !== canonical(before.loads)) return false;
+  // Node's own modules change nothing the cases do by being loaded or not, so they neither keep nor break the order.
+  const own = (loads: string[]) => loads.filter((m) => !m.startsWith("node:"));
+  if (canonical(own(after.loads).filter((m) => before.loads.includes(m))) !== canonical(own(before.loads)))
+    return false;
   const used = new Set(before.names);
-  const loaded = new Set(before.imports.map((b) => b.split("|")[0]));
+  // A module loaded now that was not loaded before runs its code beside the cases, however it came to be loaded: by
+  // an import added, or by a name imported only as a type coming to be used as a value. Only Node's own may.
+  if (!after.loads.every((m) => before.loads.includes(m) || m.startsWith("node:"))) return false;
   for (const binding of after.imports.filter((b) => !before.imports.includes(b))) {
     const [from, , local] = binding.split("|");
-    if (from === undefined || !(from.startsWith("node:") || loaded.has(from))) return false;
+    if (from === undefined) return false;
     if (local && used.has(local)) return false;
   }
   const added: string[] = [];
