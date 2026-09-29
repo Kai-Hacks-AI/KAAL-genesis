@@ -132,6 +132,31 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
   assert.equal(sealing.status, 0, sealing.out);
   assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 0, "sealing wrote only seal state");
   assert.equal(kaal(sealed, "scripts/check-seals.ts").status, 0, "the new seals hold");
+  // Sealing and checking take a state, wherever they are run from: the caller supplies the state, and KAAL finds its
+  // own BRAIN in it. Nothing the caller passes names where BRAIN lives.
+  const elsewhereState = plainCopy(KAAL);
+  const sealingHere = (script: string, ...args: string[]) =>
+    kaal(elsewhereState, path.join(sealed, "scripts", script), ...args);
+  assert.equal(sealingHere("check-seals.ts", sealed).status, 0, "a state is checked from outside it");
+  assert.equal(sealingHere("check-seals.ts", before).status, 0, "the state before sealing holds too");
+  const bare = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-no-brain-"));
+  for (const wrong of [bare, path.join(before, "brain", "learning"), path.join(before, "no-such-state")]) {
+    const refused = sealingHere("check-seals.ts", wrong);
+    assert.equal(refused.status, 1, `${wrong}: ${refused.out}`);
+    assert.match(refused.out, /no BRAIN|not a directory/);
+    assert.equal(sealingHere("seal.ts", wrong).status, 1, `${wrong} is not sealed`);
+  }
+  const outside = plainCopy(KAAL);
+  fs.writeFileSync(
+    path.join(outside, "brain", "learning", "genesis", "26", "09", "25", "01", "nodes", "skill.md"),
+    "changed after sealing\n",
+  );
+  assert.equal(
+    sealingHere("check-seals.ts", outside).status,
+    1,
+    "a sealed learning changed in the state given is seen",
+  );
+  assert.equal(sealingHere("seal.ts", outside).status, 1, "and sealing that state is refused");
 
   // A candidate that changes nothing of the accepted state's seal state passes the guard.
   const candidate = plainCopy(sealed);

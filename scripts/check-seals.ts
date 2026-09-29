@@ -1,15 +1,19 @@
 import { pathToFileURL } from "node:url";
-import { ROOT } from "../skills/using-brain/scripts/brain.js";
-import { brainErrors } from "./brain-seals.js";
+import { brainErrors, stateBrain } from "./brain-seals.js";
 
-// Checks a BRAIN, by default this repository's, that sealing would accept: it
-// is valid and every sealed learning is intact. CI passes a change's BRAIN as
-// <root>, so this code, never the change's, does the checking.
+// Checks the BRAIN of a state, <state> (by default the current directory), a
+// plain directory: that it is valid and every sealed learning is intact, as
+// sealing would accept it. Where BRAIN lives in a state is KAAL's, never the
+// caller's. CI passes a change's state, so this code, never the change's,
+// does the checking.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [root = ROOT] = process.argv.slice(2);
-  const errors = brainErrors(root);
-  if (errors.length) {
-    console.error(errors.join("\n"));
+  try {
+    const [state = ".", ...rest] = process.argv.slice(2);
+    if (rest.length) throw new Error("usage: check-seals.ts [state]");
+    const errors = brainErrors(stateBrain(state));
+    if (errors.length) throw new Error(errors.join("\n"));
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
     process.exitCode = 1;
   }
 }

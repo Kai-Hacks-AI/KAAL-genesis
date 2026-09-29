@@ -21,6 +21,19 @@ import {
 
 const LEARNING = /^\d{2}$/;
 
+/**
+ * The BRAIN root of a state: KAAL's own place for BRAIN in the state a caller
+ * supplies, a plain directory. Callers name a state and never where BRAIN
+ * lives in it. A state that is not a directory, or holds no BRAIN, is refused
+ * rather than found to have nothing to seal or check.
+ */
+export function stateBrain(state: string): string {
+  if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
+  const root = path.join(state, ROOT);
+  if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: no BRAIN at ${ROOT}`);
+  return root;
+}
+
 /** Every lineage's learnings as units, oldest first: `<lineage>/YY/MM/DD/CC`. */
 export function brainChains(root = ROOT): Map<string, string[]> {
   const chains = new Map<string, string[]>();
