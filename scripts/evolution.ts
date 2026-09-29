@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildSync, transformSync } from "esbuild";
+import { type BuildOptions, buildSync, type Loader, transformSync } from "esbuild";
 import type { Conditions } from "../skills/testing/scripts/plan.js";
 import { caseDefects, caseFiles, caseStarts, PLAN } from "./links.js";
 import type { Held, Protection } from "./next-regression.js";
@@ -191,9 +191,9 @@ function bindings(statement: Token[]): string[] {
  * changes what runs, as after `return`, changes it. Text that does not parse
  * alone is kept as it is written, so any change to it is a change.
  */
-function spoken(file: string, text: string): string {
+function spoken(state: string, file: string, text: string): string {
   try {
-    return transformSync(text, { loader: loaderFor(file), minifyWhitespace: true, legalComments: "none" }).code.trim();
+    return compiled(state, file, text, { minifyWhitespace: true, legalComments: "none" }).trim();
   } catch {
     return `\0${text}`;
   }
@@ -224,18 +224,18 @@ function topLevel(file: string, text: string): string[] {
 }
 
 /** The frame of a module's text: its imports' bindings and its other top-level statements. */
-function frameOf(file: string, text: string, whole = text): Frame {
+function frameOf(state: string, file: string, text: string, whole = text): Frame {
   const imports: string[] = [];
   const rest: string[] = [];
   for (const statement of topLevel(file, text)) {
     const toks = tokens(statement).filter((t) => t.kind !== "comment");
     if (toks[0]?.kind === "name" && toks[0].text === "import" && toks[1]?.text !== "(" && toks[1]?.text !== ".")
       imports.push(...bindings(toks));
-    else rest.push(spoken("printed.js", statement));
+    else rest.push(spoken(state, "printed.js", statement));
   }
   return {
-    loads: moduleImports(file, whole).loads,
-    exports: exportsOf(file, whole),
+    loads: moduleImports(state, file, whole).loads,
+    exports: exportsOf(state, file, whole),
     imports: sorted(imports),
     statements: rest.filter(Boolean),
     names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
@@ -243,12 +243,52 @@ function frameOf(file: string, text: string, whole = text): Frame {
 }
 
 /**
- * How the transformer that runs a module reads it, by its path, as tsx does:
- * TypeScript, whose imports used only as types load nothing, or JavaScript,
- * whose every import loads its module.
+ * How the transformer that runs a module reads it, by its extension, as tsx
+ * does: every kind of module tsx runs, TypeScript, whose imports used only as
+ * types load nothing, JavaScript, whose every import loads its module, and
+ * either with JSX. Any other file is not code: it is read as it is held.
  */
-export function loaderFor(file: string): "ts" | "js" {
-  return /\.(js|mjs|cjs)$/.test(file) ? "js" : "ts";
+const LOADERS: Record<string, Loader> = {
+  ".ts": "ts",
+  ".mts": "ts",
+  ".cts": "ts",
+  ".tsx": "tsx",
+  ".js": "js",
+  ".mjs": "js",
+  ".cjs": "js",
+  ".jsx": "jsx",
+};
+
+/** The loader the transformer reads `file` with; TypeScript for what is not code, which it is never asked to read. */
+export function loaderFor(file: string): Loader {
+  return LOADERS[path.posix.extname(file)] ?? "ts";
+}
+
+/** Whether `file` is code tsx runs. */
+const isCode = (file: string) => path.posix.extname(file) in LOADERS;
+
+/**
+ * `text`, the module at `file` in `state`, as the transformer that runs it
+ * compiles it: with its loader, and with the state's own \`tsconfig.json\`, and
+ * what that extends, as tsx reads it, since those settings decide what runs,
+ * such as whether an import used for nothing is kept. Throws where it does not
+ * compile.
+ */
+function compiled(state: string, file: string, text: string, options: BuildOptions = {}): string {
+  const tsconfig = path.join(state, "tsconfig.json");
+  return buildSync({
+    stdin: {
+      contents: text,
+      loader: loaderFor(file),
+      sourcefile: file,
+      resolveDir: path.join(state, path.dirname(file)),
+    },
+    write: false,
+    format: "esm",
+    logLevel: "silent",
+    ...(fs.existsSync(tsconfig) ? { tsconfig } : {}),
+    ...options,
+  }).outputFiles![0]!.text;
 }
 
 /** What a module loads, and whether that is all it can load. */
@@ -273,16 +313,16 @@ export type Imports = {
  * what it loads or sees is known only as it runs. A module that does not
  * compile is one nothing can say that of either.
  */
-export function moduleImports(file: string, text: string): Imports {
+export function moduleImports(state: string, file: string, text: string): Imports {
   const unknown = { specifiers: [], loads: [], computed: true };
-  let compiled: string;
+  let out: string;
   let found: { path: string; kind: string }[];
   let warned: string[];
   try {
-    compiled = transformSync(text, { loader: loaderFor(file), format: "esm" }).code;
+    out = compiled(state, file, text);
     const built = buildSync({
       // As the module it is, as tsx runs a case: the bundler reads code without imports or exports otherwise.
-      stdin: { contents: `${compiled}\nexport {};`, loader: "js", sourcefile: file },
+      stdin: { contents: `${out}\nexport {};`, loader: "js", sourcefile: file },
       bundle: true,
       write: false,
       format: "esm",
@@ -298,7 +338,7 @@ export function moduleImports(file: string, text: string): Imports {
   }
   // A pattern, as the bundler reads `require("./" + m)`, names no module.
   const named = found.filter((i) => i.path !== "<runtime>" && !i.path.includes("*"));
-  const toks = codeTokens(compiled);
+  const toks = codeTokens(out);
   // Every place the compiled code reaches a loader by its name, however it does, against the modules found named.
   const reached = toks.filter(
     (t, i) =>
@@ -321,15 +361,15 @@ export function moduleImports(file: string, text: string): Imports {
  * sees. An export only of types exports nothing. A module that does not
  * compile exports nothing KAAL can know of.
  */
-function exportsOf(file: string, text: string): string[] {
-  let compiled: string;
+function exportsOf(state: string, file: string, text: string): string[] {
+  let out: string;
   try {
-    compiled = transformSync(text, { loader: loaderFor(file), format: "esm" }).code;
+    out = compiled(state, file, text);
   } catch {
     return [];
   }
   return sorted(
-    statements(compiled)
+    statements(out)
       .filter((statement) => statement[0]?.text === "export")
       .map((statement) => code(statement)),
   );
@@ -453,20 +493,20 @@ function resolved(state: string, file: string, specifier: string): string | unde
   if (!specifier.startsWith(".")) return undefined;
   const at = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
   if (at === ".." || at.startsWith("../") || at.split("/")[0] === "node_modules") return undefined;
+  // As tsx finds a module: as named, a JavaScript name standing for the TypeScript it compiles from, or with an
+  // extension, or the index of a directory, of every kind of module it runs.
   const tries = [
     at,
     at.replace(/\.js$/, ".ts"),
+    at.replace(/\.js$/, ".tsx"),
+    at.replace(/\.jsx$/, ".tsx"),
     at.replace(/\.mjs$/, ".mts"),
     at.replace(/\.cjs$/, ".cts"),
-    `${at}.ts`,
-    `${at}.js`,
-    `${at}/index.ts`,
-    `${at}/index.js`,
+    ...Object.keys(LOADERS).map((extension) => `${at}${extension}`),
+    ...Object.keys(LOADERS).map((extension) => `${at}/index${extension}`),
   ];
   return tries.find((t) => fs.lstatSync(path.join(state, t), { throwIfNoEntry: false })?.isFile());
 }
-
-const CODE = /\.(ts|js|mjs|cjs|mts|cts)$/;
 
 /** Every entry under `rel` in `state`, itself included, as the regression's identity reads it, by path, digested. */
 function held(state: string, rel: string): Record<string, string> {
@@ -526,8 +566,8 @@ export function definitions(state: string): Definition[] {
       from = c.end;
     }
     rest += text.slice(from);
-    const frame = frameOf(file, rest, text);
-    const own = new Set(moduleImports(file, text).specifiers);
+    const frame = frameOf(state, file, rest, text);
+    const own = new Set(moduleImports(state, file, text).specifiers);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
     const computed = new Set<string>();
@@ -539,7 +579,7 @@ export function definitions(state: string): Definition[] {
     while (queue.length) {
       const at = queue.shift()!;
       const source = fs.readFileSync(path.join(state, at), "utf8").replace(/\r\n/g, "\n");
-      const read = moduleImports(at, source);
+      const read = moduleImports(state, at, source);
       if (read.computed) computed.add(at);
       for (const specifier of read.specifiers) {
         const module = resolved(state, at, specifier);
@@ -547,16 +587,16 @@ export function definitions(state: string): Definition[] {
         seen.add(module);
         if (module.endsWith(".test.ts")) continue;
         if (isData(module, false)) {
-          if (CODE.test(module)) {
+          if (isCode(module)) {
             const loader = fs.readFileSync(path.join(state, module), "utf8").replace(/\r\n/g, "\n");
-            loaders[module] = frameOf(module, loader);
+            loaders[module] = frameOf(state, module, loader);
             data = {
               ...data,
-              ...namedData(state, module, codeTokens(loader), new Set(moduleImports(module, loader).specifiers)),
+              ...namedData(state, module, codeTokens(loader), new Set(moduleImports(state, module, loader).specifiers)),
             };
             queue.push(module);
           } else loaders[module] = held(state, module)[module]!;
-        } else if (CODE.test(module)) {
+        } else if (isCode(module)) {
           subjects.add(module);
           queue.push(module);
         }
@@ -567,7 +607,7 @@ export function definitions(state: string): Definition[] {
       return {
         file,
         title: c.title,
-        claim: spoken(file, statement),
+        claim: spoken(state, file, statement),
         frame,
         loaders,
         data: { ...data, ...namedData(state, file, codeTokens(statement), own) },
@@ -596,7 +636,10 @@ export function redefined(before: Definition, after: Definition, candidate: stri
     if (typeof was === "string") {
       if (held(candidate, module)[module] !== was) return `${module}, which it reaches, holds other than it did`;
     } else if (
-      !keepsFrame(was, frameOf(module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")))
+      !keepsFrame(
+        was,
+        frameOf(candidate, module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")),
+      )
     )
       return `${module}, which it reaches, no longer states what it did`;
   }
@@ -650,11 +693,10 @@ export function witnesses(state: string, modules: string[]): Witness[] {
   return modules.flatMap((module) => {
     const text = fs.readFileSync(path.join(state, module), "utf8");
     const toks = codeTokens(text);
-    const loader = loaderFor(module);
-    const loaded = new Set(moduleImports(module, text).specifiers);
+    const loaded = new Set(moduleImports(state, module, text).specifiers);
     let runs: string;
     try {
-      runs = transformSync(text, { loader }).code;
+      runs = compiled(state, module, text);
     } catch {
       return [];
     }
@@ -663,7 +705,7 @@ export function witnesses(state: string, modules: string[]): Witness[] {
         const source = text.slice(0, t.start) + to + text.slice(t.end);
         try {
           // A change the transformer compiles away, as one to a type, changes nothing that runs: no witness.
-          if (transformSync(source, { loader }).code === runs) return [];
+          if (compiled(state, module, source) === runs) return [];
         } catch {
           return []; // Not code any more: every case reaching it fails alike, which tells nothing apart.
         }

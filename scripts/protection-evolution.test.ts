@@ -467,6 +467,56 @@ test("a case is defined by its claim, what its file states around its cases, the
     [GREETS, `${GREETS} globalThis.skipped = true;`, "an assignment trailing a case on its line"],
   ] as const)
     assert.deepEqual(laid(from, to), everyCase, why);
+  // How a module is compiled is the state's to say, as tsx reads it: its tsconfig, and what that extends, decide
+  // whether an import used for nothing is kept, and so loads; and every kind of module tsx runs is code, a loader
+  // with JSX too, whose own imports are followed.
+  const judging = (accepted: string) => {
+    const at = new Map(definitions(accepted).map((d) => [`${d.file}: ${d.title}`, d]));
+    return (candidate: string) =>
+      definitions(candidate).flatMap((d) => {
+        const was = at.get(`${d.file}: ${d.title}`);
+        const why = was && redefined(was, d, candidate);
+        return why && d.file === CASES ? [`${d.title}: ${why}`] : [];
+      });
+  };
+  const all = (state: string, why: string) =>
+    definitions(state)
+      .filter((d) => d.file === CASES)
+      .map((d) => `${d.title}: ${why}`);
+  const configured = succeeding(R0);
+  fs.writeFileSync(
+    path.join(configured, "base.json"),
+    '{\n  // Kept as written.\n  "compilerOptions": { "verbatimModuleSyntax": true },\n}\n',
+  );
+  fs.writeFileSync(path.join(configured, "tsconfig.json"), '{ "extends": "./base.json" }\n');
+  const unusedImport = (state: string) =>
+    edited(succeeding(state), CASES, (t) =>
+      t.replace(
+        'import test from "node:test";\n',
+        'import test from "node:test";\nimport { bye } from "../src/bye.js";\n',
+      ),
+    );
+  assert.deepEqual(
+    judging(configured)(unusedImport(configured)),
+    all(configured, `${CASES} no longer states what it did around its cases`),
+  );
+  const viewing = succeeding(R0);
+  fs.writeFileSync(path.join(viewing, "scripts/test-data/limit.ts"), "export const limit = 3;\n");
+  fs.writeFileSync(
+    path.join(viewing, "scripts/test-data/view.tsx"),
+    'import { limit } from "./limit.js";\nexport const view = () => <b>{limit}</b>;\n',
+  );
+  edited(viewing, CASES, (t) =>
+    t.replace(
+      'import test from "node:test";\n',
+      'import test from "node:test";\nimport { view } from "./test-data/view.js";\n\nvoid view;\n',
+    ),
+  );
+  const viewed = succeeding(viewing);
+  assert.deepEqual(
+    judging(viewed)(edited(succeeding(viewed), "scripts/test-data/limit.ts", () => "export const limit = 4;\n")),
+    all(viewed, "scripts/test-data/limit.ts, which it reaches, no longer states what it did"),
+  );
   // The same modules loaded in another order: they are evaluated in the order they are first imported.
   assert.deepEqual(
     cases(
@@ -607,7 +657,7 @@ test("the reader of a case's source tells code from strings, templates, regular 
   // Which modules code loads is the transformer's to say: compiled as tsx runs it, then every module the bundler finds
   // named in it. However a literal is wrapped, it names its module; what only a type names loads nothing.
   const named = (file: string, text: string) => {
-    const read = moduleImports(file, text);
+    const read = moduleImports(state, file, text);
     return read.computed ? [...read.specifiers, "computed"] : read.specifiers;
   };
   assert.deepEqual(
