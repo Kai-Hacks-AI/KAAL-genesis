@@ -18,6 +18,7 @@ import {
 } from "./links.js";
 import { ACCEPTANCE } from "./acceptance.js";
 import { REQUIREMENTS } from "./feature.js";
+import { REQUIREMENT } from "../skills/managing-requirements/scripts/requirements.js";
 import { planDataError, planError, readPlan, suitePlans } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
@@ -303,11 +304,18 @@ function regressionInputs(repo: string): Map<string, Entry> {
   // Which suites serve the plan, and so what it requires, is said by the suites, not the plan: each that serves it is
   // part of it too, and a suite serving no Regression Plan is none of its.
   for (const { suite, serves } of suitePlans(repo)) if (serves.includes(PLAN)) add(suite);
-  // Every Requirement it records, named by the plan or not: what it already states decides what a candidate newly promises.
-  add(REQUIREMENTS);
-  // And every acceptance record it holds: which of a candidate's records are new, and so give anything up, is read
-  // against them.
-  add(ACCEPTANCE);
+  // Every Requirement it records, named by the plan or not: what it already states decides what a candidate newly
+  // promises. And every acceptance record it holds: which of a candidate's records are new, and so give anything up,
+  // is read against them. Only what is read as a record is theirs: guidance beside the records, such as AGENTS.md, is
+  // none of the regression's.
+  const listed = (dir: string) =>
+    (fs.lstatSync(path.join(repo, dir), { throwIfNoEntry: false })?.isDirectory()
+      ? fs.readdirSync(path.join(repo, dir), { withFileTypes: true })
+      : []
+    ).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of listed(REQUIREMENTS))
+    if (entry.isDirectory()) add(`${REQUIREMENTS}/${entry.name}/${REQUIREMENT}`);
+  for (const entry of listed(ACCEPTANCE)) if (entry.name !== "AGENTS.md") add(`${ACCEPTANCE}/${entry.name}`);
   for (const file of caseFiles(repo)) add(file);
   for (const [file, at] of dataOf(repo)) add(file, at);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.

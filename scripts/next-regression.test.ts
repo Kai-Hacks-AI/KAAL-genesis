@@ -253,7 +253,12 @@ test("which suites serve the regression, and every Requirement and acceptance re
   assert.notEqual(recorded, unserved);
   // So is every acceptance record it holds: a candidate's record is new, and gives something up, only if it holds none.
   fs.cpSync(path.join(LAYERS, "fixture-given-up/acceptance"), path.join(R0, "acceptance"), { recursive: true });
-  assert.notEqual(regressionIdentity(R0), recorded);
+  const accepted = regressionIdentity(R0);
+  assert.notEqual(accepted, recorded);
+  // Guidance beside the records is read as none of them, so it is none of the regression's.
+  fs.writeFileSync(path.join(R0, "requirements/AGENTS.md"), "Guidance.\n");
+  fs.writeFileSync(path.join(R0, "acceptance/AGENTS.md"), "Guidance.\n");
+  assert.equal(regressionIdentity(R0), accepted);
 });
 
 // Why: requirements/derived-regression/requirement.md
