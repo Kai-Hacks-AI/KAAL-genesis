@@ -1,5 +1,6 @@
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { regressionErrors, regressionIdentity } from "./regression.js";
+import { regressionErrors } from "./next-regression.js";
+import { regressionIdentity } from "./regression.js";
 
 // Judges a candidate, the KAAL state at <candidate>, by KAAL's trusted
 // regression: the accepted state this checker belongs to. It is never handed

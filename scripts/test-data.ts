@@ -7,7 +7,7 @@ import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { type Change, sealBrain, stateChanges } from "./brain-seals.js";
 import { io } from "../skills/using-seals/scripts/seals.js";
 import { genesis } from "./genesis.js";
-import { TESTED_STATE, TESTING_STATE } from "./regression.js";
+import { regressionIdentity, TESTED_STATE, TESTING_STATE } from "./regression.js";
 
 const DATA = fileURLToPath(new URL("../test-data/", import.meta.url));
 
@@ -220,6 +220,39 @@ export function layeredState(...layers: string[]): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));
   fs.cpSync(regressionTrusted(), root, { recursive: true });
   for (const layer of layers) fs.cpSync(path.join(DATA, layer), root, { recursive: true });
+  return root;
+}
+
+/**
+ * A candidate succeeding `accepted`: a scratch copy of it with layers from
+ * test-data laid over it in order, whose Regression Plan names `accepted`'s
+ * regression, by its identity, as the one it was derived from, as a candidate
+ * derived from it would. Layers from test-data/next-regression are synthetic
+ * regressions, not KAAL's own: `r0`, a first regression laid over the
+ * protected state of test-data/acceptance, one of whose cases belongs to the
+ * suite serving its plan, over which the other layers are laid; `waves`, a
+ * Requirement that a greeting comes with a wave, named by the plan and
+ * demonstrated by a case of its own; `waves-broken`, that wave's code
+ * failing its case; `fixture-given-up`, a record excluding the case of adding
+ * that reads a fixture, and that case left out; `polite`, greeting replaced
+ * by a Requirement that a greeting is polite: its case excluded, and a case of
+ * the new Requirement in its place; and `refactored`, adding's code rearranged,
+ * promising what it did.
+ */
+export function succeeding(accepted: string, ...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-next-"));
+  fs.cpSync(accepted, root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, layer), root, { recursive: true });
+  const plan = path.join(root, "test", "regression-plan.md");
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace(
+        /^Derived from: the accepted regression `[0-9a-f]{64}`/m,
+        `Derived from: the accepted regression \`${regressionIdentity(accepted)}\``,
+      ),
+  );
   return root;
 }
 

@@ -372,7 +372,7 @@ export function acceptance(
         const results = runTrusted(accepted, candidate, kept, skipped).filter((r) =>
           r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
         );
-        errors.push(...judge(plan.cases, results, new Set()).map((e) => `inherited case not excluded: ${e}`));
+        errors.push(...judge(plan.cases, results).map((e) => `inherited case not excluded: ${e}`));
       }
     }
   }

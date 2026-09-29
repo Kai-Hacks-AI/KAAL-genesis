@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
-import { learningOf, nodeFiles, parseNode, relativeIdentity } from "../skills/using-brain/scripts/brain.js";
 import {
   type Case,
   caseFiles,
@@ -17,36 +16,27 @@ import {
   section,
   testArgs,
 } from "./links.js";
-import { planDataError, planError, readPlan } from "./plans.js";
+import { ACCEPTANCE } from "./acceptance.js";
+import { REQUIREMENTS } from "./feature.js";
+import { REQUIREMENT } from "../skills/managing-requirements/scripts/requirements.js";
+import { planDataError, planError, readPlan, suitePlans } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
  * KAAL's trusted regression: the accepted regression, a state of KAAL's
- * files, judges a candidate, another state, with its own cases, chosen by its
- * own links and run against the candidate's code, so a candidate cannot
- * weaken, remove or relabel one of its commitments by changing its own tests.
- * Both states are plain directories: which states they are, and where they
- * come from, is decided outside KAAL. How a commitment is legitimately
- * replaced or withdrawn is stated in
- * brain/learning/genesis/26/09/26/03/nodes/testing.md; this applies it.
+ * files, judges a candidate, another state. This holds the regression's own
+ * machinery: its identity, whether it can be replayed faithfully, how its
+ * cases are run and judged, and whether a candidate could judge the next one
+ * once accepted. Both states are plain directories: which states they are,
+ * and where they come from, is decided outside KAAL. How the next regression
+ * is derived from the accepted one, what the candidate gives up and what it
+ * newly promises, is scripts/next-regression.ts.
  */
 
-const BRAIN = "brain/learning";
-
-export type Ledger = { base?: string; replaces: [string, string][]; withdraws: [string, string][] };
-
-/** The accepted regression a plan says it was derived from, by identity, and what it replaces and withdraws, each with what supersedes it. */
-export function planLedger(plan: string): Ledger {
+/** The accepted regression a plan says it was derived from, by identity, if it says: the regression it succeeds. */
+export function derivedFrom(plan: string): string | undefined {
   const text = section(plan, "How this regression differs from the one it was derived from");
-  const pairs = (label: string): [string, string][] => {
-    const line = new RegExp(`^- ${label}: (.*)$`, "m").exec(text)?.[1] ?? "";
-    return [...line.matchAll(/`([^`]+)` by `([^`]+)`/g)].map((m) => [m[1]!, m[2]!]);
-  };
-  return {
-    base: /^Derived from: the accepted regression `([0-9a-f]{64})`/m.exec(text)?.[1],
-    replaces: pairs("Replaces"),
-    withdraws: pairs("Withdraws"),
-  };
+  return /^Derived from: the accepted regression `([0-9a-f]{64})`/m.exec(text)?.[1];
 }
 
 /**
@@ -131,102 +121,6 @@ export function unreplayable(repo: string): string | undefined {
   if (imported.length)
     return `the accepted regression's checker imports code outside its state (${imported.join(", ")})`;
   return undefined;
-}
-
-type Node = { place: string; name: string; lineage: string; key: string };
-
-function brainNodes(repo: string): Node[] {
-  const root = path.join(repo, BRAIN);
-  return nodeFiles(root).map((file) => {
-    const { lineage, key } = learningOf(root, file);
-    return { place: `${BRAIN}/${relativeIdentity(root, file)}`, name: parseNode(file).name, lineage, key };
-  });
-}
-
-/** What `plan` says shows the commitment stated at `place`. */
-function shownBy(plan: string, place: string): string[] {
-  return planEntries(plan).find((e) => e.place === place)?.shownBy ?? [];
-}
-
-export type Classification = {
-  retained: string[];
-  replaced: Map<string, string>;
-  withdrawn: Map<string, string>;
-  errors: string[];
-};
-
-/**
- * Classifies every commitment of the trusted regression against a candidate.
- * A commitment is retained while the candidate's plan still names its place.
- * Otherwise it must have been superseded in BRAIN: a later node with the same
- * name, in the same lineage, is what KAAL means now. If the candidate's plan
- * names that node, the commitment is replaced by it; if not, it is withdrawn
- * by it. A commitment stated outside BRAIN has no succession, so it can only
- * be retained, and a retained commitment keeps everything that showed it, such
- * as its cases. Anything else is a silent escape. Every place the candidate's
- * plan names, retained or added, must not be superseded already; whether it is
- * a place at all is a question of links (see links.ts). The plan's own account of
- * what it replaces and withdraws is only checked against this, never trusted.
- */
-export function classify(trusted: string, candidate: string, base: string): Classification {
-  const errors: string[] = [];
-  const planOf = (repo: string) =>
-    fs.existsSync(path.join(repo, PLAN)) ? fs.readFileSync(path.join(repo, PLAN), "utf8") : undefined;
-  const trustedPlan = planOf(trusted);
-  const candidatePlan = planOf(candidate) ?? "";
-  const kept = new Set(planCommitments(candidatePlan));
-  const nodes = brainNodes(candidate);
-  const current = (node: Node) =>
-    nodes
-      .filter((n) => n.name === node.name && n.lineage === node.lineage && n.key > node.key)
-      .sort((a, b) => a.key.localeCompare(b.key))
-      .at(-1);
-  const retained: string[] = [];
-  const replaced = new Map<string, string>();
-  const withdrawn = new Map<string, string>();
-  const candidateCases = repoCases(candidate);
-  for (const place of trustedPlan ? planCommitments(trustedPlan) : []) {
-    const node = nodes.find((n) => n.place === place);
-    const successor = node && current(node);
-    if (kept.has(place)) {
-      retained.push(place);
-      // A retained commitment is shown at least as it was: dropping what showed it weakens it, which only
-      // superseding it in BRAIN may do. Cases in particular are what protect it in the next generation.
-      const was = shownBy(trustedPlan!, place);
-      const is = shownBy(candidatePlan, place);
-      for (const by of was.filter((by) => !is.includes(by)))
-        errors.push(`${place}: the accepted regression shows it by ${by}, but the plan no longer does`);
-    } else if (!successor) {
-      errors.push(`${place}: silent escape: the plan no longer names it, and nothing in BRAIN supersedes it`);
-    } else if (kept.has(successor.place)) {
-      replaced.set(place, successor.place);
-      if (!candidateCases.some((c) => c.places.includes(successor.place)))
-        errors.push(`${place}: replaced by ${successor.place}, which no case of the candidate proves`);
-    } else {
-      withdrawn.set(place, successor.place);
-    }
-  }
-  // Whatever the plan names, retained or new, must be what KAAL means now: the next accepted regression's
-  // plan must not name a commitment BRAIN has already superseded.
-  for (const place of kept) {
-    const node = nodes.find((n) => n.place === place);
-    const successor = node && current(node);
-    if (successor) errors.push(`${place}: the plan names it, but ${successor.place} supersedes it`);
-  }
-  const ledger = planLedger(candidatePlan);
-  if (ledger.base !== base)
-    errors.push(`${PLAN}: derived from ${ledger.base ?? "nothing"}, not from the accepted regression ${base}`);
-  const same = (said: [string, string][], found: Map<string, string>) =>
-    JSON.stringify([...said].sort()) === JSON.stringify([...found].sort());
-  if (!same(ledger.replaces, replaced))
-    errors.push(
-      `${PLAN}: says it replaces ${JSON.stringify(ledger.replaces)}, but BRAIN shows ${JSON.stringify([...replaced])}`,
-    );
-  if (!same(ledger.withdraws, withdrawn))
-    errors.push(
-      `${PLAN}: says it withdraws ${JSON.stringify(ledger.withdraws)}, but BRAIN shows ${JSON.stringify([...withdrawn])}`,
-    );
-  return { retained, replaced, withdrawn, errors };
 }
 
 /**
@@ -348,7 +242,7 @@ function checkerCode(repo: string): { found: string[]; escaping: string[]; unres
 
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
- * content: its plan, the places its commitments are stated, its case files,
+ * content: its plan, the places its commitments are stated, the suites that serve its plan, every Requirement and acceptance record it holds, its case files,
  * its test data, and what fixes how it judges (everything that decides what
  * its install puts in place, and the checker's code, found through its
  * relative imports), entry by entry: each directory as one, each regular file
@@ -407,6 +301,21 @@ function regressionInputs(repo: string): Map<string, Entry> {
     for (const place of planCommitments(plan))
       for (const file of fs.globSync(place, { cwd: repo })) add(file.split(path.sep).join("/"));
   }
+  // Which suites serve the plan, and so what it requires, is said by the suites, not the plan: each that serves it is
+  // part of it too, and a suite serving no Regression Plan is none of its.
+  for (const { suite, serves } of suitePlans(repo)) if (serves.includes(PLAN)) add(suite);
+  // Every Requirement it records, named by the plan or not: what it already states decides what a candidate newly
+  // promises. And every acceptance record it holds: which of a candidate's records are new, and so give anything up,
+  // is read against them. Only what is read as a record is theirs: guidance beside the records, such as AGENTS.md, is
+  // none of the regression's.
+  const listed = (dir: string) =>
+    (fs.lstatSync(path.join(repo, dir), { throwIfNoEntry: false })?.isDirectory()
+      ? fs.readdirSync(path.join(repo, dir), { withFileTypes: true })
+      : []
+    ).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  for (const entry of listed(REQUIREMENTS))
+    if (entry.isDirectory()) add(`${REQUIREMENTS}/${entry.name}/${REQUIREMENT}`);
+  for (const entry of listed(ACCEPTANCE)) if (entry.name !== "AGENTS.md") add(`${ACCEPTANCE}/${entry.name}`);
   for (const file of caseFiles(repo)) add(file);
   for (const [file, at] of dataOf(repo)) add(file, at);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
@@ -480,12 +389,12 @@ export type Positioned = Result & { line?: number; column?: number; failureType?
 /**
  * Judges the trusted cases' results against the candidate. A case that did not
  * pass (it failed, was skipped, never reported, or its file did not run as a
- * whole) is excused only when every commitment it points at was replaced or
- * withdrawn; a case that points at nothing is never excused. A result no
- * expected case accounts for, such as a case whose title could not be read,
- * points at nothing: it is held too.
+ * whole) is held, whatever it points at: only an acceptance record gives one
+ * up, by keeping it from the cases judged. A result no expected case accounts
+ * for, such as a case whose title could not be read, points at nothing: it is
+ * held too.
  */
-export function judge(cases: Case[], results: Result[], superseded: Set<string>): string[] {
+export function judge(cases: Case[], results: Result[]): string[] {
   // A file that does not run as a whole reports one result, named by the path it was run as.
   const isFile = (r: Result) => r.name.split("\\").join("/") === r.file;
   const broken = new Set(results.filter(isFile).map((r) => r.file));
@@ -499,7 +408,6 @@ export function judge(cases: Case[], results: Result[], superseded: Set<string>)
     const result = take(c);
     const outcome = broken.has(c.file) ? "did not run as a whole" : !result ? "not run" : result.outcome;
     if (outcome === "pass") return [];
-    if (c.places.length && c.places.every((p) => superseded.has(p))) return [];
     return [`${c.file}: "${c.title}" ${outcome === "fail" ? "failed" : outcome === "skip" ? "was skipped" : outcome}`];
   });
   const unaccounted = left.flatMap((r) => {
@@ -572,6 +480,15 @@ function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
     if (isData(rel, directory)) return [[rel, at]];
     return directory ? dataOf(at, rel) : [];
   });
+}
+
+/**
+ * A copy of `state` to run its own cases in, with its test data and sharing
+ * its dependencies, so nothing its cases write, beside them or anywhere under
+ * the state, reaches the state they are judging.
+ */
+export function snapshot(state: string): string {
+  return scratchCopy(state, true);
 }
 
 /** A scratch copy of a checkout to run cases in, sharing its dependencies, with only the permissions its identity records; without its test data unless `data`. */
@@ -862,25 +779,19 @@ export function caseInventory(state: string): { cases: Case[]; results: Result[]
   return { cases, results, errors: unmatchedCases(cases, results) };
 }
 
-/** The candidate's cases that point at a commitment replacing one of the accepted regression's must each pass: a skip proves nothing. */
-function replacementErrors(cases: Case[], results: Result[], successors: Set<string>): string[] {
-  const proving = cases.filter((c) => c.places.some((p) => successors.has(p)));
-  return judge(
-    proving,
-    results.filter((r) => proving.some((c) => c.file === r.file)),
-    new Set(),
-  ).map((error) => `replacement not proven: ${error}`);
-}
-
-/** Everything that stops a candidate from being accepted over the trusted regression, whose identity is `base`. */
-export function regressionErrors(trusted: string, candidate: string, base: string): string[] {
-  // No trusted case would judge nothing and accept everything, so that is refused.
-  const unfaithful = unreplayable(trusted);
-  if (unfaithful) return [unfaithful];
-  if (!repoCases(trusted).length)
-    return ["the accepted regression's npm test runs no case it can name, so nothing could judge the candidate"];
-  // Once accepted, the candidate is the regression that judges the next candidate, so it must be one that can.
-  const successor = [
+/**
+ * Why `candidate` could not judge the next candidate once accepted, if it
+ * could not: it becomes the regression that judges every later candidate, so
+ * it must be one that can be replayed, name every case it runs, hold its own
+ * checker, run as it is run, keep links that hold from its files, and have
+ * each of its cases pass under this runner, whatever its own npm test did.
+ * With its case inventory, the run that showed it.
+ */
+export function successorErrors(candidate: string): {
+  errors: string[];
+  inventory: ReturnType<typeof caseInventory>;
+} {
+  const errors = [
     ...[unreplayable(candidate)]
       .filter((e) => e !== undefined)
       .map((e) => `as the next accepted regression, ${e.slice("the accepted regression's ".length)}`),
@@ -896,23 +807,21 @@ export function regressionErrors(trusted: string, candidate: string, base: strin
     // Its links are what choose which of its cases protect which commitment, so they must hold from its files.
     ...linkErrors(candidate).map((error) => `as the next accepted regression, ${error}`),
   ];
-  const { cases: candidateCases, results: candidateResults, errors: unmatched } = caseInventory(candidate);
-  successor.push(
-    ...unmatched.map((error) => `as the next accepted regression, ${error}`),
+  const inventory = caseInventory(candidate);
+  errors.push(
+    ...inventory.errors.map((error) => `as the next accepted regression, ${error}`),
     // As the accepted regression, its cases are replayed by this runner, so each must pass under it, whatever its own npm test did.
-    ...candidateResults
+    ...inventory.results
       .filter((r) => r.outcome !== "pass" && r.name.split("\\").join("/") !== r.file)
       .map(
         (r) =>
           `as the next accepted regression, ${r.file}: "${r.name}" ${r.outcome === "fail" ? "fails" : "is skipped"} when the accepted regression replays it`,
       ),
   );
-  const { replaced, withdrawn, errors } = classify(trusted, candidate, base);
-  const superseded = new Set([...replaced.keys(), ...withdrawn.keys()]);
-  return [
-    ...successor,
-    ...errors,
-    ...replacementErrors(candidateCases, candidateResults, new Set(replaced.values())),
-    ...judge(repoCases(trusted), runTrusted(trusted, candidate), superseded),
-  ];
+  return { errors, inventory };
 }
+
+// The judgement composed from the derivation of the next regression, where the regression's own cases have always found it.
+export { regressionErrors } from "./next-regression.js";
+// The account a plan once gave of what it replaced and withdrew, which no checker reads, but cases the regression keeps do.
+export { type Classification, classify, type Ledger, planLedger } from "./ledger.js";
