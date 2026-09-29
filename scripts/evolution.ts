@@ -263,6 +263,9 @@ function depths(toks: Token[]): { t: Token; depth: number }[] {
  */
 function inert(statement: string, used: Set<string>): boolean {
   let toks = tokens(statement).filter((t) => t.kind !== "comment");
+  // What a module exports is part of what a case importing it sees, as its namespace, however inert the value: only
+  // an exported type, erased as it runs, adds nothing there.
+  if (toks[0]?.text === "export" && !["type", "interface"].includes(toks[1]?.text ?? "")) return false;
   while (toks[0]?.text === "export" || toks[0]?.text === "declare") toks = toks.slice(1);
   const [first, second, third] = toks;
   if (!first || !second) return false;

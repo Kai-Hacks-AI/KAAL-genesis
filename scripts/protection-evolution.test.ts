@@ -335,6 +335,18 @@ test("a case is defined by its claim, what its file states around its cases, the
     "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
     "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
   ]);
+  // A value a loader comes to export is seen by a case importing its namespace, however inert; a type is not.
+  assert.deepEqual(
+    changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => `${t}export const bypass = () => {};\n`)),
+    [
+      "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
+      "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
+    ],
+  );
+  assert.deepEqual(
+    changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => `${t}export type Who = string;\n`)),
+    [],
+  );
   // In JavaScript, an import loads its module even where what it binds is used for nothing.
   assert.deepEqual(
     changes(
