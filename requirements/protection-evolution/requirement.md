@@ -1,0 +1,17 @@
+---
+holds: How testing demonstrates what the accepted regression protects changes
+  only where the change is shown, from the files and from evidence, to keep or
+  add to that protection; any other change stays unresolved or reduced, and
+  never enters the next regression
+---
+
+What a regression protects, its protected meaning, is decided by what the candidate explicitly gives up and what it newly promises. How the regression demonstrates that meaning, its protection definition, may change besides: its cases, what each claims, the test data and loaders that define it, which commitments each helps prove, which suites each belongs to, the suites serving its plan, and the conditions and proof other than cases its plan requires. Each such change of a candidate's own regression, against the regression derived for it, is classified, never taken from what the candidate says of it:
+
+- Preserved: an inherited case is carried at its address, defined as it was, with every commitment and suite it had; or, where it is not, every obligation it carried, each commitment it helped prove and each suite it belonged to, is shown kept: every witness it detected, a change made to the code its cases reach, is detected by the cases of the candidate's regression that now carry that obligation.
+- Strengthened: something is added that requires or detects more, with nothing inherited lost: a case, a link or a membership for protection already held, a suite serving the plan, a set of conditions or of proof. A case entering this way, or an inherited case redefined, must hold of the accepted state too, unless it tests a defect recorded in the candidate: what it expects is authorized by what was accepted, not by what the candidate produces.
+- Reduced: an obligation an inherited case carried is shown lost: nothing carries it any more, or a witness it detected is detected by nothing that now carries it. Only an acceptance record may give that up.
+- Unresolved: what an inherited case protected cannot be shown kept, as when it detects none of its witnesses or there are too many to judge, a case entering does not hold of the accepted state, or the data the plan hands every case changed.
+
+A case is defined by its own statement, by what its file states around its cases, by the test-data loaders its file reaches, and by the test data they name by a path, read as code without comments or layout. What is only added beside them, such as another import, helper or file, leaves a case defined as it was.
+
+Where this ends: it does not decide what is protected, which is what the candidate gives up and newly promises; it does not give up anything, which only an acceptance record does; its evidence is only as strong as its witnesses, which show a change detected, never that no change could slip past; and it does not accept, seal or release the regression it allows.

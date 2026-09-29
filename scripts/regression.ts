@@ -455,7 +455,7 @@ const REPORTER = new URL("./regression-reporter.ts", import.meta.url).href;
  * test-data directory or loader, or any file but code where cases are kept
  * (under `scripts/` or `skills/<skill>/scripts/`), such as a fixture beside them.
  */
-function isData(file: string, directory: boolean): boolean {
+export function isData(file: string, directory: boolean): boolean {
   const parts = file.split("/");
   if (parts.includes("test-data") || parts.at(-1) === "test-data.ts") return true;
   const inCases = parts[0] === "scripts" || (parts[0] === "skills" && parts[2] === "scripts");
@@ -530,6 +530,7 @@ export function execute(
   positions?: false,
   handed?: Record<string, string>,
   skip?: string[],
+  timeout?: number,
 ): Result[];
 export function execute(
   code: string,
@@ -538,6 +539,7 @@ export function execute(
   positions: true,
   handed?: Record<string, string>,
   skip?: string[],
+  timeout?: number,
 ): Positioned[];
 export function execute(
   code: string,
@@ -546,6 +548,7 @@ export function execute(
   positions = false,
   handed: Record<string, string> = {},
   skip: string[] = [],
+  timeout?: number,
 ): Positioned[] {
   // With no files to run, the test runner would look for cases of its own, which no state named: run nothing.
   if (!files.length) return [];
@@ -574,6 +577,8 @@ export function execute(
       [TESTED_STATE]: path.resolve(tested),
     },
     stdio: "ignore",
+    // A run that must end, such as one against code made to do something else, which may never finish, is stopped.
+    ...(timeout === undefined ? {} : { timeout, killSignal: "SIGKILL" as const }),
   });
   const lines = fs.readFileSync(out, "utf8").split("\n").filter(Boolean);
   // A runner that could not start, was stopped, or did not report to its end has not said what every case did.
@@ -607,6 +612,7 @@ export function runTrusted(
   candidate: string,
   only?: (file: string) => boolean,
   skip?: (file: string) => string[],
+  timeout?: number,
 ): Result[] {
   const code = scratchCopy(candidate, false);
   const files = caseFiles(trusted).filter((file) => !only || only(file));
@@ -667,8 +673,10 @@ export function runTrusted(
       tested,
       false,
       handed,
+      [],
+      timeout,
     ),
-    ...alone.flatMap((file) => execute(code, [file], tested, false, handed, skip!(file))),
+    ...alone.flatMap((file) => execute(code, [file], tested, false, handed, skip!(file), timeout)),
   ];
 }
 

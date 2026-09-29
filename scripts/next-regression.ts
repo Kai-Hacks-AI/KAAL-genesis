@@ -7,6 +7,7 @@ import { acceptance, acceptedExclusions, acceptedProtection } from "./acceptance
 import { featureRun, newPromises } from "./feature.js";
 import { type Case, caseSuites, PLAN, planEntries, repoCases } from "./links.js";
 import { type PlanRequirement, planError, planRequirements, readPlan } from "./plans.js";
+import { address, type Change, evolution, pairing } from "./evolution.js";
 import { derivedFrom, snapshot, successorErrors, unreplayable } from "./regression.js";
 import { entriesIn, entryAt, entryBytes } from "./state.js";
 
@@ -17,11 +18,14 @@ import { entriesIn, entryAt, entryBytes } from "./state.js";
  * the candidate newly promises and demonstrates. Both states are plain
  * directories, read from their files alone. The candidate's own regression is
  * what judges the next candidate once it is accepted, so it must carry the
- * derived regression exactly: nothing inherited left out that no record gives
- * up, nothing new let in that the candidate did not newly promise and
- * demonstrate. Once accepted, the candidate is the accepted regression the
+ * derived regression: nothing inherited left out that no record gives up, and
+ * every way it demonstrates that protection otherwise, a change to the
+ * protection definition shown preserved or strengthened, as
+ * scripts/evolution.ts classifies it. FAR decides what is protected; evolution
+ * decides only how it is demonstrated. Once accepted, the candidate is the
+ * accepted regression the
  * same derivation starts from next. What the regression is for KAAL is stated
- * in brain/learning/genesis/26/09/28/06/nodes/testing.md.
+ * in brain/learning/genesis/26/09/29/01/nodes/testing.md.
  */
 
 /** A commitment a regression requires, by its place, with what shows it. */
@@ -142,43 +146,9 @@ export function protectionOf(state: string): { protection: Protection; errors: s
   };
 }
 
-/**
- * A complete one-to-one pairing of `left` with `right`, as large as can be,
- * where each pair `fits`: for each of `left`, the index of its partner in
- * `right`, or nothing. Grown by augmenting paths, so it does not depend on the
- * order either is listed in, and with as many partners that are `preferred`
- * as a complete pairing can have.
- */
-function pairing<L, R>(
-  left: L[],
-  right: R[],
-  fits: (l: L, r: R) => boolean,
-  preferred: (r: R) => boolean = () => true,
-): (number | undefined)[] {
-  const owner: (number | undefined)[] = right.map(() => undefined);
-  const assign = (l: number, seen: Set<number>, may: (r: R) => boolean): boolean =>
-    right.some((r, k) => {
-      if (seen.has(k) || !may(r) || !fits(left[l]!, r)) return false;
-      seen.add(k);
-      if (owner[k] === undefined || assign(owner[k]!, seen, may)) return ((owner[k] = l), true);
-      return false;
-    });
-  // First among the preferred alone, then among all: a path that grows a matching never frees what it has matched,
-  // so as many preferred as can be are kept, and the matching is still complete where one can be.
-  left.forEach((_, l) => assign(l, new Set(), preferred));
-  left.forEach((_, l) => owner.includes(l) || assign(l, new Set(), () => true));
-  return left.map((_, l) => {
-    const k = owner.indexOf(l);
-    return k < 0 ? undefined : k;
-  });
-}
-
 /** Whether `c` keeps every link and membership `d` has. */
 const keepsAll = (d: Held, c: Held) =>
   d.places.every((p) => c.places.includes(p)) && d.suites.every((s) => c.suites.includes(s));
-
-/** A case's address, the same for every case at it. */
-const address = (c: Held) => `${c.file}\0${c.title}`;
 
 /**
  * The cases of the next regression: each inherited case as the candidate
@@ -253,7 +223,7 @@ function carriedCases(inherited: Held[], given: Held[], candidate: Held[], provi
 export function nextRegression(
   accepted: string,
   candidate: string,
-): { protection: Protection; promises: string[]; demonstrated: string[]; errors: string[] } {
+): { protection: Protection; inherited: Held[]; promises: string[]; demonstrated: string[]; errors: string[] } {
   const stated = acceptedExclusions(accepted, candidate);
   const kept = acceptedProtection(accepted, stated.accepted);
   const errors = [...stated.errors, ...kept.errors];
@@ -294,6 +264,7 @@ export function nextRegression(
     kept.cases.some((k) => k.file === c.file && k.title === c.title);
   const proving = new Set(demonstrated);
   const text = planText(accepted);
+  const inheritedCases = heldCases(accepted, keptCase, commitments, suites);
   return {
     protection: {
       commitments: [
@@ -304,7 +275,7 @@ export function nextRegression(
       ...planSettings(accepted),
       cases: byAddress(
         carriedCases(
-          heldCases(accepted, keptCase, commitments, suites),
+          inheritedCases,
           heldCases(accepted, (c) => !keptCase(c), commitments, suites),
           heldCases(candidate, () => true, commitments, suites),
           // Each case by its own links: one at the same address as a case demonstrating a promise is not that case.
@@ -312,125 +283,49 @@ export function nextRegression(
         ),
       ),
     },
+    inherited: inheritedCases,
     promises,
     demonstrated,
     errors,
   };
 }
 
-/** Sets of conditions as the sets they are, in no order. */
-const asSets = (sets: Conditions[]) => [...new Set(sets.map((set) => canonical(set)))].sort();
-/** What a plan says runs read of it, each set of conditions in no order. */
-const settings = (p: Protection) => ({
-  conditions: asSets(p.conditions),
-  proof: Object.fromEntries(Object.entries(p.proof).map(([name, under]) => [name, asSets(under)])),
-  data: p.data === undefined ? null : { place: p.data, held: p.dataHeld ?? null },
-});
-
-/** Values the same once written the same way, whatever order their keys were written in. */
-const canonical = (value: unknown): string =>
-  JSON.stringify(value, (_, v: unknown) =>
-    v && typeof v === "object" && !Array.isArray(v)
-      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)))
-      : v,
-  );
-
 /**
- * Why `own`, a candidate's own regression, does not carry `derived`, the
- * regression derived for it, exactly, if it does not. It requires the same
- * commitments, each shown as the derivation says, the same suites, conditions,
- * proof and data, and keeps every case the derivation holds at its address,
- * still helping prove each commitment and belonging to each suite the
- * derivation says it does, and holds nothing more: no case, link or
- * membership the derivation does not bring in, since once accepted it would be
- * protection inherited without having entered. `refused` are the addresses of
- * the candidate's cases that did not pass as the next regression, which the
- * successor checks already refuse, so a case of its own there is left to them.
+ * The next regression for `candidate` over `accepted`: the regression FAR
+ * derives, with the changes to its protection definition the candidate's own
+ * regression makes, each classified by Testing's protection evolution. Where
+ * every change is preserved or strengthened, and FAR's derivation holds, the
+ * candidate's own regression is the next regression: what it carries beyond
+ * FAR's is approved evolution. Otherwise it has none, and the errors say why.
+ * `refused` are the addresses of the candidate's cases that do not pass as the
+ * next regression, which the successor checks already refuse.
  */
-export function carriedErrors(
-  derived: Protection,
-  own: Protection,
-  promises: string[],
+export function evolvedRegression(
+  accepted: string,
+  candidate: string,
   refused: Set<string> = new Set(),
-): string[] {
-  const errors: string[] = [];
-  const derivedPlaces = new Set(derived.commitments.map((c) => c.place));
-  const ownPlaces = new Set(own.commitments.map((c) => c.place));
-  for (const { place } of derived.commitments.filter((c) => !ownPlaces.has(c.place)))
-    errors.push(
-      promises.includes(place)
-        ? `${place}: newly promised and demonstrated, but the candidate's regression does not require it`
-        : `${place}: inherited, and no acceptance record gives it up, but the candidate's regression no longer requires it`,
-    );
-  for (const { place } of own.commitments.filter((c) => !derivedPlaces.has(c.place)))
-    errors.push(
-      promises.includes(place)
-        ? `${place}: newly promised but not demonstrated, so it cannot enter the regression`
-        : `${place}: the candidate's regression requires it, but it is neither inherited nor newly promised`,
-    );
-  for (const { place, shownBy: was } of derived.commitments) {
-    const is = own.commitments.find((c) => c.place === place)?.shownBy;
-    if (is && canonical(is) !== canonical(was))
-      errors.push(`${place}: the regression shows it by ${was.join(", ")}, but the candidate's by ${is.join(", ")}`);
-  }
-  for (const suite of derived.suites.filter((s) => !own.suites.includes(s)))
-    errors.push(
-      `${suite}: serves the regression, and no acceptance record gives it up, but no longer serves the candidate's`,
-    );
-  for (const suite of own.suites.filter((s) => !derived.suites.includes(s)))
-    errors.push(
-      `${suite}: serves the candidate's regression, but nothing newly promised brings it into the regression`,
-    );
-  const [ownSettings, derivedSettings] = [settings(own), settings(derived)];
-  for (const key of ["conditions", "proof", "data"] as const)
-    if (canonical(ownSettings[key]) !== canonical(derivedSettings[key]))
-      errors.push(
-        key === "data" && own.data !== undefined && own.data === derived.data
-          ? `${PLAN}: its data, ${own.data}, hold other than the regression's, which nothing gives up or adds to`
-          : `${PLAN}: its ${key} are ${canonical(own[key] ?? null)}, but the regression's are ${canonical(derived[key] ?? null)}, which nothing gives up or adds to`,
-      );
-  // Cases are matched one to one, so two cases at one address need two. At each address the derived cases are paired
-  // with the candidate's by a complete matching that keeps every relation, whatever order either lists them in; only
-  // what no such pairing can keep is reported, against what the candidate has left at the address, if anything. What
-  // the candidate's regression holds beyond the derived one, a case or a relation, is reported too: once accepted, it
-  // would be inherited protection that nothing newly promised brought in.
-  const surplus = (name: string, o: Held, d: Held) => {
-    for (const place of o.places.filter((p) => !d.places.includes(p)))
-      errors.push(
-        `${name}: helps prove ${place} in the candidate's regression, which nothing newly promised brings into the regression`,
-      );
-    for (const suite of o.suites.filter((s) => !d.suites.includes(s)))
-      errors.push(
-        `${name}: belongs to ${suite} in the candidate's regression, which nothing newly promised brings into the regression`,
-      );
-  };
-  for (const at of new Set([...derived.cases, ...own.cases].map(address))) {
-    const ds = derived.cases.filter((c) => address(c) === at);
-    const os = own.cases.filter((c) => address(c) === at);
-    const partner = pairing(ds, os, keepsAll);
-    const spare = os.filter((_, k) => !partner.includes(k));
-    ds.forEach((c, d) => {
-      const name = `${c.file}: ${JSON.stringify(c.title)}`;
-      if (partner[d] !== undefined) return surplus(name, os[partner[d]!]!, c);
-      const is = spare.shift();
-      if (!is) {
-        errors.push(
-          `${name}: in the regression, and no acceptance record excludes it, but the candidate no longer has it`,
-        );
-        return;
-      }
-      for (const place of c.places.filter((p) => !is.places.includes(p)))
-        errors.push(`${name}: helps prove ${place} in the regression, but no longer does in the candidate's`);
-      for (const suite of c.suites.filter((s) => !is.suites.includes(s)))
-        errors.push(`${name}: belongs to ${suite} in the regression, but no longer does in the candidate's`);
-    });
-    // A case of its own that could not judge the next candidate, which the successor checks already refuse, is left to them.
-    for (const o of spare.filter((o) => !refused.has(address(o))))
-      errors.push(
-        `${o.file}: ${JSON.stringify(o.title)}: the candidate's regression has it, but nothing newly promised brings it into the regression`,
-      );
-  }
-  return errors;
+): {
+  derived: ReturnType<typeof nextRegression>;
+  next?: Protection;
+  changes: Change[];
+  errors: string[];
+  unread?: string[];
+} {
+  const derived = nextRegression(accepted, candidate);
+  const own = protectionOf(candidate);
+  // A regression that cannot be read from the candidate's files carries nothing: the checks of its links say why.
+  if (own.errors.length) return { derived, changes: [], errors: derived.errors, unread: own.errors };
+  const { changes, errors } = evolution(
+    accepted,
+    candidate,
+    derived.protection,
+    own.protection,
+    derived.inherited,
+    derived.promises,
+    refused,
+  );
+  const all = [...derived.errors, ...errors];
+  return { derived, ...(all.length ? {} : { next: own.protection }), changes, errors: all };
 }
 
 /**
@@ -453,16 +348,12 @@ export function regressionErrors(trusted: string, candidate: string, base: strin
   const derived = derivedFrom(planText(candidate));
   const provenance =
     derived === base ? [] : [`${PLAN}: derived from ${derived ?? "nothing"}, not from the accepted regression ${base}`];
-  const next = nextRegression(trusted, candidate);
-  const own = protectionOf(candidate);
   return [
     ...new Set([
       ...successor,
       ...provenance,
       ...acceptance(trusted, candidate).errors,
-      ...next.errors,
-      // A regression that cannot be read from the candidate's files, which the checks above say why, carries nothing.
-      ...(own.errors.length ? [] : carriedErrors(next.protection, own.protection, next.promises, refused)),
+      ...evolvedRegression(trusted, candidate, refused).errors,
     ]),
   ];
 }
@@ -474,10 +365,23 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = 2;
   } else {
     try {
-      const next = nextRegression(accepted, candidate);
-      const own = protectionOf(candidate);
-      const errors = [...next.errors, ...own.errors, ...carriedErrors(next.protection, own.protection, next.promises)];
-      console.log(JSON.stringify({ ...next, errors }, null, 2));
+      const evolved = evolvedRegression(accepted, candidate);
+      const { derived, next, changes } = evolved;
+      const errors = [...evolved.errors, ...(evolved.unread ?? [])];
+      console.log(
+        JSON.stringify(
+          {
+            promises: derived.promises,
+            demonstrated: derived.demonstrated,
+            derived: derived.protection,
+            changes,
+            next,
+            errors,
+          },
+          null,
+          2,
+        ),
+      );
       if (errors.length) process.exitCode = 1;
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));

@@ -59,7 +59,7 @@ test("a plan's commitments are read from its section headed exactly so, wherever
   assert.deepEqual(classify(trusted, regressionCandidate("kept"), BASE).retained, real);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a trusted case that does not pass is held, whatever it points at", () => {
   const cases: Case[] = [
     { file: "a.test.ts", title: "failed", places: ["kept.md"] },
@@ -82,7 +82,7 @@ test("a trusted case that does not pass is held, whatever it points at", () => {
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a trusted result no expected case accounts for is held: it points at nothing", () => {
   const cases: Case[] = [{ file: "scripts/a.test.ts", title: "named", places: ["kept.md"] }];
   const results: Result[] = [
@@ -97,7 +97,7 @@ test("a trusted result no expected case accounts for is held: it points at nothi
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("trusted results are matched to cases one to one: two cases with one title need two passes", () => {
   const cases: Case[] = [
     { file: "scripts/a.test.ts", title: "twice", places: ["kept.md"] },
@@ -110,7 +110,7 @@ test("trusted results are matched to cases one to one: two cases with one title 
   assert.deepEqual(judge(cases, results), ['scripts/a.test.ts: "twice" failed']);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a trusted file that does not run as a whole proves none of its cases, even if it reports a pass", () => {
   const cases: Case[] = [{ file: "scripts/a.test.ts", title: "holds", places: ["kept.md"] }];
   const results: Result[] = [
@@ -120,26 +120,31 @@ test("a trusted file that does not run as a whole proves none of its cases, even
   assert.deepEqual(judge(cases, results), ['scripts/a.test.ts: "holds" did not run as a whole']);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate cannot weaken a retained commitment by weakening its own cases: the accepted regression's cases judge it", () => {
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("weakened"), BASE), [
     'inherited case not excluded: scripts/cases.test.ts: "adds" failed',
     'inherited case not excluded: scripts/cases.test.ts: "adds as its fixture says" failed',
-    // Nor by leaving one out: once accepted, its regression would no longer have it, and no record gives it up.
-    'scripts/cases.test.ts: "adds as its fixture says": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
+    // Nor by weakening one or leaving one out: once accepted, its regression would no longer protect adding as it did,
+    // and nothing it holds shows what they protected kept, which a case failing against the candidate cannot.
+    'scripts/cases.test.ts: "adds": unresolved: redefined: its claim is another; it detects none of the 2 witnesses made of the code it reaches, so nothing shows what it protected kept',
+    'scripts/cases.test.ts: "adds as its fixture says": unresolved: the candidate no longer has it; it detects none of the 2 witnesses made of the code it reaches, so nothing shows what it protected kept',
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate cannot change the data the accepted regression's cases read, even beside them: its data judges it", () => {
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("refixtured"), BASE), [
     'as the next accepted regression, scripts/cases.test.ts: "adds" fails when the accepted regression replays it',
     'inherited case not excluded: scripts/cases.test.ts: "adds" failed',
     'inherited case not excluded: scripts/cases.test.ts: "adds as its fixture says" failed',
+    // Nor does the case reading the changed data enter the next regression: what it expects is not what was accepted.
+    'scripts/cases.test.ts: "adds as its fixture says": unresolved: redefined: its data scripts/fixtures/sum.txt holds other than it did, but it does not hold of the accepted state, so what it expects is not authorized by what was accepted: newly promise it, or name the defect it tests',
+    'scripts/cases.test.ts: "adds as its fixture says": unresolved: redefined: its data scripts/fixtures/sum.txt holds other than it did; it detects none of the 2 witnesses made of the code it reaches, so nothing shows what it protected kept',
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate cannot relabel a retained commitment's case away: the accepted regression's links choose what judges it", () => {
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("relabeled"), BASE), [
     // Its own links no longer hold either: the case points at a commitment its plan no longer states.
@@ -151,12 +156,12 @@ test("a candidate cannot relabel a retained commitment's case away: the accepted
     // Nor does its plan's account of a withdrawal give up the commitment, or the cases it leaves out.
     "brain/learning/k/26/01/01/01/nodes/greeting.md: inherited, and no acceptance record gives it up, but the candidate's regression no longer requires it",
     `scripts/cases.test.ts: "adds": helps prove src/add.ts in the regression, but no longer does in the candidate's`,
-    'scripts/cases.test.ts: "adds as its fixture says": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
     'scripts/cases.test.ts: "greets": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
+    'scripts/cases.test.ts: "adds as its fixture says": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("cases are replayed without the npm variables of whatever started the check", () => {
   const before = process.env.npm_package_name;
   process.env.npm_package_name = "kaal";
@@ -170,7 +175,7 @@ test("cases are replayed without the npm variables of whatever started the check
   }
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate whose code ends the run early proves none of the cases in that file", () => {
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("exits"), BASE), [
     'as the next accepted regression, scripts/cases.test.ts: "adds" is named but does not run',
@@ -183,28 +188,28 @@ test("a candidate whose code ends the run early proves none of the cases in that
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("the accepted regression's cases are the case files its npm test names, quoted or not, and nothing it only preloads", () => {
   assert.deepEqual(caseFiles(regressionTrusted()), ["scripts/cases.test.ts"]);
   assert.deepEqual(caseFiles(regressionCandidate("quoted-globs")), ["scripts/cases.test.ts"]);
   assert.deepEqual(caseFiles(regressionCandidate("preloaded")), ["scripts/cases.test.ts"]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("an accepted regression whose npm test is more than tsx --test with case files cannot be replayed, so every candidate is refused", () => {
   assert.deepEqual(regressionErrors(regressionCandidate("preloaded"), regressionCandidate("kept"), BASE), [
     `the accepted regression's npm test is not "tsx --test" with case files only ("tsx --import ./scripts/setup.ts --test scripts/*.test.ts"), so its cases cannot be run as it runs them`,
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("an accepted regression whose npm test runs no case it can name judges nothing, so every candidate is refused", () => {
   assert.deepEqual(regressionErrors(regressionCandidate("no-cases"), regressionCandidate("kept"), BASE), [
     "the accepted regression's npm test runs no case it can name, so nothing could judge the candidate",
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate that could not judge the next change once accepted is refused before it is accepted: every case it runs must be one it names", () => {
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("preloaded"), BASE).slice(0, 1), [
     'as the next accepted regression, npm test is not "tsx --test" with case files only ("tsx --import ./scripts/setup.ts --test scripts/*.test.ts"), so its cases cannot be run as it runs them',
@@ -250,7 +255,7 @@ test("a candidate that could not judge the next change once accepted is refused 
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate named by a relative path runs with its own dependencies", () => {
   const candidate = regressionCandidate("kept");
   const word = path.join(candidate, "node_modules", "kaal-word");
@@ -278,7 +283,7 @@ test("a candidate named by a relative path runs with its own dependencies", () =
   }
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a regression's identity changes with what it consists of, a link as a link, and with nothing else", () => {
   const copy = () => regressionCandidate("kept");
   const [plain, linked, other] = [copy(), copy(), copy()];
@@ -401,7 +406,7 @@ test("a regression's identity changes with what it consists of, a link as a link
   assert.equal(regressionIdentity(other), before);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("the replay gives the accepted regression's cases its own plan, not the plan of a candidate that replaces a commitment", () => {
   const trusted = regressionCandidate("kept");
   const plan = path.join(trusted, PLAN);
@@ -426,7 +431,7 @@ test("the replay gives the accepted regression's cases its own plan, not the pla
   );
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("the replay holds only the accepted regression's cases, none the candidate adds of its own", () => {
   const trusted = regressionCandidate("kept");
   // A case that reads which cases there are, as a check of the regression's links does.
@@ -454,7 +459,7 @@ test("the replay holds only the accepted regression's cases, none the candidate 
   );
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("the replay shows the accepted cases what the accepted regression knew: its case selection, and none of the candidate's additions its places reach", () => {
   const trusted = regressionCandidate("kept");
   const plan = path.join(trusted, PLAN);
@@ -507,7 +512,7 @@ test("the replay shows the accepted cases what the accepted regression knew: its
   assert.ok(runTrusted(regressionTrusted(), blocked).length > 0);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test(
   "the replay writes only inside its own copy, even where the candidate links a directory out of it",
   { skip: process.platform === "win32" },
@@ -540,7 +545,7 @@ test(
   },
 );
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test(
   "the replay gives the accepted regression's cases only the permissions its identity records",
   { skip: process.platform === "win32" },
@@ -572,7 +577,7 @@ test(
   },
 );
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a candidate that would leave no checker to judge the next candidate with is refused before it is accepted", () => {
   const checkless = regressionCandidate("kept");
   fs.rmSync(path.join(checkless, "scripts", "check-regression.ts"));
@@ -587,7 +592,7 @@ test("a candidate that would leave no checker to judge the next candidate with i
   );
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a state whose judging depends on files outside it cannot be replayed: local packages, links out of it, and checker code imported from outside it", () => {
   const local = regressionCandidate("kept");
   const pkg = path.join(local, "package.json");
@@ -758,7 +763,7 @@ test("a state whose judging depends on files outside it cannot be replayed: loca
   ]);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("KAAL's own plan states a place for every commitment and the accepted regression it was derived from, and its npm test can be replayed and names every case", () => {
   const plan = fs.readFileSync(path.join(KAAL, PLAN), "utf8");
   assert.equal(planCommitments(plan).length, [...plan.matchAll(/^\d+\. /gm)].length);
@@ -769,7 +774,7 @@ test("KAAL's own plan states a place for every commitment and the accepted regre
   assert.deepEqual(unnamedCases(KAAL), []);
 });
 
-// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
 test("a case's commitments are the Why: lines directly above it, and only those", () => {
   assert.deepEqual(
     fileCases(
