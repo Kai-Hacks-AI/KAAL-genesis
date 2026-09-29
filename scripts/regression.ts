@@ -20,7 +20,6 @@ import { ACCEPTANCE } from "./acceptance.js";
 import { REQUIREMENTS } from "./feature.js";
 import { REQUIREMENT } from "../skills/managing-requirements/scripts/requirements.js";
 import { planDataError, planError, readPlan, suitePlans } from "./plans.js";
-import { tokens } from "./source.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
@@ -157,48 +156,20 @@ function checkCommand(repo: string): string | undefined {
 }
 
 /**
- * The value of `text`, JSON as TypeScript writes its configuration, with
- * comments and trailing commas, or undefined where it is not that.
- */
-export function jsonc(text: string): unknown {
-  const toks = tokens(text).filter((t) => t.kind !== "comment");
-  const kept = toks.filter((t, i) => !(t.text === "," && ["}", "]"].includes(toks[i + 1]?.text ?? "")));
-  try {
-    return JSON.parse(kept.map((t) => t.text).join(" "));
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * How TypeScript is compiled for the checker and the cases: a state's
- * `tsconfig.json` and every local configuration it extends, one or a list,
- * in order, or the first `extends` that leads out of the state, which the
- * identity cannot see. Where a configuration cannot be read, or extends what
- * the state does not hold as a file, as a package's, what it is compiled with
- * is `unknown`: never taken to be only what could be read.
+ * `tsconfig.json` and every local configuration it extends, in order, or the
+ * first `extends` that leads out of the state, which the identity cannot see.
  */
-export function typescriptConfig(repo: string): { files: string[]; outside?: string; unknown?: string } {
+function typescriptConfig(repo: string): { files: string[]; outside?: string } {
   const files: string[] = [];
-  const queue = ["tsconfig.json"];
-  while (queue.length) {
-    const at = queue.shift()!;
-    if (files.includes(at) || !fs.existsSync(path.join(repo, at))) continue;
+  let at = "tsconfig.json";
+  while (fs.existsSync(path.join(repo, at)) && !files.includes(at)) {
     files.push(at);
-    const config = jsonc(fs.readFileSync(path.join(repo, at), "utf8"));
-    if (!config || typeof config !== "object" || Array.isArray(config))
-      return { files, unknown: `${at} cannot be read` };
-    const extended = (config as { extends?: unknown }).extends;
-    if (extended === undefined) continue;
-    const bases = typeof extended === "string" ? [extended] : extended;
-    if (!Array.isArray(bases) || !bases.every((b) => typeof b === "string"))
-      return { files, unknown: `${at} extends what cannot be read` };
-    for (const base of bases as string[]) {
-      if (!/^\.{1,2}\//.test(base)) return { files, unknown: `${at} extends ${base}, which the state does not hold` };
-      const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
-      if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
-      queue.push(fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`);
-    }
+    const base = /"extends"\s*:\s*"(\.{1,2}\/[^"]+)"/.exec(fs.readFileSync(path.join(repo, at), "utf8"))?.[1];
+    if (!base) break;
+    const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
+    if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
+    at = fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`;
   }
   return { files };
 }
@@ -347,6 +318,8 @@ function regressionInputs(repo: string): Map<string, Entry> {
   for (const entry of listed(ACCEPTANCE)) if (entry.name !== "AGENTS.md") add(`${ACCEPTANCE}/${entry.name}`);
   for (const file of caseFiles(repo)) add(file);
   for (const [file, at] of dataOf(repo)) add(file, at);
+  // The evidence the regression projects, each change's as it was admitted, is the regression's own.
+  for (const entry of listed(CHANGE)) if (entry.isDirectory()) add(`${CHANGE}/${entry.name}/${HELD_EVIDENCE}`);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
   for (const file of judgeFiles(repo)) add(file);
   return entries;
@@ -484,7 +457,7 @@ const REPORTER = new URL("./regression-reporter.ts", import.meta.url).href;
  * test-data directory or loader, or any file but code where cases are kept
  * (under `scripts/` or `skills/<skill>/scripts/`), such as a fixture beside them.
  */
-export function isData(file: string, directory: boolean): boolean {
+function isData(file: string, directory: boolean): boolean {
   const parts = file.split("/");
   if (parts.includes("test-data") || parts.at(-1) === "test-data.ts") return true;
   const inCases = parts[0] === "scripts" || (parts[0] === "skills" && parts[2] === "scripts");
@@ -501,7 +474,7 @@ export function keptAsData(directory: string): boolean {
 }
 
 /** The test data and test-data loaders of a repository, outside its dependencies and Git's own files. */
-function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
+export function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
     const rel = dir ? `${dir}/${name}` : name;
     if (UNLOOKED.includes(rel)) return [];
@@ -513,15 +486,15 @@ function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
 
 /**
  * A copy of `state` to run its own cases in, with its test data and sharing
- * its dependencies, so nothing its cases write, beside them or anywhere under
- * the state, reaches the state they are judging.
+ * its dependencies, or those of `dependencies`, so nothing its cases write,
+ * beside them or anywhere under the state, reaches the state they are judging.
  */
-export function snapshot(state: string): string {
-  return scratchCopy(state, true);
+export function snapshot(state: string, dependencies: string = state): string {
+  return scratchCopy(state, true, dependencies);
 }
 
 /** A scratch copy of a checkout to run cases in, sharing its dependencies, with only the permissions its identity records; without its test data unless `data`. */
-function scratchCopy(repo: string, data: boolean): string {
+function scratchCopy(repo: string, data: boolean, dependencies: string = repo): string {
   const code = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-regression-")), "repo");
   fs.cpSync(repo, code, {
     recursive: true,
@@ -532,9 +505,9 @@ function scratchCopy(repo: string, data: boolean): string {
     },
   });
   recordedModes(code);
-  if (fs.existsSync(path.join(repo, "node_modules")))
+  if (fs.existsSync(path.join(dependencies, "node_modules")))
     // Absolute: a relative target would resolve against the copy, not the checkout.
-    fs.symlinkSync(path.resolve(repo, "node_modules"), path.join(code, "node_modules"), "junction");
+    fs.symlinkSync(path.resolve(dependencies, "node_modules"), path.join(code, "node_modules"), "junction");
   return code;
 }
 
@@ -542,6 +515,9 @@ function scratchCopy(repo: string, data: boolean): string {
 /** How a run hands the cases it reaches the test data their plan provides: a directory, by its absolute path. */
 export const PLAN_DATA = "KAAL_PLAN_DATA";
 export const TESTED_STATE = "KAAL_TESTED_STATE";
+/** Where a regression keeps the evidence it projects: under `change/<name>/test/`, each change's own. */
+export const CHANGE = "change";
+export const HELD_EVIDENCE = "test";
 export const TESTING_STATE = "KAAL_TESTING_STATE";
 
 /**
@@ -559,7 +535,6 @@ export function execute(
   positions?: false,
   handed?: Record<string, string>,
   skip?: string[],
-  timeout?: number,
 ): Result[];
 export function execute(
   code: string,
@@ -568,7 +543,6 @@ export function execute(
   positions: true,
   handed?: Record<string, string>,
   skip?: string[],
-  timeout?: number,
 ): Positioned[];
 export function execute(
   code: string,
@@ -577,7 +551,6 @@ export function execute(
   positions = false,
   handed: Record<string, string> = {},
   skip: string[] = [],
-  timeout?: number,
 ): Positioned[] {
   // With no files to run, the test runner would look for cases of its own, which no state named: run nothing.
   if (!files.length) return [];
@@ -606,8 +579,6 @@ export function execute(
       [TESTED_STATE]: path.resolve(tested),
     },
     stdio: "ignore",
-    // A run that must end, such as one against code made to do something else, which may never finish, is stopped.
-    ...(timeout === undefined ? {} : { timeout, killSignal: "SIGKILL" as const }),
   });
   const lines = fs.readFileSync(out, "utf8").split("\n").filter(Boolean);
   // What the runner reported is read: the directory made to hold it is not kept.
@@ -643,79 +614,94 @@ export function runTrusted(
   candidate: string,
   only?: (file: string) => boolean,
   skip?: (file: string) => string[],
-  timeout?: number,
+  held: string = trusted,
 ): Result[] {
   const code = scratchCopy(candidate, false);
   // The copies the cases run in and are handed are the run's own: none is kept once it has reported.
   let tested: string | undefined;
   try {
-    const files = caseFiles(trusted).filter((file) => !only || only(file));
-    // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
-    // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
-    // A path that climbs out of the copy names none of its files, so nothing is removed for it.
-    for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
-      fs.rmSync(within(code, rel), { force: true });
-    const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
-    if (plan.length) {
-      // What a place of the accepted plan reaches by a wildcard, it knew by that place: anything there the accepted
-      // state does not have is the candidate's addition, which its own cases prove, so the accepted cases do not see it.
-      for (const place of planCommitments(fs.readFileSync(path.join(trusted, PLAN), "utf8")).filter((p) =>
-        p.includes("*"),
-      )) {
-        const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
-        for (const match of fs.globSync(place, { cwd: code }).map((m) => m.split(path.sep).join("/"))) {
-          if (fs.existsSync(path.join(trusted, match))) continue;
-          // A match the accepted state lacks: all of it that is new, the wildcard's directory if that is new too.
-          const top = match.split("/").slice(0, depth).join("/");
-          const at = fs.existsSync(path.join(trusted, top)) ? match : top;
-          if (inside(code, at)) fs.rmSync(within(code, at), { recursive: true, force: true });
-        }
-      }
-    }
-    // Which cases the regression has is the accepted regression's own selection, not the candidate's.
-    // The manifest is written afresh, never through a link the candidate may have made of it.
-    const manifest = within(code, "package.json");
-    const test = (
-      JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts?: { test?: string } }
-    ).scripts?.test;
-    const own = (
-      fs.statSync(manifest, { throwIfNoEntry: false })?.isFile() ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {}
-    ) as { scripts?: Record<string, string> };
-    fs.rmSync(manifest, { recursive: true, force: true });
-    fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
-    for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
-      const to = within(code, rel);
-      fs.rmSync(to, { recursive: true, force: true });
-      fs.mkdirSync(path.dirname(to), { recursive: true });
-      fs.cpSync(path.join(trusted, rel), to, { recursive: true, verbatimSymlinks: true });
-      // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
-      recordedModes(to);
-    }
-    // The state the accepted cases judge is the candidate itself, as it is, not the copy they are run in, which
-    // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
-    // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
-    // its own, so no case sees more of it than the regression judges, or writes into it.
-    const handedState = scratchCopy(candidate, true);
-    tested = handedState;
-    const handed = plannedData(trusted, code);
-    // A title is skipped in every file a run executes, so each file with cases to skip is run on its own, where its
-    // titles, each unique there, name only its own cases.
-    const alone = skip ? files.filter((file) => skip(file).length) : [];
-    return [
-      ...execute(
-        code,
-        files.filter((file) => !alone.includes(file)),
-        handedState,
-        false,
-        handed,
-        [],
-        timeout,
-      ),
-      ...alone.flatMap((file) => execute(code, [file], handedState, false, handed, skip!(file), timeout)),
-    ];
+    return replay(trusted, candidate, code, held, only, skip, (state) => (tested = state));
   } finally {
     for (const copy of [code, tested]) if (copy) fs.rmSync(path.dirname(copy), { recursive: true, force: true });
   }
+}
+
+/** The replay `runTrusted` makes in `code`, from the cases and data `held` holds at their paths. */
+function replay(
+  trusted: string,
+  candidate: string,
+  code: string,
+  held: string,
+  only: ((file: string) => boolean) | undefined,
+  skip: ((file: string) => string[]) | undefined,
+  handing: (state: string) => void,
+): Result[] {
+  const files = caseFiles(trusted, held).filter((file) => !only || only(file));
+  // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
+  // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
+  // A path that climbs out of the copy names none of its files, so nothing is removed for it.
+  for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
+    fs.rmSync(within(code, rel), { force: true });
+  const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
+  if (plan.length) {
+    // What a place of the accepted plan reaches by a wildcard, it knew by that place: anything there the accepted
+    // state does not have is the candidate's addition, which its own cases prove, so the accepted cases do not see it.
+    for (const place of planCommitments(fs.readFileSync(path.join(trusted, PLAN), "utf8")).filter((p) =>
+      p.includes("*"),
+    )) {
+      const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
+      for (const match of fs.globSync(place, { cwd: code }).map((m) => m.split(path.sep).join("/"))) {
+        if (fs.existsSync(path.join(trusted, match))) continue;
+        // A match the accepted state lacks: all of it that is new, the wildcard's directory if that is new too.
+        const top = match.split("/").slice(0, depth).join("/");
+        const at = fs.existsSync(path.join(trusted, top)) ? match : top;
+        if (inside(code, at)) fs.rmSync(within(code, at), { recursive: true, force: true });
+      }
+    }
+  }
+  // Which cases the regression has is the accepted regression's own selection, not the candidate's.
+  // The manifest is written afresh, never through a link the candidate may have made of it.
+  const manifest = within(code, "package.json");
+  const test = (
+    JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts?: { test?: string } }
+  ).scripts?.test;
+  const own = (
+    fs.statSync(manifest, { throwIfNoEntry: false })?.isFile() ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {}
+  ) as { scripts?: Record<string, string> };
+  fs.rmSync(manifest, { recursive: true, force: true });
+  fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
+  for (const [rel, from] of [
+    ...files.map((f) => [f, held] as const),
+    ...plan.map((f) => [f, trusted] as const),
+    ...dataOf(held).map(([rel]) => [rel, held] as const),
+  ]) {
+    const to = within(code, rel);
+    fs.rmSync(to, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.cpSync(path.join(from, rel), to, { recursive: true, verbatimSymlinks: true });
+    // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
+    recordedModes(to);
+  }
+  // The state the accepted cases judge is the candidate itself, as it is, not the copy they are run in, which
+  // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
+  // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
+  // its own, so no case sees more of it than the regression judges, or writes into it.
+  const tested = scratchCopy(candidate, true);
+  handing(tested);
+  const handed = plannedData(trusted, code);
+  // A title is skipped in every file a run executes, so each file with cases to skip is run on its own, where its
+  // titles, each unique there, name only its own cases.
+  const alone = skip ? files.filter((file) => skip(file).length) : [];
+  return [
+    ...execute(
+      code,
+      files.filter((file) => !alone.includes(file)),
+      tested,
+      false,
+      handed,
+    ),
+    ...alone.flatMap((file) => execute(code, [file], tested, false, handed, skip!(file))),
+  ];
 }
 
 /**

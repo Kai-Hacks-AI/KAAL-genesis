@@ -3,6 +3,7 @@ import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
 import { planError, planErrors } from "./plans.js";
+import { projectedCases } from "./projection.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -203,12 +204,14 @@ export function testArgs(repo: string): string[] {
 
 /**
  * The case files a repository's own `npm test` runs, by posix path relative to
- * it. KAAL names every case file `*.test.ts`, so only such arguments count:
- * anything else the script names, such as a module it preloads, is not a case.
+ * it, or, given `held`, those its `npm test` would run of the evidence held
+ * there at their paths. KAAL names every case file `*.test.ts`, so only such
+ * arguments count: anything else the script names, such as a module it
+ * preloads, is not a case.
  */
-export function caseFiles(repo: string): string[] {
+export function caseFiles(repo: string, held: string = repo): string[] {
   const globs = testArgs(repo).filter((arg) => arg.endsWith(".test.ts"));
-  return [...new Set(globs.flatMap((glob) => fs.globSync(glob, { cwd: repo })))]
+  return [...new Set(globs.flatMap((glob) => fs.globSync(glob, { cwd: held })))]
     .map((file) => file.split(path.sep).join("/"))
     .sort();
 }
@@ -397,12 +400,19 @@ export function linkErrors(repo: string): string[] {
   // Suites, the plans they serve, and those plans are read as KAAL reads its plans, whose errors runs of plans refuse
   // too: every suite is stated in its own place, and one no case belongs to yet is still that suite.
   errors.push(...planErrors(repo));
-  const proven = new Set(repoCases(repo).flatMap((c) => c.places));
+  // What shows a commitment is every case the state has: its own, and the evidence its regression projects, which it
+  // need not carry in its own testing too.
+  let projecting: Case[] = [];
+  try {
+    projecting = projectedCases(repo).flatMap(({ source, cases }) => (source.change ? cases : []));
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+  const shown = [...repoCases(repo), ...projecting];
+  const proven = new Set(shown.flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
   const ownProof = new Set(
-    repoCases(repo)
-      .filter((c) => ownedBySkill(c.file))
-      .map((c) => c.file.split("/").slice(0, 2).join("/")),
+    shown.filter((c) => ownedBySkill(c.file)).map((c) => c.file.split("/").slice(0, 2).join("/")),
   );
   for (const { place, shownBy } of entries) {
     if (!place || unplaced.has(place) || !shownBy?.includes("its cases")) continue;

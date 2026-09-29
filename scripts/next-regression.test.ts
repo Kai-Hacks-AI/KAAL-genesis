@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
-import { evolvedRegression, nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
+import { nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
 import { regressionIdentity } from "./regression.js";
 import { layeredState, regressionCandidate, succeeding } from "./test-data.js";
 
@@ -108,12 +108,15 @@ test("the derived regression is the accepted input of the same operation again",
 test("silence never gives up protection: an inherited case, suite, membership, link, condition or proof left out without a record is refused", () => {
   const R1 = succeeding(r0(), "next-regression/waves");
   const from = (change: (state: string) => string) => judged(R1, change(succeeding(R1)));
-  // A case left out, as the record that would exclude it is not added, whose protection no other case keeps.
+  // A case left out, as the record that would exclude it is not added.
   assert.ok(
-    from((s) =>
-      edited(s, "scripts/cases.test.ts", (t) => t.replace(/\/\/ Why: brain\S+\ntest\("greets"[\s\S]*?\n\}\);\n\n/, "")),
+    from(
+      (s) => (
+        fs.cpSync(path.join(LAYERS, "fixture-given-up/scripts"), path.join(s, "scripts"), { recursive: true }),
+        s
+      ),
     ).includes(
-      'scripts/cases.test.ts: "greets": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
+      'scripts/cases.test.ts: "adds as its fixture says": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
     ),
   );
   // A suite that stops serving the plan.
@@ -177,7 +180,7 @@ test("silence never gives up protection: an inherited case, suite, membership, l
 });
 
 // Why: requirements/next-regression/requirement.md
-test("no commitment enters the regression but what the candidate newly promises and demonstrates; a suite or condition added strengthens it", () => {
+test("nothing enters the regression but what the candidate newly promises and demonstrates", () => {
   const R0 = r0();
   // A new promise whose case does not pass is not demonstrated, so it cannot enter, even named by the plan.
   const broken = succeeding(R0, "next-regression/waves", "next-regression/waves-broken");
@@ -193,19 +196,20 @@ test("no commitment enters the regression but what the candidate newly promises 
   assert.deepEqual([quiet.promises, quiet.demonstrated, quiet.errors], [[WAVES], [], []]);
   assert.deepEqual(judged(R0, unproven), []);
   assert.ok(!quiet.protection.commitments.some((c) => c.place === WAVES));
-  // A suite newly serving the plan, or a condition added, is not something newly promised, but more required of it.
+  // A suite newly serving the plan, or a condition added, is not something newly promised.
   const served = succeeding(R0);
   fs.writeFileSync(path.join(served, "suites/extra.md"), "# Extra\n\nMore of it.\n\nServes: test/regression-plan.md\n");
-  assert.deepEqual(judged(R0, served), []);
-  assert.deepEqual(nextRegression(R0, served).promises, []);
-  assert.deepEqual(
+  assert.deepEqual(judged(R0, served), [
+    "suites/extra.md: serves the candidate's regression, but nothing newly promised brings it into the regression",
+  ]);
+  assert.match(
     judged(
       R0,
       edited(succeeding(R0), PLAN, (t) =>
         t.replace("  - { platform: win32 }\n", "  - { platform: win32 }\n  - { platform: darwin }\n"),
       ),
-    ),
-    [],
+    ).join("\n"),
+    /its conditions are .*darwin.*which nothing gives up or adds to/,
   );
 });
 
@@ -275,22 +279,21 @@ test("which suites serve the regression, and every Requirement and acceptance re
 
 // Why: requirements/next-regression/requirement.md
 test("the regression's cases are carried one to one, and its sets of conditions as sets, in whatever order", () => {
-  // Two inherited cases at one address are two cases: leaving either out is leaving one out, and the one left in
-  // carries only what it carried itself.
+  // Two inherited cases at one address are two cases: leaving either out is leaving one out.
   const twice = edited(
     r0(),
     "scripts/cases.test.ts",
-    (t) =>
-      `${t}\n// Why: brain/learning/k/26/01/01/01/nodes/greeting.md\n// Suite: suites/plain.md\ntest("greets", () => {\n  assert.equal(greet("x"), "hello x");\n});\n`,
+    (t) => `${t}\n// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(1 + 1, 2);\n});\n`,
   );
   const once = edited(
     succeeding(twice),
     "scripts/cases.test.ts",
-    (t) => t.slice(0, t.lastIndexOf("\n// Why: brain/learning/k/26/01/01/01/nodes/greeting.md\n// Suite")) + "\n",
+    (t) => t.slice(0, t.lastIndexOf('\n// Why: src/add.ts\ntest("adds"')) + "\n",
   );
-  assert.match(
-    judged(twice, once).join("\n"),
-    /^scripts\/cases\.test\.ts: "greets": the candidate no longer has it, .*what now belongs to suites\/plain\.md no longer detects src\/greet\.ts:1 /m,
+  assert.ok(
+    judged(twice, once).includes(
+      'scripts/cases.test.ts: "adds": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
+    ),
   );
   // The sets of conditions the plan requires are the same however they are listed.
   const R0 = r0();
@@ -374,15 +377,17 @@ test("an inherited case that comes to demonstrate a new promise is carried once,
   );
   assert.deepEqual(judged(both, second), []);
   // A duplicate added before the inherited case, demonstrating the promise, is its own case, not the inherited one:
-  // the inherited case is carried by the case that still is it, and what the duplicate brings besides the promise
-  // strengthens what is inherited, since it holds of the accepted state too.
+  // the inherited case is carried by the case that still is it, and the duplicate is held to what it newly brings.
   const added = edited(succeeding(R0, "next-regression/waves"), "scripts/cases.test.ts", (t) =>
     t.replace(
       "// Why: src/add.ts\n// Suite: suites/plain.md\n",
       `// Why: src/add.ts\n// Why: ${WAVES}\n// Suite: suites/plain.md\ntest("adds", () => {\n  assert.equal(add(2, 2), 4);\n});\n\n// Why: src/add.ts\n// Suite: suites/plain.md\n`,
     ),
   );
-  assert.deepEqual(judged(R0, added), []);
+  assert.deepEqual(judged(R0, added), [
+    `scripts/cases.test.ts: "adds": helps prove src/add.ts in the candidate's regression, which nothing newly promised brings into the regression`,
+    `scripts/cases.test.ts: "adds": belongs to suites/plain.md in the candidate's regression, which nothing newly promised brings into the regression`,
+  ]);
 });
 
 // Why: requirements/next-regression/requirement.md
@@ -402,24 +407,28 @@ test("the cases demonstrating a new promise run in a copy of the candidate, neve
 
 // Why: requirements/next-regression/requirement.md
 // Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
-test("what enters with the candidate beyond what it newly promises strengthens what it inherits, and other data does not enter", () => {
+test("nothing enters with the candidate that is not newly promised: no case, link or membership of its own, and no other data", () => {
   const R1 = succeeding(r0(), "next-regression/waves");
-  // A case of the candidate's own for a commitment it inherits is inherited protection once it is accepted: more of it.
+  // A case of the candidate's own for a commitment it inherits would be inherited protection once it is accepted.
   const added = edited(
     succeeding(R1),
     "scripts/cases.test.ts",
     (t) => `${t}\n// Why: src/add.ts\ntest("adds once more", () => {\n  assert.equal(add(2, 2), 4);\n});\n`,
   );
-  assert.deepEqual(judged(R1, added), []);
-  assert.ok(evolvedRegression(R1, added).next!.cases.some((c) => c.title === "adds once more"));
-  // So is a link or a membership an inherited case gains.
+  assert.deepEqual(judged(R1, added), [
+    'scripts/cases.test.ts: "adds once more": the candidate\'s regression has it, but nothing newly promised brings it into the regression',
+  ]);
+  // So would a link or a membership an inherited case gains.
   const linked = edited(succeeding(R1), "scripts/cases.test.ts", (t) =>
     t.replace(
       "// Why: requirements/greets-by-name/requirement.md\n",
       "// Why: requirements/greets-by-name/requirement.md\n// Why: src/add.ts\n// Suite: suites/plain.md\n",
     ),
   );
-  assert.deepEqual(judged(R1, linked), []);
+  assert.deepEqual(judged(R1, linked), [
+    'scripts/cases.test.ts: "greets by name": helps prove src/add.ts in the candidate\'s regression, which nothing newly promised brings into the regression',
+    'scripts/cases.test.ts: "greets by name": belongs to suites/plain.md in the candidate\'s regression, which nothing newly promised brings into the regression',
+  ]);
   // The data the plan hands its cases is carried as it is, not only by where it is kept.
   const accepted = regressionCandidate("plan-data");
   const redata = edited(succeeding(accepted), "test-data/plan/greeting.txt", (t) => `${t}more\n`);
@@ -433,15 +442,18 @@ test("what enters with the candidate beyond what it newly promises strengthens w
 
 // Why: requirements/next-regression/requirement.md
 // Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
-test("a case entering with a new promise brings more only where it holds of the accepted state, or back where a case was given up, with what that case had", () => {
+test("a case entering with a new promise brings only its links to it, unless it is back where a case was given up, with what that case had", () => {
   const R0 = r0();
-  // A new case demonstrating the promise that also helps prove adding, or joins the suite, adds to protection no new
-  // promise brought in, and cannot hold of the accepted state, which has no wave: nothing accepted authorizes it.
+  // A new case demonstrating the promise that also helps prove adding, or joins the suite, would add to protection
+  // no new promise brought in.
   const wider = edited(succeeding(R0, "next-regression/waves"), "scripts/waves.test.ts", (t) =>
     t.replace(`// Why: ${WAVES}\n`, `// Why: ${WAVES}\n// Why: src/add.ts\n// Suite: suites/plain.md\n`),
   );
   const errors = judged(R0, wider);
-  assert.ok(errors.length === 1 && errors[0]!.includes("does not hold of the accepted state"), errors.join("\n"));
+  assert.ok(
+    errors.length === 2 && errors.every((e) => e.includes("which nothing newly promised brings")),
+    errors.join("\n"),
+  );
   // A case given up, and back at its address proving the promise too, keeps what it had and adds nothing to it.
   const back = edited(succeeding(R0, "next-regression/waves"), "scripts/cases.test.ts", (t) =>
     t.replace(

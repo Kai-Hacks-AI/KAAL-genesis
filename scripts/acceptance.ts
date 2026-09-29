@@ -3,18 +3,10 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
-import {
-  type Case,
-  caseFiles,
-  linkErrors,
-  PLAN,
-  planCommitments,
-  planEntries,
-  repoCases,
-  unnamedCases,
-} from "./links.js";
+import { type Case, caseFiles, linkErrors, PLAN, planCommitments, planEntries, unnamedCases } from "./links.js";
 import { kindAt, type PlanRequirement, planRequirements, suitePlans } from "./plans.js";
 import { caseInventory, judge, runTrusted, SKIP_LIMIT, skipArguments, skippable, unreplayable } from "./regression.js";
+import { heldCases, heldSkips, label, projectedCases, skipped, type Source, sources } from "./projection.js";
 
 /**
  * What a candidate is allowed to give up of the accepted regression, read from
@@ -181,7 +173,20 @@ export function acceptedProtection(
       errors: [`${accepted}: ${e instanceof Error ? e.message : String(e)}`],
     };
   }
-  const inherited = repoCases(accepted);
+  // What the accepted regression inherits is the evidence it projects, each case in the evidence it is held in, never
+  // what the candidate carries of its own.
+  let held: { source: Source; cases: Case[] }[];
+  try {
+    held = projectedCases(accepted);
+  } catch (e) {
+    return {
+      requires: [],
+      given: [],
+      cases: [],
+      errors: [`${accepted}: ${e instanceof Error ? e.message : String(e)}`],
+    };
+  }
+  const inherited = held.flatMap((h) => h.cases);
   // Without a plan, no suite serves one, whatever it says it serves.
   const serving = new Set(
     hasPlan ? suitePlans(accepted).flatMap((s) => (s.serves.includes(PLAN) ? [s.suite] : [])) : [],
@@ -201,10 +206,13 @@ export function acceptedProtection(
       !inherited.some((c) => c.file === exclusion.case.file && c.title === exclusion.case.title)
     )
       errors.push(`${record}: excludes ${n}, which the accepted regression has no case of`);
-    // Two cases at one address are two cases, which one exclusion could not tell apart.
+    // Two cases at one address in one evidence are two cases, which one exclusion could not tell apart. The same
+    // address in evidence held apart is the same case, each evidence of it given up together.
     else if (
       "case" in exclusion &&
-      inherited.filter((c) => c.file === exclusion.case.file && c.title === exclusion.case.title).length > 1
+      held.some(
+        (h) => h.cases.filter((c) => c.file === exclusion.case.file && c.title === exclusion.case.title).length > 1,
+      )
     )
       errors.push(`${record}: excludes ${n}, an address the accepted regression holds more than one case at`);
     // The runner passes over, with the case a title names, any whose title is the same but for the space around it,
@@ -335,46 +343,62 @@ export function acceptance(
   // A file whose every case is excluded is not run at all, so nothing it would do against the candidate, such as
   // never finishing, can hold up what is kept. Any other file is, even one holding no case, whose tests the replay
   // holds as it holds any it runs without naming.
-  const inherited = clean ? repoCases(accepted) : [];
-  const kept = (file: string) => {
-    const own = inherited.filter((c) => c.file === file);
-    return !own.length || own.some((c) => !excluded(c.file, c.title));
-  };
-  const running = clean ? caseFiles(accepted).filter(kept) : [];
+  // Each evidence the accepted regression projects is replayed on its own, from where it is held, at its own paths:
+  // what one change holds at a path is never set beside another's there.
+  // Each evidence the accepted regression projects is replayed on its own, from where it is held, at its own paths:
+  // what one change holds at a path is never set beside another's there.
+  const replays = (clean ? sources(accepted) : []).map((source) => {
+    const skips = heldSkips(source);
+    const passed = (file: string, title: string) => excluded(file, title) || skipped(skips, file, title);
+    const inherited = heldCases(accepted, source);
+    const kept = (file: string) => {
+      const own = inherited.filter((c) => c.file === file);
+      return !own.length || own.some((c) => !passed(c.file, c.title));
+    };
+    // Nor is a case excluded from a file that keeps others run beside them, where it could still disturb them.
+    const passing = (file: string) => [
+      ...new Set([
+        ...stated.accepted.flatMap((a) =>
+          "case" in a.exclusion && a.exclusion.case.file === file ? [a.exclusion.case.title] : [],
+        ),
+        ...skips.filter((s) => s.file === file).map((s) => s.title),
+      ]),
+    ];
+    return { source, skips, passed, inherited, kept, passing, running: caseFiles(accepted, source.root).filter(kept) };
+  });
   // A case the runner cannot be told to pass over by its title leaves no replay that could keep it from running; the
   // inventory below says why such a regression is not one KAAL accepts.
-  const unskippable = stated.accepted.some((a) => "case" in a.exclusion && !skippable(a.exclusion.case.title));
-  if (running.length && !unskippable) {
+  const unskippable =
+    stated.accepted.some((a) => "case" in a.exclusion && !skippable(a.exclusion.case.title)) ||
+    replays.some((r) => r.skips.some((s) => !skippable(s.title)));
+  if (replays.some((r) => r.running.length) && !unskippable) {
     const escaping = escapingLinks(candidate);
     if (escaping.length)
       errors.push(
         `the candidate links other than within itself by a relative path (${escaping.join(", ")}), so its inherited cases would not judge it alone`,
       );
-    else {
-      // Nor is a case excluded from a file that keeps others run beside them, where it could still disturb them.
-      const skipped = (file: string) =>
-        stated.accepted.flatMap((a) =>
-          "case" in a.exclusion && a.exclusion.case.file === file ? [a.exclusion.case.title] : [],
-        );
-      // Titles are named to the runner on its command line, which no platform lets grow without end.
-      const unnameable = running.flatMap((file) => {
-        const length = skipArguments(skipped(file)).join(" ").length;
-        return length > SKIP_LIMIT
-          ? [
-              `${file}: the titles excluded beside the cases it keeps would take ${length} characters to name to the runner, more than the ${SKIP_LIMIT} any platform's command line is sure to carry`,
-            ]
-          : [];
-      });
-      errors.push(...unnameable);
-      if (!unnameable.length) {
+    else
+      for (const { source, passed, inherited, kept, passing, running } of replays) {
+        const at = label(source);
+        // Titles are named to the runner on its command line, which no platform lets grow without end.
+        const unnameable = running.flatMap((file) => {
+          const length = skipArguments(passing(file)).join(" ").length;
+          return length > SKIP_LIMIT
+            ? [
+                `${at}${file}: the titles excluded beside the cases it keeps would take ${length} characters to name to the runner, more than the ${SKIP_LIMIT} any platform's command line is sure to carry`,
+              ]
+            : [];
+        });
+        errors.push(...unnameable);
+        if (unnameable.length || !running.length) continue;
         // Only what is excluded is given up: a file's own report counts while the file is run, and a result no case
         // accounts for is held, as the accepted regression's replay holds it.
-        const results = runTrusted(accepted, candidate, kept, skipped).filter((r) =>
-          r.name.split("\\").join("/") === r.file ? kept(r.file) : !excluded(r.file, r.name),
+        const results = runTrusted(accepted, candidate, kept, passing, source.root).filter((r) =>
+          r.name.split("\\").join("/") === r.file ? kept(r.file) : !passed(r.file, r.name),
         );
-        errors.push(...judge(plan.cases, results).map((e) => `inherited case not excluded: ${e}`));
+        const projected = inherited.filter((c) => !passed(c.file, c.title));
+        errors.push(...judge(projected, results).map((e) => `inherited case not excluded: ${at}${e}`));
       }
-    }
   }
   // Which cases the accepted state has, and which test each address names, is Testing's to say: its inventory, the cases
   // the state names shown by its own run to be exactly the tests it runs. A regression KAAL accepts has no

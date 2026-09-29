@@ -125,10 +125,8 @@ test("a candidate cannot weaken a retained commitment by weakening its own cases
   assert.deepEqual(regressionErrors(regressionTrusted(), regressionCandidate("weakened"), BASE), [
     'inherited case not excluded: scripts/cases.test.ts: "adds" failed',
     'inherited case not excluded: scripts/cases.test.ts: "adds as its fixture says" failed',
-    // Nor by weakening one or leaving one out: once accepted, its regression would no longer protect adding as it did,
-    // and nothing it holds shows what they protected kept, which a case failing against the candidate cannot.
-    'scripts/cases.test.ts: "adds": unresolved: redefined: its claim is another; it detects none of the 2 witnesses made of the code it reaches, so nothing shows what it protected kept',
-    'scripts/cases.test.ts: "adds as its fixture says": unresolved: the candidate no longer has it; it detects none of the 2 witnesses made of the code it reaches, so nothing shows what it protected kept',
+    // Nor by leaving one out: once accepted, its regression would no longer have it, and no record gives it up.
+    'scripts/cases.test.ts: "adds as its fixture says": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
   ]);
 });
 
@@ -138,9 +136,6 @@ test("a candidate cannot change the data the accepted regression's cases read, e
     'as the next accepted regression, scripts/cases.test.ts: "adds" fails when the accepted regression replays it',
     'inherited case not excluded: scripts/cases.test.ts: "adds" failed',
     'inherited case not excluded: scripts/cases.test.ts: "adds as its fixture says" failed',
-    // Nor does the case reading the changed data enter the next regression: what it expects is not what was accepted.
-    'scripts/cases.test.ts: "adds as its fixture says": unresolved: redefined: its data scripts/fixtures/sum.txt holds other than it did, but it does not hold of the accepted state, so what it expects is not authorized by what was accepted: newly promise it, or name the defect it tests',
-    'scripts/cases.test.ts: "adds as its fixture says": unresolved: redefined: its data scripts/fixtures/sum.txt holds other than it did; it detects none of the 2 witnesses made of the code it reaches, so nothing shows what it protected kept',
   ]);
 });
 
@@ -156,8 +151,8 @@ test("a candidate cannot relabel a retained commitment's case away: the accepted
     // Nor does its plan's account of a withdrawal give up the commitment, or the cases it leaves out.
     "brain/learning/k/26/01/01/01/nodes/greeting.md: inherited, and no acceptance record gives it up, but the candidate's regression no longer requires it",
     `scripts/cases.test.ts: "adds": helps prove src/add.ts in the regression, but no longer does in the candidate's`,
-    'scripts/cases.test.ts: "greets": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
     'scripts/cases.test.ts: "adds as its fixture says": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
+    'scripts/cases.test.ts: "greets": in the regression, and no acceptance record excludes it, but the candidate no longer has it',
   ]);
 });
 
