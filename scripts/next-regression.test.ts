@@ -233,7 +233,7 @@ test("a regression is derived from the accepted one as it is now, and an old acc
 });
 
 // Why: requirements/derived-regression/requirement.md
-test("which suites serve the regression, and every Requirement it records, are part of its identity, and no other suite", () => {
+test("which suites serve the regression, and every Requirement and acceptance record it holds, are part of its identity, and no other suite", () => {
   const R0 = r0();
   const before = regressionIdentity(R0);
   // A suite serving no Regression Plan is none of the regression's, however it changes.
@@ -249,7 +249,11 @@ test("which suites serve the regression, and every Requirement it records, are p
   assert.notEqual(unserved, serving);
   // A Requirement it records but its plan does not name decides what a candidate newly promises, so it is part of it.
   fs.cpSync(path.join(LAYERS, "waves/requirements/waves"), path.join(R0, "requirements/waves"), { recursive: true });
-  assert.notEqual(regressionIdentity(R0), unserved);
+  const recorded = regressionIdentity(R0);
+  assert.notEqual(recorded, unserved);
+  // So is every acceptance record it holds: a candidate's record is new, and gives something up, only if it holds none.
+  fs.cpSync(path.join(LAYERS, "fixture-given-up/acceptance"), path.join(R0, "acceptance"), { recursive: true });
+  assert.notEqual(regressionIdentity(R0), recorded);
 });
 
 // Why: requirements/derived-regression/requirement.md

@@ -16,6 +16,7 @@ import {
   section,
   testArgs,
 } from "./links.js";
+import { ACCEPTANCE } from "./acceptance.js";
 import { REQUIREMENTS } from "./feature.js";
 import { planDataError, planError, readPlan, suitePlans } from "./plans.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
@@ -240,7 +241,7 @@ function checkerCode(repo: string): { found: string[]; escaping: string[]; unres
 
 /**
  * The identity of the regression a state of KAAL's files holds, from its own
- * content: its plan, the places its commitments are stated, the suites that serve its plan, every Requirement it records, its case files,
+ * content: its plan, the places its commitments are stated, the suites that serve its plan, every Requirement and acceptance record it holds, its case files,
  * its test data, and what fixes how it judges (everything that decides what
  * its install puts in place, and the checker's code, found through its
  * relative imports), entry by entry: each directory as one, each regular file
@@ -304,6 +305,9 @@ function regressionInputs(repo: string): Map<string, Entry> {
   for (const { suite, serves } of suitePlans(repo)) if (serves.includes(PLAN)) add(suite);
   // Every Requirement it records, named by the plan or not: what it already states decides what a candidate newly promises.
   add(REQUIREMENTS);
+  // And every acceptance record it holds: which of a candidate's records are new, and so give anything up, is read
+  // against them.
+  add(ACCEPTANCE);
   for (const file of caseFiles(repo)) add(file);
   for (const [file, at] of dataOf(repo)) add(file, at);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
