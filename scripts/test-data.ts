@@ -4,10 +4,57 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
-import { sealBrain } from "./brain-seals.js";
+import { type Change, sealBrain, stateChanges } from "./brain-seals.js";
 import { io } from "../skills/using-seals/scripts/seals.js";
+import { genesis } from "./genesis.js";
+import { regressionIdentity, TESTED_STATE, TESTING_STATE } from "./regression.js";
 
 const DATA = fileURLToPath(new URL("../test-data/", import.meta.url));
+
+/**
+ * KAAL's own state: the subject of every case that makes a claim about KAAL
+ * itself, such as that its links hold or its BRAIN is valid. The run that
+ * executes these cases hands it to them: the tested state it names. A run that
+ * names none tests the state these cases are kept in, found from here, never
+ * from the directory they are run from, which is part of the run's environment.
+ * A tested state handed to another testing state than this one, or one that is
+ * not a directory, is refused rather than silently judged or ignored.
+ */
+export function kaal(): string {
+  const own = fileURLToPath(new URL("../", import.meta.url));
+  const tested = process.env[TESTED_STATE];
+  if (tested === undefined) return own;
+  const testing = process.env[TESTING_STATE];
+  const same = (a: string, b: string) => fs.realpathSync(a) === fs.realpathSync(b);
+  if (!testing || !fs.existsSync(testing) || !same(testing, own))
+    throw new Error(`${TESTED_STATE} names a tested state for another testing state than ${own}`);
+  if (!fs.statSync(tested, { throwIfNoEntry: false })?.isDirectory())
+    throw new Error(`${TESTED_STATE}: ${tested} is not a directory`);
+  return tested;
+}
+
+/**
+ * A scratch directory to run KAAL's cases from that is not KAAL: it holds an
+ * invalid BRAIN at KAAL's BRAIN root, from test-data/brains/invalid-learning,
+ * so a case that took its subject from where it runs would judge this BRAIN.
+ */
+export function elsewhere(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-elsewhere-"));
+  fs.cpSync(brainData("invalid-learning"), path.join(dir, ROOT), { recursive: true });
+  return dir;
+}
+
+/**
+ * A scratch repository where something Genesis would create is already there,
+ * and what that is: `born`, a KAAL Genesis has already born; `agents`, an Agent
+ * entry point, and `brain`, a BRAIN directory, each from test-data/genesis/occupied.
+ */
+export function occupied(name: "born" | "agents" | "brain"): { repo: string; there: string } {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-genesis-"));
+  if (name === "born") genesis(repo);
+  else fs.cpSync(path.join(DATA, "genesis", "occupied", name), repo, { recursive: true });
+  return { repo, there: name === "agents" ? "AGENTS.md" : "brain" };
+}
 
 /** Path to a read-only BRAIN in test-data/brains. */
 export function brainData(name: string): string {
@@ -21,9 +68,16 @@ export function scratchBrain(name: string): string {
   return root;
 }
 
-/** A `git diff --name-status --no-renames` output from test-data/diffs. */
-export function diffData(name: string): string {
-  return fs.readFileSync(path.join(DATA, "diffs", `${name}.txt`), "utf8");
+/** Changes between two states, from test-data/diffs: one `<status>\t<path>` per line, A, M or D. */
+export function diffData(name: string): Change[] {
+  return fs
+    .readFileSync(path.join(DATA, "diffs", `${name}.txt`), "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [status, file = ""] = line.split("\t");
+      return { status: status as Change["status"], file };
+    });
 }
 
 /** Every file under a root by posix path, with its contents, for byte-for-byte comparison. */
@@ -36,6 +90,17 @@ export function tree(root: string): Record<string, string> {
       .sort()
       .map((f) => [path.relative(root, f).split(path.sep).join("/"), fs.readFileSync(f, "utf8")]),
   );
+}
+
+/** Every entry under a root by posix path, with its kind, so links and special files are seen too. */
+export function entries(root: string): string[] {
+  return fs
+    .readdirSync(root, { recursive: true, withFileTypes: true })
+    .map((e) => {
+      const kind = e.isFile() ? "file" : e.isDirectory() ? "directory" : e.isSymbolicLink() ? "symlink" : "other";
+      return `${path.relative(root, path.join(e.parentPath, e.name)).split(path.sep).join("/")} (${kind})`;
+    })
+    .sort();
 }
 
 /**
@@ -59,19 +124,191 @@ export function withSealWriteFailure<T>(unit: string, run: () => T): T {
 }
 
 /**
- * What sealing changes, as `git diff --name-status` for a BRAIN at the default
- * root: `from` sealed with the real sealBrain, compared with `from` itself.
- * `to` names the committed result it must match.
+ * What sealing changes, by path relative to the repository, for a BRAIN at
+ * the default root: `from` sealed with the real sealBrain, compared with
+ * `from` itself as two states. `to` names the result it must match.
  */
-export function sealingDiff(from: string, to: string): string {
+export function sealingDiff(from: string, to: string): Change[] {
   const root = scratchBrain(from);
   sealBrain(root);
-  const before = tree(brainData(from));
-  const after = tree(root);
-  if (JSON.stringify(after) !== JSON.stringify(tree(brainData(to))))
+  if (JSON.stringify(tree(root)) !== JSON.stringify(tree(brainData(to))))
     throw new Error(`sealing ${from} did not produce ${to}`);
-  return Object.keys(after)
-    .filter((file) => before[file] !== after[file])
-    .map((file) => `${file in before ? "M" : "A"}\t${ROOT}/${file}`)
-    .join("\n");
+  return stateChanges(brainData(from), root).map((c) => ({ ...c, file: `${ROOT}/${c.file}` }));
+}
+
+/** The trusted regression in test-data/regression: a small repository with a plan, BRAIN, code and cases. */
+export function regressionTrusted(): string {
+  return path.join(DATA, "regression", "trusted");
+}
+
+/**
+ * A candidate from test-data/regression/candidates: the trusted repository
+ * with the candidate's own files laid over it, in a scratch directory.
+ */
+export function regressionCandidate(name: string): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-candidate-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  fs.cpSync(path.join(DATA, "regression", "candidates", name), root, { recursive: true });
+  return root;
+}
+
+/**
+ * A state of the trusted repository in test-data/regression with layers from
+ * test-data/feature laid over it in order, in a scratch directory: `planned`,
+ * KAAL's Feature Plan in its place, requiring no conditions; `promised`, a
+ * Requirement that a greeting names who it greets, named by the regression
+ * plan, with a case that helps prove it; `unproven`, the same Requirement
+ * recorded, which no plan names and no case proves; `decomposed`, that
+ * case replaced by another of the same claim, in another file and a suite;
+ * `moved`, the same Requirement, byte for byte, at another place, named and
+ * proven there; `rewritten`, the Requirement at the same place saying
+ * something else; and `refactored`, the greeting's code rewritten and a case
+ * given more data, promising what it did; and `forgetful`, a greeting that
+ * names no one.
+ */
+export function featureState(...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-feature-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, "feature", layer), root, { recursive: true });
+  return root;
+}
+
+/**
+ * A state of the trusted repository in test-data/regression with layers laid
+ * over it in order, each named by its place in test-data, such as
+ * `feature/promised` or `regression/candidates/replaced`, in a scratch
+ * directory. Those in test-data/acceptance are: `protected`, a Regression
+ * Plan that protects adding, also shown by the seal checks, greeting, and
+ * greeting by name, on Linux and on Windows, served by the suite
+ * `suites/plain.md`; `windowless`, that plan no longer requiring Windows;
+ * `extended`, one more Requirement newly named and proven; `excludes-…`, a
+ * record excluding the inherited case `greets`, the case `adds`, both cases
+ * of adding, the plain
+ * suite, or a case `waves` the regression never had; `reasonless`, one
+ * excluding `greets` without saying why; `history`, a state holding the
+ * record `excludes-greets` adds; `wild-requirements`, a Regression Plan
+ * naming every Requirement by a wildcard, with a case that helps prove them;
+ * `twice-greets`, a second case titled `greets` in the same file;
+ * `stray-link`, a link in that file belonging to no case; `twice-named`,
+ * a Regression Plan naming adding twice, only its second entry also shown by
+ * the seal checks; `waving`, a case file of its own showing greeting by
+ * waving, with the code it imports; `excludes-waving`, a record excluding
+ * that case; `marking`, that code leaving a mark where KAAL_WAVE_MARK says
+ * whenever it is loaded; `built-title`, a case whose title is built while it
+ * runs; `mixed`, a file of a case `marks` beside a case kept;
+ * `mixed-marking`, the code `marks` calls leaving that mark when called;
+ * `excludes-marks`, a record excluding it;
+ * `untitled`, a case of greeting titled with whitespace alone;
+ * `excludes-untitled`, a record excluding it and `greets`;
+ * `untitled-beside`, a case of greeting titled with nothing at all beside a
+ * case kept in its file, and `excludes-untitled-beside`, a record excluding it;
+ * `control-titled`, a case of greeting titled with a NUL beside a case kept, and
+ * `excludes-control`, a record excluding it and `greets`; `shadowed`, a case
+ * of greeting `drops` beside a case kept and a test registered through `it`
+ * under the same title, `excludes-shadowed`, a record excluding `drops` and
+ * `greets`, and `excludes-shadowed-whole`, one excluding every case of that
+ * file and `greets`; `trailing`, a case `sums` beside a case titled `sums`
+ * and a line break, `excludes-trailing`, a record excluding `sums`, and
+ * `excludes-trailing-both`, one excluding both;
+ * `surrogate`, a case titled with half a surrogate pair beside a case kept,
+ * `surrogate-marking`, the code it calls leaving the mark KAAL_WAVE_MARK says,
+ * and `excludes-surrogate`, a record excluding it; and `ordered`, a case kept
+ * that finds nothing where KAAL_WAVE_MARK says, before a case leaving a mark
+ * there, and `excludes-ordered`, a record excluding that second case.
+ */
+export function layeredState(...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-layered-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, layer), root, { recursive: true });
+  return root;
+}
+
+/**
+ * A candidate succeeding `accepted`: a scratch copy of it with layers from
+ * test-data laid over it in order, whose Regression Plan names `accepted`'s
+ * regression, by its identity, as the one it was derived from, as a candidate
+ * derived from it would. Layers from test-data/next-regression are synthetic
+ * regressions, not KAAL's own: `r0`, a first regression laid over the
+ * protected state of test-data/acceptance, one of whose cases belongs to the
+ * suite serving its plan, over which the other layers are laid; `waves`, a
+ * Requirement that a greeting comes with a wave, named by the plan and
+ * demonstrated by a case of its own; `waves-broken`, that wave's code
+ * failing its case; `fixture-given-up`, a record excluding the case of adding
+ * that reads a fixture, and that case left out; `polite`, greeting replaced
+ * by a Requirement that a greeting is polite: its case excluded, and a case of
+ * the new Requirement in its place; and `refactored`, adding's code rearranged,
+ * promising what it did.
+ */
+export function succeeding(accepted: string, ...layers: string[]): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-next-"));
+  fs.cpSync(accepted, root, { recursive: true });
+  for (const layer of layers) fs.cpSync(path.join(DATA, layer), root, { recursive: true });
+  const plan = path.join(root, "test", "regression-plan.md");
+  fs.writeFileSync(
+    plan,
+    fs
+      .readFileSync(plan, "utf8")
+      .replace(
+        /^Derived from: the accepted regression `[0-9a-f]{64}`/m,
+        `Derived from: the accepted regression \`${regressionIdentity(accepted)}\``,
+      ),
+  );
+  return root;
+}
+
+/**
+ * A scratch copy of a state from test-data/runs, as plain files: `greeter`,
+ * whose cases say what its greeting is, and `silent`, whose greeting says
+ * something else; `before`, `after` and `after-weak`, the cases of one claim
+ * before and after refactoring, well and badly, and `sound`, `forgets-x` and
+ * `forgets-y`, states those cases test, the last two each breaking the claim;
+ * `empty`, whose npm test names no case file, beside a test file it does not
+ * name; `titled`, holding a case titled with its own file's path beside a
+ * case that fails; `unloadable`, holding such a case in a file that then
+ * fails to load; `killer`, whose case stops the runner executing it;
+ * `todo`, holding cases marked todo that hold and break beside cases marked
+ * skipped, one with a reason and one with an empty one; and `cancelled`,
+ * holding a case cancelled before it starts beside one that fails; `hooked`,
+ * whose hook before each case fails; `lineone`, declaring a case titled with
+ * its own path on its first line; `unresolved`, declaring one there in a
+ * file with an import that cannot be resolved; `twice`, holding two cases
+ * at one address, the first cancelled before it starts; `nameless`, whose
+ * case, cancelled before it starts, has a title built while it runs; and
+ * `suites`, stating two suites, greeting and names, whose cases say which of
+ * them they belong to, one case both, one neither, and one skipped, beside
+ * `suites-moved`, the same state with the case in both moved to another file
+ * and retitled, and `suites-merged`, with the greeting's two cases merged
+ * into one case over their data; `plans`, stating plans of the greeting its
+ * suites serve, one providing data and required on two platforms, one sharing
+ * a suite with it, one no suite serves yet, and one served only by a case
+ * that is skipped; and `plans-decomposed`, the same state with the suites that
+ * carry the greeting plan replaced, and its plan unchanged.
+ */
+export function runState(name: string): string {
+  const to = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-state-")), name);
+  fs.cpSync(path.join(DATA, "runs", name), to, { recursive: true });
+  return to;
+}
+
+/**
+ * The trusted regression from test-data/regression with cases from
+ * test-data/runs/replay: one that passes only when the state it is handed is
+ * a candidate itself, holding its own cases, and one marked todo that holds.
+ */
+export function replayTrusted(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-trusted-"));
+  fs.cpSync(regressionTrusted(), root, { recursive: true });
+  fs.cpSync(path.join(DATA, "runs", "replay"), root, { recursive: true });
+  return root;
+}
+
+/**
+ * A scratch testing state from test-data/runs/escaping, whose npm test names
+ * case files in a directory beside it, test-data/runs/escaped, copied next to it.
+ */
+export function escapingState(): string {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-run-state-"));
+  for (const name of ["escaping", "escaped"])
+    fs.cpSync(path.join(DATA, "runs", name), path.join(parent, name), { recursive: true });
+  return path.join(parent, "escaping");
 }

@@ -1,6 +1,8 @@
-# Runs the full suite, typecheck and format check on Linux and Windows. Which
-# cases run where is a Test Run concern; deciding it selectively would need a
-# Test Plan, not yet needed.
+# Carries out KAAL's Regression Plan (test/regression-plan.md) with the
+# change's own cases on Linux and Windows, and runs typecheck and format check
+# besides. What the plan requires, and where, is the plan's decision; change
+# it there, not here. Each job's `npm test` is one Test Run: what it proves holds
+# for that OS and this checkout, and a case it skips is not proven there.
 #
 # Job names are <what>-<where> and unique across all workflows: required
 # status checks select by job name alone, so they must never be ambiguous

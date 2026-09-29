@@ -4,6 +4,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # @types/node follows the Node major CI runs (node-version in the
+      # workflows). Both move together in one deliberate change, never by
+      # a bot, so code cannot typecheck against APIs its runtime lacks.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Minor and patch updates arrive as one pull request a week; majors
+      # still arrive one by one, to be judged on their own.
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
