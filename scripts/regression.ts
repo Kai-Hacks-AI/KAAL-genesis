@@ -20,6 +20,7 @@ import { ACCEPTANCE } from "./acceptance.js";
 import { REQUIREMENTS } from "./feature.js";
 import { REQUIREMENT } from "../skills/managing-requirements/scripts/requirements.js";
 import { planDataError, planError, readPlan, suitePlans } from "./plans.js";
+import { tokens } from "./source.js";
 import { type Entry, entriesIn, entryAt, entryBytes, recordedModes } from "./state.js";
 
 /**
@@ -156,24 +157,44 @@ function checkCommand(repo: string): string | undefined {
 }
 
 /**
+ * The value of `text`, JSON as TypeScript writes its configuration, with
+ * comments and trailing commas, or undefined where it is not that.
+ */
+export function jsonc(text: string): unknown {
+  const toks = tokens(text).filter((t) => t.kind !== "comment");
+  const kept = toks.filter((t, i) => !(t.text === "," && ["}", "]"].includes(toks[i + 1]?.text ?? "")));
+  try {
+    return JSON.parse(kept.map((t) => t.text).join(" "));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * How TypeScript is compiled for the checker and the cases: a state's
  * `tsconfig.json` and every local configuration it extends, one or a list,
  * in order, or the first `extends` that leads out of the state, which the
- * identity cannot see.
+ * identity cannot see. Where a configuration cannot be read, or extends what
+ * the state does not hold as a file, as a package's, what it is compiled with
+ * is `unknown`: never taken to be only what could be read.
  */
-export function typescriptConfig(repo: string): { files: string[]; outside?: string } {
+export function typescriptConfig(repo: string): { files: string[]; outside?: string; unknown?: string } {
   const files: string[] = [];
   const queue = ["tsconfig.json"];
   while (queue.length) {
     const at = queue.shift()!;
     if (files.includes(at) || !fs.existsSync(path.join(repo, at))) continue;
     files.push(at);
-    // What it extends: one configuration, or, as TypeScript also allows, a list of them, each read in turn.
-    const value = /"extends"\s*:\s*("(?:[^"\\]|\\.)*"|\[[^\]]*\])/.exec(
-      fs.readFileSync(path.join(repo, at), "utf8"),
-    )?.[1];
-    const bases = value ? [...value.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]!) : [];
-    for (const base of bases.filter((b) => /^\.{1,2}\//.test(b))) {
+    const config = jsonc(fs.readFileSync(path.join(repo, at), "utf8"));
+    if (!config || typeof config !== "object" || Array.isArray(config))
+      return { files, unknown: `${at} cannot be read` };
+    const extended = (config as { extends?: unknown }).extends;
+    if (extended === undefined) continue;
+    const bases = typeof extended === "string" ? [extended] : extended;
+    if (!Array.isArray(bases) || !bases.every((b) => typeof b === "string"))
+      return { files, unknown: `${at} extends what cannot be read` };
+    for (const base of bases as string[]) {
+      if (!/^\.{1,2}\//.test(base)) return { files, unknown: `${at} extends ${base}, which the state does not hold` };
       const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
       if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
       queue.push(fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`);

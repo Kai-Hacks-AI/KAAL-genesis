@@ -490,6 +490,8 @@ test("a case is defined by its claim, what its file states around its cases, the
     '{\n  // Kept as written.\n  "compilerOptions": { "verbatimModuleSyntax": true },\n}\n',
   );
   fs.writeFileSync(path.join(configured, "tsconfig.json"), '{ "extends": "./base.json" }\n');
+  // Every row below judges the cases of this state, so it has some.
+  assert.ok(definitions(configured).some((d) => d.file === CASES));
   const unusedImport = (state: string) =>
     edited(succeeding(state), CASES, (t) =>
       t.replace(
@@ -524,6 +526,38 @@ test("a case is defined by its claim, what its file states around its cases, the
       ),
     ),
     all(listed, "the settings its code is compiled with are others"),
+  );
+  // What it extends is read as TypeScript reads its configuration, never by a spelling: a key written with an escape
+  // still extends. What cannot be read, or a package's configuration the state does not hold, is unknown: no case
+  // compiled with it can be compared, rather than be judged by only what could be read.
+  const escaped = succeeding(configured);
+  fs.writeFileSync(path.join(escaped, "tsconfig.json"), '{ "ext\\u0065nds": "./base.json" }\n');
+  const escapedAt = succeeding(escaped);
+  assert.deepEqual(
+    judging(escapedAt)(
+      edited(succeeding(escapedAt), "base.json", (t) =>
+        t.replace('"verbatimModuleSyntax": true', '"verbatimModuleSyntax": true, "jsxFactory": "h"'),
+      ),
+    ),
+    all(escapedAt, "the settings its code is compiled with are others"),
+  );
+  const packaged = succeeding(configured);
+  fs.writeFileSync(path.join(packaged, "tsconfig.json"), '{ "extends": "@tsconfig/strictest/tsconfig.json" }\n');
+  const packagedAt = succeeding(packaged);
+  assert.deepEqual(
+    judging(packagedAt)(succeeding(packagedAt)),
+    all(
+      packagedAt,
+      "the settings its code is compiled with are unknown (tsconfig.json extends @tsconfig/strictest/tsconfig.json, which the state does not hold), so what defines it cannot be compared",
+    ),
+  );
+  // Whether its modules run as ES modules or CommonJS is the package's to say: changed, every case is another.
+  const withType = (type: string) => (t: string) => `${JSON.stringify({ ...JSON.parse(t), type }, null, 2)}\n`;
+  const moduled = succeeding(edited(succeeding(configured), "package.json", withType("module")));
+  assert.ok(definitions(moduled).some((d) => d.file === CASES));
+  assert.deepEqual(
+    judging(moduled)(edited(succeeding(moduled), "package.json", withType("commonjs"))),
+    all(moduled, "the settings its code is compiled with are others"),
   );
   // A module named by an alias the tsconfig maps into the state is the module tsx loads, and is followed.
   const aliasing = succeeding(R0);

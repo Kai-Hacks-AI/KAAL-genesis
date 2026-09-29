@@ -6,7 +6,7 @@ import { type BuildOptions, buildSync, type Loader, transformSync } from "esbuil
 import type { Conditions } from "../skills/testing/scripts/plan.js";
 import { caseDefects, caseFiles, caseStarts, PLAN } from "./links.js";
 import type { Held, Protection } from "./next-regression.js";
-import { isData, type Result, runTrusted, typescriptConfig } from "./regression.js";
+import { isData, jsonc, type Result, runTrusted, typescriptConfig } from "./regression.js";
 import {
   code,
   codeTokens,
@@ -596,6 +596,31 @@ function namedData(state: string, file: string, toks: Token[], modules: Set<stri
 }
 
 /**
+ * What tsx reads, besides the code, to decide what the code does: the state's
+ * tsconfig.json and every configuration it extends, digested, and, from every
+ * package.json the state holds, whether its modules are ES modules or
+ * CommonJS and what its own `#` imports name. Where a configuration cannot be
+ * read, what the code is compiled with is unknown.
+ */
+function settingsOf(state: string): Record<string, string> {
+  const config = typescriptConfig(state);
+  const out: Record<string, string> = Object.assign({}, ...config.files.map((f) => held(state, f)));
+  if (config.unknown) out["?"] = config.unknown;
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(path.join(state, dir), { withFileTypes: true })) {
+      const at = dir ? `${dir}/${entry.name}` : entry.name;
+      if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git") walk(at);
+      else if (entry.isFile() && entry.name === "package.json") {
+        const manifest = jsonc(fs.readFileSync(path.join(state, at), "utf8")) as { type?: unknown; imports?: unknown };
+        out[at] = manifest ? canonical({ type: manifest.type, imports: manifest.imports }) : "?";
+      }
+    }
+  };
+  walk("");
+  return out;
+}
+
+/**
  * What defines each case `state` keeps, in the order its cases are read: its
  * claim, its file's frame, the loaders its file reaches, and the test data
  * its file and those loaders name, with the subject code its file reaches.
@@ -613,7 +638,7 @@ export function definitions(state: string): Definition[] {
     }
     rest += text.slice(from);
     const frame = frameOf(state, file, rest, text);
-    const settings = Object.assign({}, ...typescriptConfig(state).files.map((f) => held(state, f)));
+    const settings = settingsOf(state);
     const own = new Set(moduleImports(state, file, text).specifiers);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
@@ -677,6 +702,8 @@ export function definitions(state: string): Definition[] {
 export function redefined(before: Definition, after: Definition, candidate: string): string | undefined {
   if (before.claim !== after.claim) return "its claim is another";
   // Compiled otherwise, the same code can run otherwise, whatever it reads as: any setting changed changes every case.
+  if (before.settings["?"])
+    return `the settings its code is compiled with are unknown (${before.settings["?"]}), so what defines it cannot be compared`;
   if (canonical(before.settings) !== canonical(after.settings))
     return "the settings its code is compiled with are others";
   if (before.computed.length)
