@@ -24,6 +24,10 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
       idea: "KAAL can become modular through packages whose dependencies close the selected capability composition",
     },
     {
+      name: "release-management",
+      idea: "KAAL's protected main could become its release boundary, where a kaal/<name> line whose next Regression is demonstrated through FAR is sealed, released and versioned",
+    },
+    {
       name: "we-can-go-far",
       idea: "KAAL's forward planning and testing loop could connect with a backward loop of worked evidence, learning and refactoring, remembered provisionally as WE CAN GO FAR",
     },
