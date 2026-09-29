@@ -257,9 +257,14 @@ test("a candidate named by a relative path runs with its own dependencies", () =
   fs.mkdirSync(word, { recursive: true });
   fs.writeFileSync(path.join(word, "package.json"), '{ "name": "kaal-word", "type": "module", "main": "index.js" }');
   fs.writeFileSync(path.join(word, "index.js"), 'export const word = "hello";\n');
+  // An inherited case comes to use the package; a case of its own would enter no regression.
+  const cases = path.join(candidate, "scripts", "cases.test.ts");
   fs.writeFileSync(
-    path.join(candidate, "scripts", "word.test.ts"),
-    'import assert from "node:assert/strict";\nimport test from "node:test";\nimport { word } from "kaal-word";\n\n// Why: src/add.ts\ntest("says a word", () => {\n  assert.equal(word, "hello");\n});\n',
+    cases,
+    fs
+      .readFileSync(cases, "utf8")
+      .replace('import test from "node:test";\n', 'import test from "node:test";\nimport { word } from "kaal-word";\n')
+      .replace("assert.equal(add(1, 2), 3);", 'assert.equal(add(1, 2), 3);\n  assert.equal(word, "hello");'),
   );
   // Named from a directory of another depth than the scratch copies', as the accepted state's checkout is in CI.
   const from = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-cwd-")), "a", "b");

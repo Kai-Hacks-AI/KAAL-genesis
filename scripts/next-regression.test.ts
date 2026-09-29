@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { PLAN } from "./links.js";
 import { nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
 import { regressionIdentity } from "./regression.js";
-import { layeredState, succeeding } from "./test-data.js";
+import { layeredState, regressionCandidate, succeeding } from "./test-data.js";
 
 /** The layers of test-data/next-regression, wherever the cases run. */
 const LAYERS = fileURLToPath(new URL("../test-data/next-regression/", import.meta.url));
@@ -337,4 +337,39 @@ test("the cases demonstrating a new promise run in a copy of the candidate, neve
   );
   assert.deepEqual(nextRegression(R0, writing).demonstrated, [WAVES]);
   assert.equal(fs.existsSync(path.join(writing, "written-by-a-case.txt")), false);
+});
+
+// Why: requirements/derived-regression/requirement.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+test("nothing enters with the candidate that is not newly promised: no case, link or membership of its own, and no other data", () => {
+  const R1 = succeeding(r0(), "next-regression/waves");
+  // A case of the candidate's own for a commitment it inherits would be inherited protection once it is accepted.
+  const added = edited(
+    succeeding(R1),
+    "scripts/cases.test.ts",
+    (t) => `${t}\n// Why: src/add.ts\ntest("adds once more", () => {\n  assert.equal(add(2, 2), 4);\n});\n`,
+  );
+  assert.deepEqual(judged(R1, added), [
+    'scripts/cases.test.ts: "adds once more": the candidate\'s regression has it, but nothing newly promised brings it into the regression',
+  ]);
+  // So would a link or a membership an inherited case gains.
+  const linked = edited(succeeding(R1), "scripts/cases.test.ts", (t) =>
+    t.replace(
+      "// Why: requirements/greets-by-name/requirement.md\n",
+      "// Why: requirements/greets-by-name/requirement.md\n// Why: src/add.ts\n// Suite: suites/plain.md\n",
+    ),
+  );
+  assert.deepEqual(judged(R1, linked), [
+    'scripts/cases.test.ts: "greets by name": helps prove src/add.ts in the candidate\'s regression, which nothing newly promised brings into the regression',
+    'scripts/cases.test.ts: "greets by name": belongs to suites/plain.md in the candidate\'s regression, which nothing newly promised brings into the regression',
+  ]);
+  // The data the plan hands its cases is carried as it is, not only by where it is kept.
+  const accepted = regressionCandidate("plan-data");
+  const redata = edited(succeeding(accepted), "test-data/plan/greeting.txt", (t) => `${t}more\n`);
+  assert.ok(
+    judged(accepted, redata).includes(
+      `${PLAN}: its data, test-data/plan, hold other than the regression's, which nothing gives up or adds to`,
+    ),
+  );
+  assert.deepEqual(judged(accepted, succeeding(accepted)), []);
 });
