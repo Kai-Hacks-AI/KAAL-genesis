@@ -28,6 +28,10 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
       idea: "KAAL can become modular through packages whose dependencies close the selected capability composition",
     },
     {
+      name: "plan",
+      idea: "KAAL's planning could be one loop of deciding what deserves priority, the intended capability order and dependencies, how Now adapts toward Next, and planning becoming current action, remembered provisionally as PLAN — Prioritize, Launch, Adaption, Now",
+    },
+    {
       name: "release-management",
       idea: "KAAL's protected main could become its release boundary, where a kaal/<name> line whose next Regression is demonstrated through FAR is sealed, released and versioned",
     },
