@@ -755,7 +755,11 @@ function within(code: string, rel: string): string {
 export function runCandidate(candidate: string, files = caseFiles(candidate)): Result[] {
   if (!files.length) return [];
   const code = scratchCopy(candidate, true);
-  return execute(code, files, code, false, plannedData(candidate, code));
+  try {
+    return execute(code, files, code, false, plannedData(candidate, code));
+  } finally {
+    fs.rmSync(path.dirname(code), { recursive: true, force: true });
+  }
 }
 
 /**

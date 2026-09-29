@@ -559,7 +559,7 @@ test("the reader of a case's source tells code from strings, templates, regular 
   );
   const unknown = definitions(state)[1]!;
   assert.deepEqual(unknown.computed, ["src/loader.ts"]);
-  assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts imports what is named only as it runs/);
+  assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts reaches what is named only as it runs/);
   // Which modules code names is read one way: however a literal is wrapped, it names its module only when it is the
   // whole of what is passed, and anything else passed is computed as it runs.
   const named = (text: string) =>
@@ -587,6 +587,12 @@ test("the reader of a case's source tells code from strings, templates, regular 
     "computed",
     "computed",
   ]);
+  // So is a loader reached other than by calling it where it is named, and code evaluated from text, which sees
+  // every binding beside it however its text names them.
+  assert.deepEqual(
+    named('require?.("./a.js"); const load = require; eval("typeof bypass"); obj.eval("x"); obj?.require("./b.js");'),
+    ["computed", "computed", "computed"],
+  );
   // Code a template interpolates is code: a module it names is followed, and data it names is bound.
   fs.writeFileSync(path.join(state, "scripts/fixtures/b.txt"), "b\n");
   fs.writeFileSync(

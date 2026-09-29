@@ -324,8 +324,10 @@ const references = new WeakMap<Token[], ModuleReference[]>();
  * \`import\` or \`from\`, the string naming it; passed to \`import()\` or
  * \`require()\`, its first argument, read to the bracket that closes it,
  * however many parentheses wrap it, and a literal only when it is the whole of
- * that argument. The one reading of which modules code names, so nothing
- * that names a module is read as a value, and nothing computed is read as a name.
+ * that argument. \`eval\`, and \`require\` other than called where it is named,
+ * are computed: what they load or see is known only as they run. The one
+ * reading of which modules code names, so nothing that names a module is read
+ * as a value, and nothing computed is read as a name.
  */
 export function moduleReferences(toks: Token[]): ModuleReference[] {
   const known = references.get(toks);
@@ -338,11 +340,14 @@ export function moduleReferences(toks: Token[]): ModuleReference[] {
       found.push(value === undefined ? { computed: true } : { at: i, value });
       return;
     }
-    const call =
-      t.kind === "name" &&
-      (t.text === "import" || t.text === "require") &&
-      toks[i + 1]?.text === "(" &&
-      before?.text !== ".";
+    const own = t.kind === "name" && before?.text !== "." && before?.text !== "?.";
+    // Code evaluated from text, or a loader reached other than by calling it where it is named, as `require?.(m)` or
+    // `const load = require`, loads or sees what nothing can read before it runs.
+    if (own && (t.text === "eval" || (t.text === "require" && toks[i + 1]?.text !== "("))) {
+      found.push({ computed: true });
+      return;
+    }
+    const call = own && (t.text === "import" || t.text === "require") && toks[i + 1]?.text === "(";
     if (!call) return;
     // The first argument: what lies between the call's parenthesis and the one closing it, up to a comma outside any.
     let depth = 0;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -29,8 +30,7 @@ const places = (state: string) => protectionOf(state).protection.commitments.map
 // Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("the next regression is the accepted one, less what is given up, with what is newly promised and demonstrated: F only, A only, F and A, or neither", () => {
   const R0 = r0();
-  const derived = (layer: string) => {
-    const candidate = succeeding(R0, layer);
+  const derived = (layer: string, candidate = succeeding(R0, layer)) => {
     assert.deepEqual(judged(R0, candidate), []);
     const next = nextRegression(R0, candidate);
     assert.deepEqual(next.errors, []);
@@ -39,8 +39,24 @@ test("the next regression is the accepted one, less what is given up, with what 
     return next;
   };
   const inherited = protectionOf(R0).protection;
-  // F only: a new promise, demonstrated, enters with its case; everything inherited stays.
-  const f = derived("next-regression/waves");
+  // F only: a new promise, demonstrated, enters with its case; everything inherited stays. Judging and demonstrating
+  // it leave nothing behind: every copy its cases ran in is removed.
+  const waves = succeeding(R0, "next-regression/waves");
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-scratch-"));
+  const was = process.env.TMPDIR;
+  process.env.TMPDIR = scratch;
+  let f: ReturnType<typeof nextRegression>;
+  try {
+    f = derived("next-regression/waves", waves);
+  } finally {
+    if (was === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = was;
+  }
+  // Only the test runner's own compile cache stays: it is tsx's, kept for any later run.
+  assert.deepEqual(
+    fs.readdirSync(scratch).filter((entry) => !entry.startsWith("tsx-")),
+    [],
+  );
   assert.deepEqual([f.promises, f.demonstrated], [[WAVES], [WAVES]]);
   assert.deepEqual(
     f.protection.commitments.map((c) => c.place),

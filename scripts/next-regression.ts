@@ -233,9 +233,12 @@ export function nextRegression(
   // one whose case did not pass, is not demonstrated, and does not enter the regression.
   let demonstrated: string[] = [];
   if (promises.length && !unstated.length) {
+    // In a copy of the candidate, as every run of its cases is, so nothing they write reaches the state judged; the copy
+    // is removed once they have run, whatever came of it.
+    let copy: string | undefined;
     try {
-      // In a copy of the candidate, as every run of its cases is, so nothing they write reaches the state judged.
-      const { run } = featureRun({ accepted, candidate: snapshot(candidate) });
+      copy = snapshot(candidate);
+      const { run } = featureRun({ accepted, candidate: copy });
       const judged = evidence(
         promises.map((p) => ({ name: `commitment: ${p}`, under: [] })),
         [
@@ -255,6 +258,8 @@ export function nextRegression(
       errors.push(
         `${candidate}: its new promises cannot be demonstrated: ${e instanceof Error ? e.message : String(e)}`,
       );
+    } finally {
+      if (copy) fs.rmSync(path.dirname(copy), { recursive: true, force: true });
     }
   }
   const inherited = kept.requires.filter((r) => r.kind === "commitment").map((r) => r.name);

@@ -514,7 +514,7 @@ function tokensSpecifiers(source: string): { specifiers: string[]; computed: boo
 export function redefined(before: Definition, after: Definition, candidate: string): string | undefined {
   if (before.claim !== after.claim) return "its claim is another";
   if (before.computed.length)
-    return `${before.computed.join(", ")} imports what is named only as it runs, so what defines it cannot be compared`;
+    return `${before.computed.join(", ")} reaches what is named only as it runs, so what defines it cannot be compared`;
   if (!keepsFrame(before.frame, after.frame)) return `${after.file} no longer states what it did around its cases`;
   for (const [module, was] of Object.entries(before.loaders)) {
     const stat = fs.lstatSync(path.join(candidate, module), { throwIfNoEntry: false });
