@@ -458,3 +458,32 @@ test("each retirement is judged by the witnesses of the code its own cases reach
     `unresolved ${CASES}: "adds"`,
   ]);
 });
+
+// Why: requirements/protection-evolution/requirement.md
+test("a case entering at an inherited case's address is judged by its own result, never by the inherited case's", () => {
+  const R0 = base();
+  // A second "adds", expecting what only the candidate does, beside the inherited "adds" that holds of both states.
+  const duplicate = edited(
+    edited(
+      succeeding(R0),
+      "src/add.ts",
+      () => "export const add = (a: number, b: number): number => (a === 2 && b === 2 ? 5 : a + b);\n",
+    ),
+    CASES,
+    (t) => `${t}\n// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(add(2, 2), 5);\n});\n`,
+  );
+  const errors = judged(R0, duplicate);
+  assert.equal(errors.length, 1, errors.join("\n"));
+  assert.match(
+    errors[0]!,
+    /^scripts\/cases\.test\.ts: "adds": unresolved: added: .*does not hold of the accepted state/,
+  );
+  // The same duplicate expecting what both states do enters as more protection.
+  const agreeing = edited(
+    succeeding(R0),
+    CASES,
+    (t) => `${t}\n// Why: src/add.ts\ntest("adds", () => {\n  assert.equal(add(2, 2), 4);\n});\n`,
+  );
+  assert.deepEqual(judged(R0, agreeing), []);
+  assert.deepEqual(verdicts(R0, agreeing), [`strengthened ${CASES}: "adds"`]);
+});

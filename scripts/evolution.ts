@@ -484,13 +484,22 @@ function copyOf(state: string, of: string): string {
   return copy;
 }
 
-/** The addresses of `results` that did not pass. */
-function detected(results: Result[], addresses: string[]): Set<string> {
-  return new Set(
-    addresses.filter(
-      (at) => !results.some((r) => address({ file: r.file, title: r.name }) === at && r.outcome === "pass"),
-    ),
-  );
+/** Which of `cases`, occurrences, did not pass in `results`. */
+function detected(results: Result[], cases: string[]): Set<string> {
+  return new Set(cases.filter((at) => !passed(results, at)));
+}
+
+/**
+ * A case by its occurrence: its address and which of the cases at it it is,
+ * in the order they are read. Two cases at one address are two cases, so each
+ * is matched to its own result, never to another's.
+ */
+export const occurrence = (c: { file: string; title: string }, nth: number) => `${address(c)}\0${nth}`;
+
+/** Whether the case at `at`, an occurrence, passed in `results`: the result at its place among those at its address. */
+function passed(results: Result[], at: string): boolean {
+  const [file, title, nth] = at.split("\0");
+  return results.filter((r) => r.file === file && r.name === title)[Number(nth)]?.outcome === "pass";
 }
 
 /**
@@ -506,6 +515,7 @@ function detections(
   old: string[],
   now: string[],
 ): { old: Map<string, Set<number>>; now: Map<string, Set<number>> } {
+  // Each side's cases are occurrences, each matched to its own result.
   const out = { old: new Map<string, Set<number>>(), now: new Map<string, Set<number>>() };
   for (const at of old) out.old.set(at, new Set());
   for (const at of now) out.now.set(at, new Set());
@@ -739,7 +749,7 @@ export function evolution(
     const defects = testedDefects(candidate).tested;
     for (const { k, why } of enteringCases) {
       const c = ownCases[k]!;
-      const holds = results.some((r) => r.file === c.file && r.name === c.title && r.outcome === "pass");
+      const holds = passed(results, occurrence(c, nthAt(ownCases, k)));
       const tests = (defects.find((d) => address(d) === address(c))?.defects ?? []).filter((d) =>
         fs.lstatSync(path.join(candidate, d, "defect.md"), { throwIfNoEntry: false })?.isFile(),
       );
@@ -804,15 +814,17 @@ export function evolution(
   });
   if (judged.length) {
     const found = witnesses(candidate, sorted(judged.flatMap((r) => reach.get(r)!)));
-    const oldAt = sorted(judged.map((r) => address(inherited[r.i]!)));
-    const nowAt = sorted(judged.flatMap((r) => r.by.map((k) => address(ownCases[k]!))));
+    const oldOf = (i: number) => occurrence(inherited[i]!, nthAt(inherited, i));
+    const nowOf = (k: number) => occurrence(ownCases[k]!, nthAt(ownCases, k));
+    const oldAt = sorted(judged.map((r) => oldOf(r.i)));
+    const nowAt = sorted(judged.flatMap((r) => r.by.map(nowOf)));
     const seen = detections(accepted, candidate, found, oldAt, nowAt);
     const where = (w: number) => `${found[w]!.module}:${found[w]!.line} ${found[w]!.from} → ${found[w]!.to}`;
     for (const r of judged) {
       const retired = inherited[r.i]!;
       const own = new Set(found.flatMap((w, n) => (reach.get(r)!.includes(w.module) ? [n] : [])));
-      const before = new Set([...seen.old.get(address(retired))!].filter((w) => own.has(w)));
-      const after = new Set(r.by.flatMap((k) => [...seen.now.get(address(ownCases[k]!))!]));
+      const before = new Set([...seen.old.get(oldOf(r.i))!].filter((w) => own.has(w)));
+      const after = new Set(r.by.flatMap((k) => [...seen.now.get(nowOf(k))!]));
       const lost = [...before].filter((w) => !after.has(w));
       if (!before.size)
         add(
