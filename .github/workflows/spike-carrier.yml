@@ -1,0 +1,38 @@
+# Disposable spike, not KAAL: runs the carrier-sameness corpus on Linux and Windows.
+name: spike-carrier
+
+on:
+  push:
+    branches: [ccr-58cfafa0-s9ynfu]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    name: spike-carrier-${{ matrix.where }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - where: linux
+            os: ubuntu-latest
+          - where: windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm install --prefix "${{ runner.temp }}/tsx-old" --no-audit --no-fund tsx@4.19.2
+      - run: npm install --prefix "${{ runner.temp }}/lexer" --no-audit --no-fund es-module-lexer@1
+      - run: node --version
+      - run: node spike/carrier-sameness/corpus.mjs --json "${{ runner.temp }}/corpus.json"
+        env:
+          SPIKE_TSX_OLD: ${{ runner.temp }}/tsx-old
+          SPIKE_LEXER: ${{ runner.temp }}/lexer
