@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { type Change, definitions, evolution, redefined, witnesses } from "./evolution.js";
-import { interpolations, moduleReferences, stringValue, templatePrefix, tokens } from "./source.js";
+import { type Change, definitions, evolution, moduleImports, redefined, witnesses } from "./evolution.js";
+import { interpolations, stringValue, templatePrefix, tokens } from "./source.js";
 import { PLAN } from "./links.js";
 import { evolvedRegression, nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
 import { regressionIdentity } from "./regression.js";
@@ -293,7 +293,7 @@ test("a case is defined by its claim, what its file states around its cases, the
   edited(R0, "scripts/bye.test.ts", (t) =>
     t.replace(
       'import { greet } from "../src/greet.js";\n',
-      'import { greet } from "../src/greet.js";\nimport { WHO } from "./test-data.js";\nimport { ok } from "./test-data/check.mjs";\n',
+      'import { greet } from "../src/greet.js";\nimport { WHO } from "./test-data.js";\nimport { ok } from "./test-data/check.mjs";\n\n// Used, so they load: an import TypeScript sees used for nothing is compiled away.\nvoid [WHO, ok];\n',
     ),
   );
   const before = new Map(definitions(R0).map((d) => [`${d.file}: ${d.title}`, d]));
@@ -598,20 +598,21 @@ test("the reader of a case's source tells code from strings, templates, regular 
     path.join(state, "scripts/x.test.ts"),
     cases.replace(
       'import { shout } from "../src/shout.js";',
-      'import { shout } from "../src/shout.js";\nimport { load } from "../src/loader.js";',
+      'import { shout } from "../src/shout.js";\nimport { load } from "../src/loader.js";\n\nvoid load;',
     ),
   );
   const unknown = definitions(state)[1]!;
   assert.deepEqual(unknown.computed, ["src/loader.ts"]);
   assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts reaches what is named only as it runs/);
-  // Which modules code names is read one way: however a literal is wrapped, it names its module only when it is the
-  // whole of what is passed, and anything else passed is computed as it runs.
-  const named = (text: string) =>
-    moduleReferences(tokens(text).filter((t) => t.kind !== "comment")).map((r) =>
-      r.at === undefined ? "computed" : r.value,
-    );
+  // Which modules code loads is the transformer's to say: compiled as tsx runs it, then every module the bundler finds
+  // named in it. However a literal is wrapped, it names its module; what only a type names loads nothing.
+  const named = (file: string, text: string) => {
+    const read = moduleImports(file, text);
+    return read.computed ? [...read.specifiers, "computed"] : read.specifiers;
+  };
   assert.deepEqual(
     named(
+      "x.mjs",
       [
         'import a from "./a.js";',
         'export * from "./b.js";',
@@ -625,18 +626,26 @@ test("the reader of a case's source tells code from strings, templates, regular 
     ),
     ["./a.js", "./b.js", "./c.js", "./d.js", "./e.js", "./f.js"],
   );
-  assert.deepEqual(named('import((m)); import(("./" + m)); require((`./${m}`)); import(("./a.js") + m);'), [
-    "computed",
-    "computed",
-    "computed",
-    "computed",
-  ]);
-  // So is a loader reached other than by calling it where it is named, and code evaluated from text, which sees
-  // every binding beside it however its text names them.
   assert.deepEqual(
-    named('require?.("./a.js"); const load = require; eval("typeof bypass"); obj.eval("x"); obj?.require("./b.js");'),
-    ["computed", "computed", "computed"],
+    named(
+      "x.ts",
+      'import type { T } from "./t.js";\nimport { unused } from "./u.js";\nlet y: typeof import("./y.js");\nimport "./z.js";',
+    ),
+    ["./z.js"],
   );
+  // Whatever the bundler cannot name is computed as it runs: a name, a pattern, a loader reached other than by
+  // calling it where it is named, and code evaluated from text, which sees every binding beside it.
+  for (const text of [
+    "await import((m));",
+    'await import(("./" + m));',
+    "require((`./${m}`));",
+    'await import(("./a.js") + m);',
+    'require?.("./a.js");',
+    "const load = require;",
+    'eval("typeof bypass");',
+  ])
+    assert.ok(named("x.ts", text).includes("computed"), text);
+  assert.deepEqual(named("x.ts", 'obj.eval("x");\nobj?.require("./b.js");\nobj.import;'), []);
   // Code a template interpolates is code: a module it names is followed, and data it names is bound.
   fs.writeFileSync(path.join(state, "scripts/fixtures/b.txt"), "b\n");
   fs.writeFileSync(

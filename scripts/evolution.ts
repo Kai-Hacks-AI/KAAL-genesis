@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { transformSync } from "esbuild";
+import { buildSync, transformSync } from "esbuild";
 import type { Conditions } from "../skills/testing/scripts/plan.js";
 import { caseDefects, caseFiles, caseStarts, PLAN } from "./links.js";
 import type { Held, Protection } from "./next-regression.js";
@@ -11,8 +11,6 @@ import {
   code,
   codeTokens,
   interpolations,
-  isSpecifier,
-  moduleReferences,
   statements,
   stringValue,
   templatePrefix,
@@ -150,7 +148,10 @@ export type Definition = {
 /** The bindings an import statement makes, each as `<specifier>|<imported>|<local>`, or `<specifier>|` for one that binds nothing. */
 function bindings(statement: Token[]): string[] {
   const toks = statement.filter((t) => t.kind !== "comment" && !(t.kind === "name" && t.text === "type"));
-  const spec = toks.find((t, i) => isSpecifier(toks, i) && t.kind === "string");
+  // As the transformer prints an import: its module is the string after `from`, or, importing only for its effect,
+  // the one string it has.
+  const after = toks.findIndex((t) => t.kind === "name" && t.text === "from");
+  const spec = after >= 0 ? toks[after + 1] : toks.find((t) => t.kind === "string");
   const from = spec ? stringValue(spec) : undefined;
   if (from === undefined) return [code(statement)];
   const out: string[] = [];
@@ -233,7 +234,8 @@ function frameOf(file: string, text: string, whole = text): Frame {
     else rest.push(spoken("printed.js", statement));
   }
   return {
-    ...runtimeOf(file, whole),
+    loads: moduleImports(file, whole).loads,
+    exports: exportsOf(file, whole),
     imports: sorted(imports),
     statements: rest.filter(Boolean),
     names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
@@ -249,33 +251,88 @@ export function loaderFor(file: string): "ts" | "js" {
   return /\.(js|mjs|cjs)$/.test(file) ? "js" : "ts";
 }
 
+/** What a module loads, and whether that is all it can load. */
+export type Imports = {
+  /** Every module it names to load, statically, by `import()` or by `require()`, as its code runs. */
+  specifiers: string[];
+  /** The modules its imports load as it is evaluated, in the order it loads them: the order they are first imported. */
+  loads: string[];
+  /** Whether it can load, or see, what nothing can name before it runs. */
+  computed: boolean;
+};
+
 /**
- * What `text`, the module at `file`, does as it is evaluated that its cases
- * can see besides its statements: the modules it loads, in the order it loads
- * them, and its export statements, which make its namespace. Both are read
- * from the module as the transformer that runs it compiles it, never from its
- * source, since an import only of types, or of names used only as types,
- * loads nothing, and an export only of types exports nothing. A module that
- * does not compile loads and exports nothing KAAL can know of.
+ * What `text`, the module at `file`, loads, as the transformer that runs it
+ * says, never read from its source by KAAL: the module is compiled as tsx runs
+ * it, so an import only of types, or of names used only as types, is gone, and
+ * what the compiled module loads is what the bundler finds in it, every module
+ * named external. Where the bundler finds no name, as `import(m)`, or a
+ * pattern, as `require("./" + m)`, or code evaluated from text, as a direct
+ * `eval`, which sees every binding beside it, or where the compiled code says
+ * `import(` or `require` more often than the bundler found a module named,
+ * what it loads or sees is known only as it runs. A module that does not
+ * compile is one nothing can say that of either.
  */
-function runtimeOf(file: string, text: string): { loads: string[]; exports: string[] } {
+export function moduleImports(file: string, text: string): Imports {
+  const unknown = { specifiers: [], loads: [], computed: true };
+  let compiled: string;
+  let found: { path: string; kind: string }[];
+  let warned: string[];
+  try {
+    compiled = transformSync(text, { loader: loaderFor(file), format: "esm" }).code;
+    const built = buildSync({
+      // As the module it is, as tsx runs a case: the bundler reads code without imports or exports otherwise.
+      stdin: { contents: `${compiled}\nexport {};`, loader: "js", sourcefile: file },
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "node",
+      external: ["*"],
+      metafile: true,
+      logLevel: "silent",
+    });
+    found = Object.values(built.metafile!.inputs).flatMap((input) => input.imports);
+    warned = built.warnings.map((w) => w.id);
+  } catch {
+    return unknown;
+  }
+  // A pattern, as the bundler reads `require("./" + m)`, names no module.
+  const named = found.filter((i) => i.path !== "<runtime>" && !i.path.includes("*"));
+  const toks = codeTokens(compiled);
+  // Every place the compiled code reaches a loader by its name, however it does, against the modules found named.
+  const reached = toks.filter(
+    (t, i) =>
+      t.kind === "name" &&
+      toks[i - 1]?.text !== "." &&
+      toks[i - 1]?.text !== "?." &&
+      (t.text === "require" || (t.text === "import" && toks[i + 1]?.text === "(")),
+  ).length;
+  const computed =
+    warned.includes("direct-eval") ||
+    reached > named.filter((i) => i.kind === "dynamic-import" || i.kind === "require-call").length;
+  const loads: string[] = [];
+  for (const i of named) if (i.kind === "import-statement" && !loads.includes(i.path)) loads.push(i.path);
+  return { specifiers: [...new Set(named.map((i) => i.path))], loads, computed };
+}
+
+/**
+ * The export statements of `text`, the module at `file`, as the transformer
+ * that runs it compiles them: what makes the namespace a case importing it
+ * sees. An export only of types exports nothing. A module that does not
+ * compile exports nothing KAAL can know of.
+ */
+function exportsOf(file: string, text: string): string[] {
   let compiled: string;
   try {
     compiled = transformSync(text, { loader: loaderFor(file), format: "esm" }).code;
   } catch {
-    return { loads: [], exports: [] };
+    return [];
   }
-  const loads: string[] = [];
-  const exports: string[] = [];
-  for (const statement of statements(compiled)) {
-    const first = statement[0]?.text;
-    if (first !== "import" && first !== "export") continue;
-    if (statement[1]?.text === "(" || statement[1]?.text === ".") continue;
-    if (first === "export") exports.push(code(statement));
-    const named = moduleReferences(statement).find((r) => r.at !== undefined);
-    if (named && named.at !== undefined && !loads.includes(named.value)) loads.push(named.value);
-  }
-  return { loads, exports: sorted(exports) };
+  return sorted(
+    statements(compiled)
+      .filter((statement) => statement[0]?.text === "export")
+      .map((statement) => code(statement)),
+  );
 }
 
 /** The top-level tokens of `toks`, each with the depth of brackets it is at. */
@@ -425,10 +482,9 @@ function held(state: string, rel: string): Record<string, string> {
 }
 
 /** The test data a module's string literals name by a path, from where it is kept or from the state's root. */
-function namedData(state: string, file: string, toks: Token[]): Record<string, string> {
+function namedData(state: string, file: string, toks: Token[], modules: Set<string>): Record<string, string> {
   let out: Record<string, string> = {};
-  toks.forEach((t, i) => {
-    if (isSpecifier(toks, i)) return;
+  toks.forEach((t) => {
     // A template names for certain only what it states before anything it interpolates: where that ends in a
     // directory, what is under it.
     const template = templatePrefix(t);
@@ -436,7 +492,8 @@ function namedData(state: string, file: string, toks: Token[]): Record<string, s
       t.kind === "string"
         ? stringValue(t)
         : template && (template.computed ? template.text.slice(0, template.text.lastIndexOf("/") + 1) : template.text);
-    if (!value || value.includes("\0") || value.length > 512) return;
+    // What names a module the code loads names a module, not data: the module is followed as code.
+    if (!value || modules.has(value) || value.includes("\0") || value.length > 512) return;
     for (const base of [path.posix.dirname(file), "."]) {
       const at = path.posix.normalize(path.posix.join(base, value)).replace(/\/+$/, "");
       if (!at || at === "." || at === ".." || at.startsWith("../") || path.posix.isAbsolute(value)) continue;
@@ -470,10 +527,11 @@ export function definitions(state: string): Definition[] {
     }
     rest += text.slice(from);
     const frame = frameOf(file, rest, text);
+    const own = new Set(moduleImports(file, text).specifiers);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
     const computed = new Set<string>();
-    let data: Record<string, string> = namedData(state, file, codeTokens(rest));
+    let data: Record<string, string> = namedData(state, file, codeTokens(rest), own);
     // The modules the file reaches: a test-data loader is part of what defines its cases, and the data it names;
     // any other code is the subject, what the cases are claims about.
     const seen = new Set<string>([file]);
@@ -481,7 +539,7 @@ export function definitions(state: string): Definition[] {
     while (queue.length) {
       const at = queue.shift()!;
       const source = fs.readFileSync(path.join(state, at), "utf8").replace(/\r\n/g, "\n");
-      const read = tokensSpecifiers(source);
+      const read = moduleImports(at, source);
       if (read.computed) computed.add(at);
       for (const specifier of read.specifiers) {
         const module = resolved(state, at, specifier);
@@ -492,7 +550,10 @@ export function definitions(state: string): Definition[] {
           if (CODE.test(module)) {
             const loader = fs.readFileSync(path.join(state, module), "utf8").replace(/\r\n/g, "\n");
             loaders[module] = frameOf(module, loader);
-            data = { ...data, ...namedData(state, module, codeTokens(loader)) };
+            data = {
+              ...data,
+              ...namedData(state, module, codeTokens(loader), new Set(moduleImports(module, loader).specifiers)),
+            };
             queue.push(module);
           } else loaders[module] = held(state, module)[module]!;
         } else if (CODE.test(module)) {
@@ -502,30 +563,19 @@ export function definitions(state: string): Definition[] {
       }
     }
     return cases.map((c) => {
-      const own = text.slice(c.start, c.end);
+      const statement = text.slice(c.start, c.end);
       return {
         file,
         title: c.title,
-        claim: spoken(file, own),
+        claim: spoken(file, statement),
         frame,
         loaders,
-        data: { ...data, ...namedData(state, file, codeTokens(own)) },
+        data: { ...data, ...namedData(state, file, codeTokens(statement), own) },
         subjects: [...subjects].sort(),
         computed: [...computed].sort(),
       };
     });
   });
-}
-
-/** The specifiers a module imports. */
-function tokensSpecifiers(source: string): { specifiers: string[]; computed: boolean } {
-  // Every module the code names, those named in what a template interpolates too.
-  const read = moduleReferences(codeTokens(source));
-  return {
-    specifiers: read.flatMap((r) => (r.at === undefined ? [] : [r.value])),
-    // A module named by what is computed as it runs: which one, nothing can say before it runs.
-    computed: read.some((r) => r.at === undefined),
-  };
 }
 
 /**
@@ -562,7 +612,7 @@ export function redefined(before: Definition, after: Definition, candidate: stri
 export type Witness = { module: string; line: number; from: string; to: string; source: string };
 
 /** What a token could be made instead, each a change a case protecting the code should detect. */
-function alternatives(t: Token, toks: Token[], i: number): string[] {
+function alternatives(t: Token, modules: Set<string>): string[] {
   const swap: Record<string, string[]> = {
     "+": ["-"],
     "-": ["+"],
@@ -584,8 +634,10 @@ function alternatives(t: Token, toks: Token[], i: number): string[] {
   if (t.kind === "punct") return swap[t.text] ?? [];
   if (t.kind === "name" && (t.text === "true" || t.text === "false")) return [t.text === "true" ? "false" : "true"];
   if (t.kind === "number" && /^\d+$/.test(t.text)) return [String(Number(t.text) + 1)];
-  if (t.kind === "string" && !isSpecifier(toks, i)) return [t.text.length > 2 ? `${t.text[0]}${t.text[0]}` : '"x"'];
-  if (t.kind === "template" && !isSpecifier(toks, i)) {
+  // What names a module the code loads is left as it is: changed, the module is not found, which tells nothing apart.
+  if (t.kind === "string" && !modules.has(stringValue(t) ?? ""))
+    return [t.text.length > 2 ? `${t.text[0]}${t.text[0]}` : '"x"'];
+  if (t.kind === "template" && !modules.has(templatePrefix(t)?.text ?? "")) {
     // Its text, without anything it says around what it interpolates.
     const bare = `\`${interpolations(t).join("")}\``;
     return bare !== t.text ? [bare] : [];
@@ -599,11 +651,19 @@ export function witnesses(state: string, modules: string[]): Witness[] {
     const text = fs.readFileSync(path.join(state, module), "utf8");
     const toks = codeTokens(text);
     const loader = loaderFor(module);
-    return toks.flatMap((t, i) =>
-      alternatives(t, toks, i).flatMap((to) => {
+    const loaded = new Set(moduleImports(module, text).specifiers);
+    let runs: string;
+    try {
+      runs = transformSync(text, { loader }).code;
+    } catch {
+      return [];
+    }
+    return toks.flatMap((t) =>
+      alternatives(t, loaded).flatMap((to) => {
         const source = text.slice(0, t.start) + to + text.slice(t.end);
         try {
-          transformSync(source, { loader });
+          // A change the transformer compiles away, as one to a type, changes nothing that runs: no witness.
+          if (transformSync(source, { loader }).code === runs) return [];
         } catch {
           return []; // Not code any more: every case reaching it fails alike, which tells nothing apart.
         }
