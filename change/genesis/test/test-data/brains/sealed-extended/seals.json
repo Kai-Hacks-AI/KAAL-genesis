@@ -1,0 +1,16 @@
+{
+  "genesis": {
+    "units": [
+      "genesis/26/09/25/01",
+      "genesis/26/09/26/01",
+      "genesis/26/09/27/01"
+    ],
+    "seal": "b51cb414f3673379f5dc036c500471e462855b10b6887513ae81b4e382230c72"
+  },
+  "other": {
+    "units": [
+      "other/26/09/25/01"
+    ],
+    "seal": "2bb426ad1dd13df796f0ef4d247cd2a5168f367a1b6a30cafc2edeea1b35f3b7"
+  }
+}

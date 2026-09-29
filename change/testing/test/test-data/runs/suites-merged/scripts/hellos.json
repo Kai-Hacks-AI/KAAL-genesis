@@ -1,0 +1,4 @@
+[
+  { "file": "hello.txt", "greeting": "hello\n" },
+  { "file": "hello-name.txt", "name": "Lotta", "greeting": "hello, Lotta\n" }
+]

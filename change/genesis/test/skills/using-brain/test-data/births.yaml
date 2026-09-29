@@ -1,0 +1,51 @@
+# Inputs to createNode, by name. Cases add `root`.
+example:
+  { lineage: genesis, learning: 26/09/25/01, slug: example, name: example, meaning: "# Example\n\nMeaning.\n" }
+example-changed:
+  { lineage: genesis, learning: 26/09/25/01, slug: example, name: example, meaning: changed }
+traversal-lineage:
+  { lineage: ../outside, learning: 26/09/25/01, slug: x, name: x, meaning: x }
+traversal-backslash:
+  { lineage: genesis, learning: 26/09/25/01, slug: "..\\outside", name: x, meaning: x }
+traversal-slug:
+  { lineage: genesis, learning: 26/09/25/01, slug: ../outside, name: x, meaning: x }
+empty-name:
+  { lineage: genesis, learning: 26/09/25/01, slug: x, name: " ", meaning: x }
+edge-to-earlier:
+  lineage: genesis
+  learning: 26/09/25/02
+  slug: a
+  name: A
+  meaning: A
+  edges:
+    - { relation: genesis/26/09/25/01/nodes/relation.md, to: genesis/26/09/25/01/nodes/b.md }
+edge-to-missing-in-same-learning:
+  lineage: genesis
+  learning: 26/09/25/01
+  slug: a
+  name: A
+  meaning: A
+  edges:
+    - { relation: genesis/26/09/25/01/nodes/relation.md, to: genesis/26/09/25/01/nodes/missing.md }
+edge-across-lineages:
+  lineage: other
+  learning: 26/09/25/02
+  slug: a
+  name: A
+  meaning: A
+  edges:
+    - { relation: genesis/26/09/25/01/nodes/relation.md, to: genesis/26/09/25/01/nodes/b.md }
+uppercase-slug:
+  { lineage: genesis, learning: 26/09/25/01, slug: Example, name: x, meaning: x }
+uppercase-lineage:
+  { lineage: Genesis, learning: 26/09/25/01, slug: x, name: x, meaning: x }
+dotted-slug:
+  { lineage: genesis, learning: 26/09/25/01, slug: x., name: x, meaning: x }
+underscore-slug:
+  { lineage: genesis, learning: 26/09/25/01, slug: using_brain, name: x, meaning: x }
+double-hyphen-slug:
+  { lineage: genesis, learning: 26/09/25/01, slug: using--brain, name: x, meaning: x }
+reserved-slug:
+  { lineage: genesis, learning: 26/09/25/01, slug: con, name: x, meaning: x }
+reserved-lineage:
+  { lineage: nul, learning: 26/09/25/01, slug: x, name: x, meaning: x }

@@ -1,0 +1,3 @@
+A	brain/learning/genesis/26/09/25/01/seal.json
+A	brain/learning/genesis/26/09/25/01/nodes/b.md
+A	brain/learning/seals.json

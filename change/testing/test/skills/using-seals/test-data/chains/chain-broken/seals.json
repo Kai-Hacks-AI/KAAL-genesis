@@ -1,0 +1,9 @@
+{
+  "chain": {
+    "units": [
+      "one",
+      "two"
+    ],
+    "seal": "a88cac66019f64a6f26a0f855e03568c5503a2c58503bffdb9b1ff55c0a5e417"
+  }
+}

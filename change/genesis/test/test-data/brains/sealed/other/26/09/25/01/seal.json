@@ -1,0 +1,11 @@
+{
+  "unit": "other/26/09/25/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/c.md",
+      "sha256": "6331a9c7d78ee49604592f9db4661b43cdce839343a432d8404ef629744afe38"
+    }
+  ],
+  "seal": "2bb426ad1dd13df796f0ef4d247cd2a5168f367a1b6a30cafc2edeea1b35f3b7"
+}

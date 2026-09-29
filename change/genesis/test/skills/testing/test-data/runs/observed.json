@@ -1,0 +1,10 @@
+{
+  "observations": [
+    { "file": "a.test.ts", "title": "adds", "observed": "passed" },
+    { "file": "a.test.ts", "title": "subtracts", "observed": "failed" },
+    { "file": "b.test.ts", "title": "greets", "observed": "passed" },
+    { "file": "b.test.ts", "title": "greets", "observed": "not run" },
+    { "file": "b.test.ts", "title": "waves", "observed": "not run" }
+  ],
+  "unaccounted": [{ "file": "c.test.ts", "title": "adds", "outcome": "passed" }]
+}

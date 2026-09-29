@@ -1,0 +1,2 @@
+x|goodbye x
+y|goodbye y

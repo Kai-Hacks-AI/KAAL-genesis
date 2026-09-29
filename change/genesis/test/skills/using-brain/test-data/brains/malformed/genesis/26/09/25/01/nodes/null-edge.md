@@ -1,0 +1,5 @@
+---
+name: A
+edges:
+  - null
+---

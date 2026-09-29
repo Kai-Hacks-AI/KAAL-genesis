@@ -30,7 +30,7 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 
 ## How this regression differs from the one it was derived from
 
-Derived from: the accepted regression `d96ff28676e28db82504abf8633318e1b079d62a360022fbd364c4b4c97797e7`.
+Derived from: the accepted regression `2126231163413570f44cc7355f0bd2008183ba6099c15925dc56980aecc9c404`.
 
 This regression is derived from the accepted one, never restated: what it protects is what the accepted regression protects, less exactly what the acceptance records this candidate adds give up, with each commitment this candidate newly promises and demonstrates by its own cases; what demonstrates it is the accepted regression's own evidence, projected as it is held, with what this candidate admits beside it, held under `change/`. `npm run regression:derive -- <accepted> [candidate] [--change <name>]` derives it from the files, writes the evidence it projects into the candidate, admitting the candidate's own to the change named, and says where the candidate cannot be the next regression; how, is stated in `brain/learning/genesis/26/09/29/04/nodes/testing.md`, `requirements/next-regression/requirement.md` and `requirements/protection-evolution/requirement.md`.
 

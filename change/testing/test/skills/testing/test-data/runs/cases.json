@@ -1,0 +1,7 @@
+[
+  { "file": "a.test.ts", "title": "adds" },
+  { "file": "a.test.ts", "title": "subtracts" },
+  { "file": "b.test.ts", "title": "greets" },
+  { "file": "b.test.ts", "title": "greets" },
+  { "file": "b.test.ts", "title": "waves" }
+]

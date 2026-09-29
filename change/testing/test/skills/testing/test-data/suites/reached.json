@@ -1,0 +1,11 @@
+{
+  "greeting": [
+    { "file": "a.test.ts", "title": "greets", "observed": "passed" },
+    { "file": "a.test.ts", "title": "greets by name", "observed": "passed" },
+    { "file": "b.test.ts", "title": "greets in Welsh", "observed": "not run" }
+  ],
+  "names": [
+    { "file": "a.test.ts", "title": "greets by name", "observed": "passed" },
+    { "file": "b.test.ts", "title": "says goodbye by name", "observed": "passed" }
+  ]
+}
