@@ -198,15 +198,39 @@ function spoken(file: string, text: string): string {
   }
 }
 
+/**
+ * The top-level statements of `text`, the code of the module at `file`, as the
+ * transformer that runs it structures them: printed back, with every import it
+ * writes kept, each statement begins a line of its own, and nothing nested
+ * does. So where one statement ends and the next begins is the transformer's
+ * to say, never the layout's. Each is the printed text of one statement, types
+ * gone. Text the transformer cannot read is one statement, as it is written,
+ * so any change to it is a change.
+ */
+function topLevel(file: string, text: string): string[] {
+  let printed: string;
+  try {
+    printed = transformSync(text, {
+      loader: loaderFor(file),
+      format: "esm",
+      legalComments: "none",
+      tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } },
+    }).code;
+  } catch {
+    return [`\0${text}`];
+  }
+  return statements(printed).map((s) => printed.slice(s[0]!.start, s.at(-1)!.end));
+}
+
 /** The frame of a module's text: its imports' bindings and its other top-level statements. */
 function frameOf(file: string, text: string, whole = text): Frame {
   const imports: string[] = [];
   const rest: string[] = [];
-  for (const statement of statements(text)) {
-    const first = statement[0];
-    if (first?.kind === "name" && first.text === "import" && statement[1]?.text !== "(")
-      imports.push(...bindings(statement));
-    else rest.push(spoken(file, text.slice(first!.start, statement.at(-1)!.end)));
+  for (const statement of topLevel(file, text)) {
+    const toks = tokens(statement).filter((t) => t.kind !== "comment");
+    if (toks[0]?.kind === "name" && toks[0].text === "import" && toks[1]?.text !== "(" && toks[1]?.text !== ".")
+      imports.push(...bindings(toks));
+    else rest.push(spoken("printed.js", statement));
   }
   return {
     ...runtimeOf(file, whole),

@@ -406,6 +406,10 @@ test("a case is defined by its claim, what its file states around its cases, the
     ["function Number(text: string) {\n  return 3;\n}", "a declaration taking a name the cases use"],
     ["const { Number } = { Number: () => 3 };", "a destructuring taking a name the cases use"],
     ["const fresh = 1,\n  Number = () => 3;", "a second declaration taking a name the cases use"],
+    [
+      "const fresh = 1; function Number() {\n  return 3;\n}",
+      "a second statement on its line taking a name the cases use",
+    ],
     ["const helper = verify(3);", "a value computed as the module loads"],
     ["const fresh = function () {\n  verify = () => {};\n}();", "a function called where it is written"],
     ["const fresh = (function () {\n  verify = () => {};\n})();", "a wrapped function called where it is written"],
@@ -423,6 +427,46 @@ test("a case is defined by its claim, what its file states around its cases, the
       redefinedAll,
       why,
     );
+  // Where one top-level statement ends and the next begins is the transformer's to say, never the layout's: every
+  // reading of the frame (its imports, its statements, what is added and whether that is inert, and what trails a
+  // case on its line) takes its statements as the transformer prints them.
+  const spaced = succeeding(
+    edited(succeeding(R0), CASES, (t) =>
+      t.replace(
+        'import { greet } from "../src/greet.js";\n',
+        'import { greet } from "../src/greet.js";\n\nconst one = 1;\nconst two = 2;\n',
+      ),
+    ),
+  );
+  const was = new Map(definitions(spaced).map((d) => [`${d.file}: ${d.title}`, d]));
+  const against = (candidate: string) =>
+    definitions(candidate).flatMap((d) => {
+      const at = was.get(`${d.file}: ${d.title}`);
+      const why = at && redefined(at, d, candidate);
+      return why && d.file === CASES ? [`${d.title}: ${why}`] : [];
+    });
+  const everyCase = definitions(spaced)
+    .filter((d) => d.file === CASES)
+    .map((d) => `${d.title}: ${CASES} no longer states what it did around its cases`);
+  const laid = (from: string, to: string) => against(edited(succeeding(spaced), CASES, (t) => t.replace(from, to)));
+  // Laid out otherwise, the same statements: on one line, or one broken across lines.
+  assert.deepEqual(laid("const one = 1;\nconst two = 2;", "const one = 1; const two = 2;"), []);
+  assert.deepEqual(laid("const one = 1;", "const one =\n1;"), []);
+  for (const [from, to, why] of [
+    [
+      "const two = 2;",
+      "const two = 2; function Number() {\n  return 3;\n}",
+      "a declaration beside another, taking a name",
+    ],
+    ["const two = 2;", "const two = 2; globalThis.skipped = true;", "an assignment beside a declaration"],
+    [
+      'import { greet } from "../src/greet.js";',
+      'import { greet } from "../src/greet.js"; globalThis.skipped = true;',
+      "an assignment beside an import",
+    ],
+    [GREETS, `${GREETS} globalThis.skipped = true;`, "an assignment trailing a case on its line"],
+  ] as const)
+    assert.deepEqual(laid(from, to), everyCase, why);
   // The same modules loaded in another order: they are evaluated in the order they are first imported.
   assert.deepEqual(
     cases(
