@@ -160,7 +160,7 @@ function checkCommand(repo: string): string | undefined {
  * `tsconfig.json` and every local configuration it extends, in order, or the
  * first `extends` that leads out of the state, which the identity cannot see.
  */
-function typescriptConfig(repo: string): { files: string[]; outside?: string } {
+export function typescriptConfig(repo: string): { files: string[]; outside?: string } {
   const files: string[] = [];
   let at = "tsconfig.json";
   while (fs.existsSync(path.join(repo, at)) && !files.includes(at)) {

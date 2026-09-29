@@ -6,7 +6,7 @@ import { type BuildOptions, buildSync, type Loader, transformSync } from "esbuil
 import type { Conditions } from "../skills/testing/scripts/plan.js";
 import { caseDefects, caseFiles, caseStarts, PLAN } from "./links.js";
 import type { Held, Protection } from "./next-regression.js";
-import { isData, type Result, runTrusted } from "./regression.js";
+import { isData, type Result, runTrusted, typescriptConfig } from "./regression.js";
 import {
   code,
   codeTokens,
@@ -136,6 +136,8 @@ export type Definition = {
   file: string;
   title: string;
   claim: string;
+  /** The settings its code is compiled with, as tsx reads them: the state's tsconfig and what it extends, digested. */
+  settings: Record<string, string>;
   frame: Frame;
   loaders: Record<string, Frame | string>;
   data: Record<string, string>;
@@ -508,6 +510,49 @@ function resolved(state: string, file: string, specifier: string): string | unde
   return tries.find((t) => fs.lstatSync(path.join(state, t), { throwIfNoEntry: false })?.isFile());
 }
 
+/** What a specifier names that nothing can know before it runs. */
+const UNKNOWN = Symbol("unknown");
+
+/**
+ * The module a bare `specifier`, not a relative path, names from `file` in
+ * `state`, as the transformer that runs it resolves it with the state's
+ * tsconfig: none, where it names a package or Node itself, the module it names
+ * where the tsconfig's paths map it into the state, and unknown where it
+ * cannot be resolved as it would run.
+ */
+function aliased(state: string, file: string, specifier: string): string | undefined | typeof UNKNOWN {
+  if (specifier.startsWith("node:")) return undefined;
+  const tsconfig = path.join(state, "tsconfig.json");
+  try {
+    const built = buildSync({
+      stdin: {
+        contents: `import ${JSON.stringify(specifier)};`,
+        loader: "js",
+        sourcefile: "specifier.probe",
+        resolveDir: path.join(state, path.dirname(file)),
+      },
+      absWorkingDir: state,
+      bundle: true,
+      packages: "external",
+      platform: "node",
+      format: "esm",
+      write: false,
+      metafile: true,
+      logLevel: "silent",
+      ...(fs.existsSync(tsconfig) ? { tsconfig } : {}),
+    });
+    // The import asked about, as the bundler read it from beside `file`.
+    const probe = Object.entries(built.metafile!.inputs).find(([name]) => name.endsWith("specifier.probe"));
+    const found = probe?.[1].imports[0];
+    if (!found) return UNKNOWN;
+    if (found.external) return undefined;
+    const at = found.path.split(path.sep).join("/");
+    return at.startsWith("../") || at.split("/")[0] === "node_modules" ? undefined : at;
+  } catch {
+    return UNKNOWN;
+  }
+}
+
 /** Every entry under `rel` in `state`, itself included, as the regression's identity reads it, by path, digested. */
 function held(state: string, rel: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -567,6 +612,7 @@ export function definitions(state: string): Definition[] {
     }
     rest += text.slice(from);
     const frame = frameOf(state, file, rest, text);
+    const settings = Object.assign({}, ...typescriptConfig(state).files.map((f) => held(state, f)));
     const own = new Set(moduleImports(state, file, text).specifiers);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
@@ -582,8 +628,9 @@ export function definitions(state: string): Definition[] {
       const read = moduleImports(state, at, source);
       if (read.computed) computed.add(at);
       for (const specifier of read.specifiers) {
-        const module = resolved(state, at, specifier);
-        if (!module || seen.has(module)) continue;
+        const module = specifier.startsWith(".") ? resolved(state, at, specifier) : aliased(state, at, specifier);
+        if (module === UNKNOWN) computed.add(at);
+        if (!module || module === UNKNOWN || seen.has(module)) continue;
         seen.add(module);
         if (module.endsWith(".test.ts")) continue;
         if (isData(module, false)) {
@@ -608,6 +655,7 @@ export function definitions(state: string): Definition[] {
         file,
         title: c.title,
         claim: spoken(state, file, statement),
+        settings,
         frame,
         loaders,
         data: { ...data, ...namedData(state, file, codeTokens(statement), own) },
@@ -627,6 +675,9 @@ export function definitions(state: string): Definition[] {
  */
 export function redefined(before: Definition, after: Definition, candidate: string): string | undefined {
   if (before.claim !== after.claim) return "its claim is another";
+  // Compiled otherwise, the same code can run otherwise, whatever it reads as: any setting changed changes every case.
+  if (canonical(before.settings) !== canonical(after.settings))
+    return "the settings its code is compiled with are others";
   if (before.computed.length)
     return `${before.computed.join(", ")} reaches what is named only as it runs, so what defines it cannot be compared`;
   if (!keepsFrame(before.frame, after.frame)) return `${after.file} no longer states what it did around its cases`;

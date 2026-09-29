@@ -500,6 +500,35 @@ test("a case is defined by its claim, what its file states around its cases, the
     judging(configured)(unusedImport(configured)),
     all(configured, `${CASES} no longer states what it did around its cases`),
   );
+  // The settings themselves are what every case is compiled with: kept, nothing changes; changed, as a factory JSX is
+  // compiled to, the same code can run otherwise, so every case is another.
+  assert.deepEqual(judging(configured)(succeeding(configured)), []);
+  assert.deepEqual(
+    judging(configured)(
+      edited(succeeding(configured), "base.json", (t) =>
+        t.replace('"verbatimModuleSyntax": true', '"verbatimModuleSyntax": true, "jsxFactory": "h"'),
+      ),
+    ),
+    all(configured, "the settings its code is compiled with are others"),
+  );
+  // A module named by an alias the tsconfig maps into the state is the module tsx loads, and is followed.
+  const aliasing = succeeding(R0);
+  fs.writeFileSync(
+    path.join(aliasing, "tsconfig.json"),
+    '{ "compilerOptions": { "baseUrl": ".", "paths": { "@data/*": ["scripts/test-data/*"] } } }\n',
+  );
+  fs.writeFileSync(path.join(aliasing, "scripts/test-data/limit.ts"), "export const limit = 3;\n");
+  edited(aliasing, CASES, (t) =>
+    t.replace(
+      'import test from "node:test";\n',
+      'import test from "node:test";\nimport { limit } from "@data/limit.js";\n\nvoid limit;\n',
+    ),
+  );
+  const aliased = succeeding(aliasing);
+  assert.deepEqual(
+    judging(aliased)(edited(succeeding(aliased), "scripts/test-data/limit.ts", () => "export const limit = 4;\n")),
+    all(aliased, "scripts/test-data/limit.ts, which it reaches, no longer states what it did"),
+  );
   const viewing = succeeding(R0);
   fs.writeFileSync(path.join(viewing, "scripts/test-data/limit.ts"), "export const limit = 3;\n");
   fs.writeFileSync(
