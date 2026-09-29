@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { sealingOutputErrors, stateChanges } from "./brain-seals.js";
+import { sealingOutputErrors, stateBrain, stateChanges, stateDir } from "./brain-seals.js";
 
 // Refuses what sealing left unless all of it is what sealing the accepted
 // state writes: compares <before>, a copy of the state before sealing, with
@@ -11,9 +11,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error("usage: sealing-check.ts <before> [after]");
     process.exitCode = 2;
   } else {
-    const errors = sealingOutputErrors(stateChanges(before, after));
-    if (errors.length) {
-      console.error(errors.join("\n"));
+    try {
+      // Both are states, and the one before sealing holds BRAIN: a path that is not a state is refused, never compared as empty.
+      stateBrain(before);
+      stateDir(after);
+      const errors = sealingOutputErrors(stateChanges(before, after));
+      if (errors.length) {
+        console.error(errors.join("\n"));
+        process.exitCode = 1;
+      }
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
       process.exitCode = 1;
     }
   }

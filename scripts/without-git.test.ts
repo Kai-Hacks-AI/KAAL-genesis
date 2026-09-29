@@ -146,6 +146,29 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
     assert.match(refused.out, /no BRAIN|not a directory/);
     assert.equal(sealingHere("seal.ts", wrong).status, 1, `${wrong} is not sealed`);
   }
+  // Given a state to seal, it seals that one, not the directory it is run from.
+  const toSeal = plainCopy(KAAL);
+  const sealsIn = (state: string) =>
+    fs
+      .readdirSync(path.join(state, "brain", "learning"), { recursive: true })
+      .filter((f) => String(f).endsWith("seal.json")).length;
+  const [sealedBefore, hereBefore] = [sealsIn(toSeal), sealsIn(elsewhereState)];
+  const sealedThere = sealingHere("seal.ts", toSeal);
+  assert.equal(sealedThere.status, 0, sealedThere.out);
+  assert.ok(sealsIn(toSeal) > sealedBefore, "the state given was sealed");
+  assert.equal(sealsIn(elsewhereState), hereBefore, "the directory it was run from was not");
+  // The guard and the sealing check take states too, and refuse a path that is not one instead of finding nothing changed.
+  for (const script of ["seal-guard.ts", "sealing-check.ts"]) {
+    for (const args of [
+      [bare, bare],
+      [before, path.join(before, "no-such-state")],
+      [path.join(before, "no-such-state"), before],
+    ]) {
+      const refused = sealingHere(script, ...args);
+      assert.equal(refused.status, 1, `${script} ${args.join(" ")}: ${refused.out}`);
+      assert.match(refused.out, /no BRAIN|not a directory/);
+    }
+  }
   const outside = plainCopy(KAAL);
   fs.writeFileSync(
     path.join(outside, "brain", "learning", "genesis", "26", "09", "25", "01", "nodes", "skill.md"),

@@ -9,7 +9,10 @@ import { sealBrain, stateBrain } from "./brain-seals.js";
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const [state = ".", ...rest] = process.argv.slice(2);
-    if (rest.length) throw new Error("usage: seal.ts [state]");
+    if (rest.length) {
+      console.error("usage: seal.ts [state]");
+      process.exit(2);
+    }
     for (const learning of sealBrain(stateBrain(state))) console.log(`sealed ${learning}`);
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));

@@ -9,7 +9,10 @@ import { brainErrors, stateBrain } from "./brain-seals.js";
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const [state = ".", ...rest] = process.argv.slice(2);
-    if (rest.length) throw new Error("usage: check-seals.ts [state]");
+    if (rest.length) {
+      console.error("usage: check-seals.ts [state]");
+      process.exit(2);
+    }
     const errors = brainErrors(stateBrain(state));
     if (errors.length) throw new Error(errors.join("\n"));
   } catch (e) {

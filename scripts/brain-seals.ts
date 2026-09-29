@@ -28,10 +28,15 @@ const LEARNING = /^\d{2}$/;
  * rather than found to have nothing to seal or check.
  */
 export function stateBrain(state: string): string {
-  if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
-  const root = path.join(state, ROOT);
+  const root = path.join(stateDir(state), ROOT);
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: no BRAIN at ${ROOT}`);
   return root;
+}
+
+/** A state a caller names: an existing directory, never a path that is missing or is not one. */
+export function stateDir(state: string): string {
+  if (!fs.statSync(state, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${state}: not a directory`);
+  return state;
 }
 
 /** Every lineage's learnings as units, oldest first: `<lineage>/YY/MM/DD/CC`. */
