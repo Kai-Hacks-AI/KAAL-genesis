@@ -303,7 +303,7 @@ test("a case is defined by its claim, what its file states around its cases, the
       .replace('import test from "node:test";\n', 'import os from "node:os";\nimport test from "node:test";\n')
       .replace(
         `${GREETING_LINK}\n${GREETS}`,
-        `/** Greeted. */\nconst greeted = (name: string) => greet(name);\n\n${GREETING_LINK}\n${GREETS.replace('"hello x"', '  "hello x" // as it always was\n  ')}`,
+        `/** Greeted. */\nconst greeted = (name: string) => greet(name);\n\nconst named = function (name: string) {\n  return greet(name);\n};\n\n${GREETING_LINK}\n${GREETS.replace('"hello x"', '  "hello x" // as it always was\n  ')}`,
       )
       .concat(
         '\n// Why: src/add.ts\ntest("adds nothing", () => {\n  assert.equal(add(0, 0), 0 * os.cpus().length);\n});\n',
@@ -350,6 +350,9 @@ test("a case is defined by its claim, what its file states around its cases, the
     ["verify = () => {};", "an assignment disabling what the frame asserts"],
     ["function Number(text: string) {\n  return 3;\n}", "a declaration taking a name the cases use"],
     ["const helper = verify(3);", "a value computed as the module loads"],
+    ["const fresh = function () {\n  verify = () => {};\n}();", "a function called where it is written"],
+    ["const fresh = (function () {\n  verify = () => {};\n})();", "a wrapped function called where it is written"],
+    ["const fresh = (() => {\n  verify = () => {};\n})();", "an arrow called where it is written"],
   ] as const)
     assert.deepEqual(
       cases(
@@ -360,6 +363,18 @@ test("a case is defined by its claim, what its file states around its cases, the
       redefinedAll,
       why,
     );
+  // The same modules loaded in another order: they are evaluated in the order they are first imported.
+  assert.deepEqual(
+    cases(
+      edited(succeeding(withVerify), CASES, (t) =>
+        t.replace(
+          'import { add } from "../src/add.js";\nimport { greet } from "../src/greet.js";\n',
+          'import { greet } from "../src/greet.js";\nimport { add } from "../src/add.js";\n',
+        ),
+      ),
+    ),
+    redefinedAll,
+  );
   // A module the file did not load, loaded now: its code runs beside the cases.
   assert.deepEqual(
     cases(

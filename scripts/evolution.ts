@@ -121,6 +121,8 @@ type Frame = {
   statements: string[];
   /** Every name the module's code says, its cases included: what an added declaration must not take. */
   names: string[];
+  /** The modules its imports load, in the order they are evaluated: the order they are first imported in. */
+  loads: string[];
 };
 
 /**
@@ -189,10 +191,21 @@ function frameOf(text: string, whole = text): Frame {
     else rest.push(code(statement));
   }
   return {
+    loads: [...new Set(imports.map((b) => b.split("|")[0]!))],
     imports: sorted(imports),
     statements: rest.filter(Boolean),
     names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
   };
+}
+
+/** The index of the bracket closing the one opened at `open` in `toks`, or -1 where none does. */
+function closing(toks: Token[], open: number): number {
+  let depth = 0;
+  for (let k = open; k < toks.length; k++) {
+    if (["(", "[", "{"].includes(toks[k]!.text)) depth++;
+    else if ([")", "]", "}"].includes(toks[k]!.text) && --depth === 0) return k;
+  }
+  return -1;
 }
 
 /** The top-level tokens of `toks`, each with the depth of brackets it is at. */
@@ -227,16 +240,27 @@ function inert(statement: string, used: Set<string>): boolean {
   const fn = first.text === "async" ? toks.slice(1) : toks;
   if (fn[0]?.text === "function") return fresh(fn[1]?.text === "*" ? fn[2] : fn[1]);
   if (!["const", "let", "var"].includes(first.text) || !fresh(second)) return false;
-  // Bound to a function: what follows its = is a function expression, or an arrow whose head is all it begins with.
+  // Bound to a function, and to nothing else: what follows its = is one function expression, whole, or an arrow whose
+  // head is all it begins with. A function called where it is written, as function () {}(), runs as the module loads.
   const eq = top.findIndex((d) => d.t.text === "=");
-  const value = top.slice(eq + 1).map((d) => d.t);
-  const all = toks.slice(toks.indexOf(top[eq]?.t as Token) + 1);
-  if (eq < 0 || !value.length) return false;
-  if (value[0]!.text === "function" || (value[0]!.text === "async" && all[1]?.text === "function")) return true;
-  const head = value[0]!.text === "async" ? all.slice(1) : all;
+  if (eq < 0) return false;
+  let all = toks.slice(toks.indexOf(top[eq]!.t) + 1);
+  if (all.at(-1)?.text === ";") all = all.slice(0, -1);
+  if (!all.length) return false;
+  const expression = all[0]!.text === "async" ? all.slice(1) : all;
+  if (expression[0]?.text === "function") {
+    // Its body is the first block after its parameters; nothing may follow the block that closes it.
+    const params = expression.findIndex((t) => t.text === "(");
+    const close = params < 0 ? -1 : closing(expression, params);
+    const body = close < 0 ? -1 : expression.findIndex((t, k) => k > close && t.text === "{");
+    return body >= 0 && closing(expression, body) === expression.length - 1;
+  }
+  const head = expression;
   const arrow = depths(head).findIndex((d) => d.depth === 0 && d.t.text === "=>");
   if (arrow < 0) return false;
   const before = head.slice(0, arrow);
+  // A block body is the whole of what follows the arrow; an expression body runs only when the function is called.
+  if (head[arrow + 1]?.text === "{" && closing(head, arrow + 1) !== head.length - 1) return false;
   return (
     (before.length === 1 && before[0]!.kind === "name") ||
     (["(", "<"].includes(before[0]!.text) &&
@@ -254,6 +278,9 @@ function inert(statement: string, used: Set<string>): boolean {
  */
 function keepsFrame(before: Frame, after: Frame): boolean {
   if (!before.imports.every((b) => after.imports.includes(b))) return false;
+  // Imported modules are evaluated in the order they are first imported, so what they do in that order is kept only
+  // where it still is that order.
+  if (canonical(after.loads.filter((m) => before.loads.includes(m))) !== canonical(before.loads)) return false;
   const used = new Set(before.names);
   const loaded = new Set(before.imports.map((b) => b.split("|")[0]));
   for (const binding of after.imports.filter((b) => !before.imports.includes(b))) {
