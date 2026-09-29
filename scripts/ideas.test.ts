@@ -20,6 +20,10 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
       idea: "KAAL could be assembled from independently birthable capability packages, with Genesis composing a selected configuration of required dependencies and optional integrations and establishing that configuration's initial sealed Regression R0",
     },
     {
+      name: "how-are-we-doing",
+      idea: "KAAL's work could stay observable to the Human, be challenged by agents other than the one producing it, and turn the observations that matter into durable experience that informs its next goals, remembered provisionally as HOW ARE WE DOING?",
+    },
+    {
       name: "modular-kaal",
       idea: "KAAL can become modular through packages whose dependencies close the selected capability composition",
     },
