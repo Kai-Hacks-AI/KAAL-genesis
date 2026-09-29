@@ -487,6 +487,16 @@ test("the reader of a case's source tells code from strings, templates, regular 
     "computed",
     "computed",
   ]);
+  // Code a template interpolates is code: a module it names is followed, and data it names is bound.
+  fs.writeFileSync(path.join(state, "scripts/fixtures/b.txt"), "b\n");
+  fs.writeFileSync(
+    path.join(state, "src/loader.ts"),
+    'export const load = () => `${require("./shout.js")} ${require("../scripts/fixtures/b.txt")}`;\n',
+  );
+  const interpolated = definitions(state)[1]!;
+  assert.deepEqual([interpolated.subjects, interpolated.computed], [["src/loader.ts", "src/shout.ts"], []]);
+  fs.writeFileSync(path.join(state, "src/loader.ts"), "export const load = (m: string) => `${require(m)}`;\n");
+  assert.deepEqual(definitions(state)[1]!.computed, ["src/loader.ts"]);
   // So is one named by a literal with anything joined to it: the literal is not the module's name.
   for (const call of ['import("./" + m + ".js")', 'require("./" + m)'])
     (fs.writeFileSync(path.join(state, "src/loader.ts"), `export const load = (m: string) => ${call};\n`),

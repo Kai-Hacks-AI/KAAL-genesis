@@ -191,7 +191,7 @@ function frameOf(text: string, whole = text): Frame {
   return {
     imports: sorted(imports),
     statements: rest.filter(Boolean),
-    names: sorted(tokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
+    names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
   };
 }
 
@@ -380,7 +380,7 @@ export function definitions(state: string): Definition[] {
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
     const computed = new Set<string>();
-    let data: Record<string, string> = namedData(state, file, tokens(rest));
+    let data: Record<string, string> = namedData(state, file, codeTokens(rest));
     // The modules the file reaches: a test-data loader is part of what defines its cases, and the data it names;
     // any other code is the subject, what the cases are claims about.
     const seen = new Set<string>([file]);
@@ -399,7 +399,7 @@ export function definitions(state: string): Definition[] {
           if (CODE.test(module)) {
             const loader = fs.readFileSync(path.join(state, module), "utf8").replace(/\r\n/g, "\n");
             loaders[module] = frameOf(loader);
-            data = { ...data, ...namedData(state, module, tokens(loader)) };
+            data = { ...data, ...namedData(state, module, codeTokens(loader)) };
             queue.push(module);
           } else loaders[module] = held(state, module)[module]!;
         } else if (CODE.test(module)) {
@@ -416,7 +416,7 @@ export function definitions(state: string): Definition[] {
         claim: code(tokens(own)),
         frame,
         loaders,
-        data: { ...data, ...namedData(state, file, tokens(own)) },
+        data: { ...data, ...namedData(state, file, codeTokens(own)) },
         subjects: [...subjects].sort(),
         computed: [...computed].sort(),
       };
@@ -426,7 +426,8 @@ export function definitions(state: string): Definition[] {
 
 /** The specifiers a module imports. */
 function tokensSpecifiers(source: string): { specifiers: string[]; computed: boolean } {
-  const read = moduleReferences(tokens(source).filter((t) => t.kind !== "comment"));
+  // Every module the code names, those named in what a template interpolates too.
+  const read = moduleReferences(codeTokens(source));
   return {
     specifiers: read.flatMap((r) => (r.at === undefined ? [] : [r.value])),
     // A module named by what is computed as it runs: which one, nothing can say before it runs.
