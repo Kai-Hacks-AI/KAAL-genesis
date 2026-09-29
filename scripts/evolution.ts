@@ -4,10 +4,20 @@ import os from "node:os";
 import path from "node:path";
 import { transformSync } from "esbuild";
 import type { Conditions } from "../skills/testing/scripts/plan.js";
-import { caseFiles, PLAN, repoCases, testedDefects } from "./links.js";
+import { caseFiles, caseStarts, PLAN, testedDefects } from "./links.js";
 import type { Held, Protection } from "./next-regression.js";
 import { isData, type Result, runTrusted } from "./regression.js";
-import { code, isSpecifier, statements, stringValue, type Token, tokens } from "./source.js";
+import {
+  code,
+  codeTokens,
+  interpolations,
+  isSpecifier,
+  statements,
+  stringValue,
+  templatePrefix,
+  type Token,
+  tokens,
+} from "./source.js";
 import { entriesIn, entryAt, entryBytes } from "./state.js";
 
 /**
@@ -123,6 +133,8 @@ export type Definition = {
   data: Record<string, string>;
   /** The subject code its file reaches by its imports: what witnesses are made from. */
   subjects: string[];
+  /** The modules it reaches that import one named only as they run, whose code nothing can compare. */
+  computed: string[];
 };
 
 /** The bindings an import statement makes, each as `<specifier>|<imported>|<local>`, or `<specifier>|` for one that binds nothing. */
@@ -212,17 +224,7 @@ function callEnd(toks: Token[], start: number): number {
 /** Each case `text` states, in the order its cases are read, with where its statement is, as `scripts/links.ts` finds them. */
 function caseStatements(text: string): { title: string; start: number; end: number }[] {
   const toks = tokens(text);
-  const found: { title: string; start: number; end: number }[] = [];
-  for (const m of text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)) {
-    let title: string;
-    try {
-      title = JSON.parse(`"${m[1]}"`) as string;
-    } catch {
-      continue;
-    }
-    found.push({ title, start: m.index, end: callEnd(toks, m.index) });
-  }
-  return found;
+  return caseStarts(text).map(({ title, index }) => ({ title, start: index, end: callEnd(toks, index) }));
 }
 
 /** The module `specifier` names from `file`, a posix path in `state`, if it names one the state holds, as a module loader finds it. */
@@ -262,13 +264,25 @@ function held(state: string, rel: string): Record<string, string> {
 function namedData(state: string, file: string, toks: Token[]): Record<string, string> {
   let out: Record<string, string> = {};
   toks.forEach((t, i) => {
-    const value = t.kind === "string" && !isSpecifier(toks, i) ? stringValue(t) : undefined;
-    if (!value || value.includes("\0") || value.length > 512 || !value.includes("/")) return;
+    if (isSpecifier(toks, i)) return;
+    // A template names for certain only what it states before anything it interpolates: where that ends in a
+    // directory, what is under it.
+    const template = templatePrefix(t);
+    const value =
+      t.kind === "string"
+        ? stringValue(t)
+        : template && (template.computed ? template.text.slice(0, template.text.lastIndexOf("/") + 1) : template.text);
+    if (!value || value.includes("\0") || value.length > 512) return;
     for (const base of [path.posix.dirname(file), "."]) {
       const at = path.posix.normalize(path.posix.join(base, value)).replace(/\/+$/, "");
       if (!at || at === "." || at === ".." || at.startsWith("../") || path.posix.isAbsolute(value)) continue;
       const stat = fs.lstatSync(path.join(state, at), { throwIfNoEntry: false });
-      if (stat && isData(at, stat.isDirectory())) out = { ...out, ...held(state, at) };
+      if (!stat) continue;
+      // What it names that is test data: the entry itself, or, for a directory, every entry of test data under it.
+      if (isData(at, stat.isDirectory())) out = { ...out, ...held(state, at) };
+      else if (stat.isDirectory())
+        for (const [entry, digest] of Object.entries(held(state, at)))
+          if (entry !== at && isData(entry, !!fs.lstatSync(path.join(state, entry)).isDirectory())) out[entry] = digest;
     }
   });
   return out;
@@ -294,6 +308,7 @@ export function definitions(state: string): Definition[] {
     const frame = frameOf(rest);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
+    const computed = new Set<string>();
     let data: Record<string, string> = namedData(state, file, tokens(rest));
     // The modules the file reaches: a test-data loader is part of what defines its cases, and the data it names;
     // any other code is the subject, what the cases are claims about.
@@ -302,7 +317,9 @@ export function definitions(state: string): Definition[] {
     while (queue.length) {
       const at = queue.shift()!;
       const source = fs.readFileSync(path.join(state, at), "utf8").replace(/\r\n/g, "\n");
-      for (const specifier of tokensSpecifiers(source)) {
+      const read = tokensSpecifiers(source);
+      if (read.computed) computed.add(at);
+      for (const specifier of read.specifiers) {
         const module = resolved(state, at, specifier);
         if (!module || seen.has(module)) continue;
         seen.add(module);
@@ -330,18 +347,26 @@ export function definitions(state: string): Definition[] {
         loaders,
         data: { ...data, ...namedData(state, file, tokens(own)) },
         subjects: [...subjects].sort(),
+        computed: [...computed].sort(),
       };
     });
   });
 }
 
 /** The specifiers a module imports. */
-function tokensSpecifiers(source: string): string[] {
+function tokensSpecifiers(source: string): { specifiers: string[]; computed: boolean } {
   const toks = tokens(source).filter((t) => t.kind !== "comment");
-  return toks.flatMap((t, i) => {
-    const value = isSpecifier(toks, i) ? stringValue(t) : undefined;
+  let computed = false;
+  const specifiers = toks.flatMap((t, i) => {
+    // After \`import\` or \`from\`, only a string names a module; in a call, whatever is passed does.
+    if (!isSpecifier(toks, i) || (t.kind !== "string" && toks[i - 1]?.text !== "(")) return [];
+    const template = templatePrefix(t);
+    const value = t.kind === "string" ? stringValue(t) : template && !template.computed ? template.text : undefined;
+    // A module named by what is computed as it runs: which one, nothing can say before it runs.
+    if (value === undefined) computed = true;
     return value === undefined ? [] : [value];
   });
+  return { specifiers, computed };
 }
 
 /**
@@ -353,6 +378,8 @@ function tokensSpecifiers(source: string): string[] {
  */
 export function redefined(before: Definition, after: Definition, candidate: string): string | undefined {
   if (before.claim !== after.claim) return "its claim is another";
+  if (before.computed.length)
+    return `${before.computed.join(", ")} imports what is named only as it runs, so what defines it cannot be compared`;
   if (!keepsFrame(before.frame, after.frame)) return `${after.file} no longer states what it did around its cases`;
   for (const [module, was] of Object.entries(before.loaders)) {
     const stat = fs.lstatSync(path.join(candidate, module), { throwIfNoEntry: false });
@@ -397,10 +424,9 @@ function alternatives(t: Token, toks: Token[], i: number): string[] {
   if (t.kind === "name" && (t.text === "true" || t.text === "false")) return [t.text === "true" ? "false" : "true"];
   if (t.kind === "number" && /^\d+$/.test(t.text)) return [String(Number(t.text) + 1)];
   if (t.kind === "string" && !isSpecifier(toks, i)) return [t.text.length > 2 ? `${t.text[0]}${t.text[0]}` : '"x"'];
-  if (t.kind === "template") {
+  if (t.kind === "template" && !isSpecifier(toks, i)) {
     // Its text, without anything it says around what it interpolates.
-    const parts = t.text.slice(1, -1).match(/\$\{[^}]*\}/g);
-    const bare = `\`${(parts ?? []).join("")}\``;
+    const bare = `\`${interpolations(t).join("")}\``;
     return bare !== t.text ? [bare] : [];
   }
   return [];
@@ -410,7 +436,7 @@ function alternatives(t: Token, toks: Token[], i: number): string[] {
 export function witnesses(state: string, modules: string[]): Witness[] {
   return modules.flatMap((module) => {
     const text = fs.readFileSync(path.join(state, module), "utf8");
-    const toks = tokens(text).filter((t) => t.kind !== "comment");
+    const toks = codeTokens(text);
     const loader = module.endsWith(".js") || module.endsWith(".mjs") || module.endsWith(".cjs") ? "js" : "ts";
     return toks.flatMap((t, i) =>
       alternatives(t, toks, i).flatMap((to) => {

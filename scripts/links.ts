@@ -123,17 +123,11 @@ function scan(
   const ownedSuites = new Set<number>();
   const lines = source.split(/\r?\n/);
   const text = lines.join("\n");
-  for (const m of text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)) {
-    let title: string;
-    try {
-      title = JSON.parse(`"${m[1]}"`) as string;
-    } catch {
-      continue; // an escape JSON does not know: a title that cannot be read, like one built at run time
-    }
+  for (const { title, index } of caseStarts(text)) {
     const places: string[] = [];
     const defects: string[] = [];
     const joined: string[] = [];
-    let line = text.slice(0, m.index).split("\n").length - 2;
+    let line = text.slice(0, index).split("\n").length - 2;
     for (; line >= 0; line--) {
       const why = LINK.exec(lines[line]!);
       const tests = TESTS.exec(lines[line]!);
@@ -157,6 +151,21 @@ function scan(
   const strayTests = lines.flatMap((line, i) => (TESTS_LIKE.test(line) && !ownedTests.has(i) ? [i + 1] : []));
   const straySuites = lines.flatMap((line, i) => (SUITE_LIKE.test(line) && !ownedSuites.has(i) ? [i + 1] : []));
   return { cases, stray, tested, strayTests, suites, straySuites };
+}
+
+/**
+ * Where each case `text` states begins, with its title, in order: a `test(`
+ * at the start of a line, titled by a plain string literal. Only cases whose
+ * title can be read are found; KAAL reads where its cases are this one way.
+ */
+export function caseStarts(text: string): { title: string; index: number }[] {
+  return [...text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)].flatMap((m) => {
+    try {
+      return [{ title: JSON.parse(`"${m[1]}"`) as string, index: m.index }];
+    } catch {
+      return []; // an escape JSON does not know: a title that cannot be read, like one built at run time
+    }
+  });
 }
 
 /** The cases a test file states, each with the places it points at. */

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { type Change, definitions, redefined } from "./evolution.js";
+import { type Change, definitions, redefined, witnesses } from "./evolution.js";
+import { interpolations, stringValue, templatePrefix, tokens } from "./source.js";
 import { PLAN } from "./links.js";
 import { evolvedRegression, nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
 import { regressionIdentity } from "./regression.js";
@@ -279,11 +281,11 @@ test("what cannot be shown kept stays unresolved: a case detecting none of its w
 test("a case is defined by its claim, what its file states around its cases, the loaders it reaches and the data they name; what is only added beside them, or only laid out otherwise, leaves it as it was", () => {
   const R0 = base();
   // A loader the goodbye cases reach, in the accepted state.
-  fs.writeFileSync(path.join(R0, "scripts/test-data.ts"), 'export const FIXTURES = "./fixtures/";\n');
+  fs.writeFileSync(path.join(R0, "scripts/test-data.ts"), 'export const WHO = "x";\n');
   edited(R0, "scripts/bye.test.ts", (t) =>
     t.replace(
       'import { greet } from "../src/greet.js";\n',
-      'import { greet } from "../src/greet.js";\nimport { FIXTURES } from "./test-data.js";\n',
+      'import { greet } from "../src/greet.js";\nimport { WHO } from "./test-data.js";\n',
     ),
   );
   const before = new Map(definitions(R0).map((d) => [`${d.file}: ${d.title}`, d]));
@@ -321,15 +323,100 @@ test("a case is defined by its claim, what its file states around its cases, the
     ],
   );
   // A loader it reaches, changed rather than added to.
-  assert.deepEqual(
-    changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => t.replace("./fixtures/", "./other/"))),
-    [
-      "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
-      "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
-    ],
-  );
+  assert.deepEqual(changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => t.replace('"x"', '"y"'))), [
+    "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
+    "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
+  ]);
   // Data named by the case alone changes that case alone.
   assert.deepEqual(changes(edited(succeeding(R0), "scripts/fixtures/greeting.golden", () => "hello|")), [
     "greets nobody as its golden file says: its data scripts/fixtures/greeting.golden holds other than it did",
   ]);
+});
+
+// Why: requirements/protection-evolution/requirement.md
+test("the reader of a case's source tells code from strings, templates, regular expressions and comments, and says where it cannot know", () => {
+  const kinds = (text: string) => tokens(text).map((t) => `${t.kind} ${t.text}`);
+  // A slash after a statement's parenthesis or a block begins a regular expression; after a value, it divides.
+  assert.deepEqual(kinds("if (a) /x\\/)/.test(b);").slice(4, 5), ["regex /x\\/)/"]);
+  assert.deepEqual(kinds("f(a) / 2 / g;").slice(4, 7), ["punct /", "number 2", "punct /"]);
+  assert.deepEqual(kinds("{ go(); } /re/.test(x);").slice(6, 7), ["regex /re/"]);
+  assert.deepEqual(kinds("x = {} / 2;").slice(3, 5), ["punct }", "punct /"]);
+  // Nothing inside a string, template or comment is code, however it reads.
+  const hidden = tokens('const s = "test(\\"x\\", () => {});"; // test("y")\nconst t = `}); ${"}"} ${`${a}`}`;');
+  assert.deepEqual(
+    hidden.filter((t) => t.kind === "name").map((t) => t.text),
+    ["const", "s", "const", "t"],
+  );
+  const template = hidden.find((t) => t.kind === "template")!;
+  assert.deepEqual(interpolations(template), ['${"}"}', "${`${a}`}"]);
+  assert.deepEqual(templatePrefix(template), { text: "}); ", computed: true });
+  assert.equal(stringValue(tokens(`'it\\'s \\"q\\" \\x41\\u{1F600}'`)[0]!), `it's "q" A\u{1F600}`);
+
+  const state = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-reader-"));
+  fs.mkdirSync(path.join(state, "scripts/fixtures"), { recursive: true });
+  fs.mkdirSync(path.join(state, "src"));
+  fs.writeFileSync(path.join(state, "package.json"), '{ "scripts": { "test": "tsx --test scripts/*.test.ts" } }\n');
+  fs.writeFileSync(path.join(state, "scripts/fixtures/a.txt"), "a\n");
+  fs.writeFileSync(
+    path.join(state, "src/shout.ts"),
+    [
+      'import type { X } from "./types.js"; // a + b',
+      "export const shout = (s: string, n: number): string =>",
+      '  n > 0 ? `${s.toUpperCase()}${"!".repeat(n)} ${`x${s}`}` : s + "";',
+    ].join("\n") + "\n",
+  );
+  const cases = [
+    'import assert from "node:assert/strict";',
+    'import fs from "node:fs";',
+    'import test from "node:test";',
+    'import { shout } from "../src/shout.js";',
+    "",
+    "// Why: a.md",
+    'test("reads its data by a computed name", () => {',
+    '  const name = "a";',
+    '  assert.ok(fs.readFileSync(new URL(`./fixtures/${name}.txt`, import.meta.url), "utf8"));',
+    '  assert.match("});", /\\)/);',
+    "});",
+    "",
+    "// Why: a.md",
+    'test("shouts", () => {',
+    '  assert.equal(shout("a", 1), "A! xa");',
+    "});",
+    "",
+  ].join("\n");
+  fs.writeFileSync(path.join(state, "scripts/x.test.ts"), cases);
+  const [computed, shouts] = definitions(state);
+  // Each case is its whole statement, whatever its strings and patterns hold, and nothing of the other.
+  assert.match(computed!.claim, /assert \. match \( "\}\);" , \/\\\)\/ \) ; \} \) ;$/);
+  assert.ok(!computed!.claim.includes("shout"));
+  assert.equal(shouts!.claim, 'test ( "shouts" , ( ) => { assert . equal ( shout ( "a" , 1 ) , "A! xa" ) ; } ) ;');
+  assert.deepEqual(computed!.frame.statements, []);
+  // Data named by a template: the directory its certain part names.
+  assert.deepEqual(Object.keys(computed!.data).sort(), ["scripts/fixtures/a.txt"]);
+  assert.deepEqual(shouts!.subjects, ["src/shout.ts"]);
+  // Witnesses change code only: not a specifier, a type or a comment, and a template keeps what it interpolates.
+  assert.deepEqual(
+    witnesses(state, ["src/shout.ts"]).map((w) => `${w.line}: ${w.from} → ${w.to}`),
+    [
+      "3: > → <=",
+      "3: 0 → 1",
+      '3: `${s.toUpperCase()}${"!".repeat(n)} ${`x${s}`}` → `${s.toUpperCase()}${"!".repeat(n)}${`x${s}`}`',
+      '3: "!" → ""',
+      "3: `x${s}` → `${s}`",
+      "3: + → -",
+      '3: "" → "x"',
+    ],
+  );
+  // A module imported by a name computed as it runs: what defines the cases reaching it cannot be compared.
+  fs.writeFileSync(path.join(state, "src/loader.ts"), "export const load = (m: string) => import(`./${m}.js`);\n");
+  fs.writeFileSync(
+    path.join(state, "scripts/x.test.ts"),
+    cases.replace(
+      'import { shout } from "../src/shout.js";',
+      'import { shout } from "../src/shout.js";\nimport { load } from "../src/loader.js";',
+    ),
+  );
+  const unknown = definitions(state)[1]!;
+  assert.deepEqual(unknown.computed, ["src/loader.ts"]);
+  assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts imports what is named only as it runs/);
 });
