@@ -185,10 +185,12 @@ const address = (c: Held) => `${c.file}\0${c.title}`;
  * carries it, found by a complete matching at each address with a case of the
  * candidate keeping its every link and membership, so a case that comes to
  * prove a new promise too is carried once, as the case it is; each case of the
- * candidate demonstrating a new promise; and each inherited case the
+ * candidate demonstrating a new promise, with its links to what it
+ * demonstrates and, back at the address of a case `given` up whose every link
+ * and membership still held it keeps, with those; and each inherited case the
  * candidate does not carry, as it was, which the candidate is then held to.
  */
-function carriedCases(inherited: Held[], candidate: Held[], proving: Set<string>): Held[] {
+function carriedCases(inherited: Held[], given: Held[], candidate: Held[], proving: Set<string>): Held[] {
   const demonstrates = (c: Held) => c.places.some((p) => proving.has(p));
   const cases: Held[] = [];
   const carried = new Set<number>();
@@ -213,7 +215,26 @@ function carriedCases(inherited: Held[], candidate: Held[], proving: Set<string>
       }
     });
   }
-  return [...cases, ...candidate.filter((c, k) => !carried.has(k) && demonstrates(c))];
+  // A case of the candidate's own enters as a case of what it newly promises, and as nothing else: a link to an
+  // inherited commitment or a membership of an inherited suite is protection no new promise brought in. Only a case
+  // given up and back at its address, keeping all the given-up case had that the regression still holds, keeps that:
+  // it restores what the regression had, and adds nothing to it.
+  const entering = candidate.filter((c, k) => !carried.has(k) && demonstrates(c));
+  return [
+    ...cases,
+    ...[...new Set(entering.map(address))].flatMap((at) => {
+      const back = given.filter((c) => address(c) === at);
+      const here = entering.filter((c) => address(c) === at);
+      const partner = pairing(here, back, (c, g) => keepsAll(g, c));
+      return here.map((c, i) => {
+        const was = partner[i] === undefined ? undefined : back[partner[i]!];
+        const places = c.places.filter((p) => proving.has(p));
+        return was
+          ? { ...c, places: sorted([...places, ...was.places]), suites: was.suites }
+          : { ...c, places, suites: [] };
+      });
+    }),
+  ];
 }
 
 /**
@@ -284,6 +305,7 @@ export function nextRegression(
       cases: byAddress(
         carriedCases(
           heldCases(accepted, keptCase, commitments, suites),
+          heldCases(accepted, (c) => !keptCase(c), commitments, suites),
           heldCases(candidate, () => true, commitments, suites),
           // Each case by its own links: one at the same address as a case demonstrating a promise is not that case.
           proving,
