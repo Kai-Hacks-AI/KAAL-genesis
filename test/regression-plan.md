@@ -110,7 +110,7 @@ proof:
 
 ## Carried out by
 
-KAAL's own checks take states as directories and read only their files: `npm run regression:check -- <candidate>`, run in the accepted state so its own checker judges, `npm run regression:derive -- <accepted> [candidate]`, which derives the next regression and says where the candidate does not carry it, `npm run links:check -- [state]`, `npm run seals:check -- [state]`, `npm run seal -- [state]`, `npm run seals:guard -- <accepted> [candidate]` and `npm test`. None of them needs Git, a branch, a commit or GitHub, and one of KAAL's cases runs them on a copy of KAAL with no Git at all.
+KAAL's own checks take states as directories and read only their files: `npm run regression:check -- <candidate>`, run in the accepted state so its own checker judges, `npm run regression:derive -- <accepted> [candidate]`, which derives the next regression and says where the candidate does not carry it, `npm run links:check -- [state]`, `npm run seals:check`, `npm run seals:guard -- <accepted> [candidate]` and `npm test`. None of them needs Git, a branch, a commit or GitHub, and one of KAAL's cases runs them on a copy of KAAL with no Git at all.
 
 On GitHub, workflows adapt those checks to the repository host: they check out the states, hand KAAL their paths, and report KAAL's answers as commit statuses that rulesets can require. There, the accepted regression is `main`'s latest commit, a candidate is a pull request's merge with its target, and accepting a candidate is merging it.
 
