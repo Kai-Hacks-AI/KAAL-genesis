@@ -21,6 +21,14 @@ import {
 
 const LEARNING = /^\d{2}$/;
 
+/**
+ * Where a state keeps its BRAIN: callers hand sealing a state, a directory,
+ * and KAAL applies its own path within it, so no caller needs to know it.
+ */
+export function brainRoot(state = "."): string {
+  return path.join(state, ROOT);
+}
+
 /** Every lineage's learnings as units, oldest first: `<lineage>/YY/MM/DD/CC`. */
 export function brainChains(root = ROOT): Map<string, string[]> {
   const chains = new Map<string, string[]>();

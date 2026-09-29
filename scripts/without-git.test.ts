@@ -133,6 +133,23 @@ test("copied out of Git, KAAL seals an accepted state, checks what sealing wrote
   assert.equal(kaal(sealed, "scripts/sealing-check.ts", before).status, 0, "sealing wrote only seal state");
   assert.equal(kaal(sealed, "scripts/check-seals.ts").status, 0, "the new seals hold");
 
+  // Sealing and checking take a state, wherever they are run: the caller never names where KAAL keeps its BRAIN.
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-elsewhere-"));
+  const other = plainCopy(KAAL);
+  const script = (name: string) => path.join(KAAL, "scripts", name);
+  const named = kaal(elsewhere, script("seal.ts"), other);
+  assert.equal(named.status, 0, named.out);
+  assert.equal(named.out, sealing.out, "the state named is sealed as the state run in was");
+  assert.equal(kaal(elsewhere, script("check-seals.ts"), other).status, 0);
+  const closed = path.join(other, "brain", "learning", "genesis", "26", "09", "25", "01", "nodes", "using-seals.md");
+  fs.appendFileSync(closed, "\nchanged after it was sealed\n");
+  assert.equal(
+    kaal(elsewhere, script("check-seals.ts"), other).status,
+    1,
+    "a sealed learning changed in the state named",
+  );
+  assert.equal(kaal(elsewhere, script("seal.ts"), other, other).status, 2, "one state, not two");
+
   // A candidate that changes nothing of the accepted state's seal state passes the guard.
   const candidate = plainCopy(sealed);
   assert.equal(kaal(sealed, "scripts/seal-guard.ts", sealed, candidate).status, 0);
