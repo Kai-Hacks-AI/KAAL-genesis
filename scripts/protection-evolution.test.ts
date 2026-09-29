@@ -283,10 +283,17 @@ test("a case is defined by its claim, what its file states around its cases, the
   const R0 = base();
   // A loader the goodbye cases reach, in the accepted state.
   fs.writeFileSync(path.join(R0, "scripts/test-data.ts"), 'export const WHO = "x";\n');
+  // And one kept as JavaScript, which its runner reads as JavaScript.
+  fs.mkdirSync(path.join(R0, "scripts/test-data"));
+  fs.writeFileSync(path.join(R0, "scripts/test-data/check.mjs"), "export const ok = true;\n");
+  fs.writeFileSync(
+    path.join(R0, "scripts/test-data/disable.mjs"),
+    "globalThis.disabled = true;\nexport const unused = 1;\n",
+  );
   edited(R0, "scripts/bye.test.ts", (t) =>
     t.replace(
       'import { greet } from "../src/greet.js";\n',
-      'import { greet } from "../src/greet.js";\nimport { WHO } from "./test-data.js";\n',
+      'import { greet } from "../src/greet.js";\nimport { WHO } from "./test-data.js";\nimport { ok } from "./test-data/check.mjs";\n',
     ),
   );
   const before = new Map(definitions(R0).map((d) => [`${d.file}: ${d.title}`, d]));
@@ -328,6 +335,16 @@ test("a case is defined by its claim, what its file states around its cases, the
     "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
     "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
   ]);
+  // In JavaScript, an import loads its module even where what it binds is used for nothing.
+  assert.deepEqual(
+    changes(
+      edited(succeeding(R0), "scripts/test-data/check.mjs", (t) => `import { unused } from "./disable.mjs";\n${t}`),
+    ),
+    [
+      "says goodbye to each name its fixture lists: scripts/test-data/check.mjs, which it reaches, no longer states what it did",
+      "greets nobody as its golden file says: scripts/test-data/check.mjs, which it reaches, no longer states what it did",
+    ],
+  );
   // Data named by the case alone changes that case alone.
   assert.deepEqual(changes(edited(succeeding(R0), "scripts/fixtures/greeting.golden", () => "hello|")), [
     "greets nobody as its golden file says: its data scripts/fixtures/greeting.golden holds other than it did",

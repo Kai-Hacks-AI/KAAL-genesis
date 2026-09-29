@@ -181,7 +181,7 @@ function bindings(statement: Token[]): string[] {
 }
 
 /** The frame of a module's text: its imports' bindings and its other top-level statements. */
-function frameOf(text: string, whole = text): Frame {
+function frameOf(file: string, text: string, whole = text): Frame {
   const imports: string[] = [];
   const rest: string[] = [];
   for (const statement of statements(text)) {
@@ -191,7 +191,7 @@ function frameOf(text: string, whole = text): Frame {
     else rest.push(code(statement));
   }
   return {
-    loads: loadsOf(whole),
+    loads: loadsOf(file, whole),
     imports: sorted(imports),
     statements: rest.filter(Boolean),
     names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
@@ -199,16 +199,25 @@ function frameOf(text: string, whole = text): Frame {
 }
 
 /**
- * The modules `text` loads as it is evaluated, in the order it loads them:
+ * How the transformer that runs a module reads it, by its path, as tsx does:
+ * TypeScript, whose imports used only as types load nothing, or JavaScript,
+ * whose every import loads its module.
+ */
+export function loaderFor(file: string): "ts" | "js" {
+  return /\.(js|mjs|cjs)$/.test(file) ? "js" : "ts";
+}
+
+/**
+ * The modules `text`, the module at `file`, loads as it is evaluated, in the order it loads them:
  * read from the module as the transformer that runs it compiles it, never
  * from its source, since an import only of types, or of names used only as
  * types, loads nothing. A module that does not compile loads nothing KAAL can
  * know of.
  */
-function loadsOf(text: string): string[] {
+function loadsOf(file: string, text: string): string[] {
   let compiled: string;
   try {
-    compiled = transformSync(text, { loader: "ts", format: "esm" }).code;
+    compiled = transformSync(text, { loader: loaderFor(file), format: "esm" }).code;
   } catch {
     return [];
   }
@@ -433,7 +442,7 @@ export function definitions(state: string): Definition[] {
       from = c.end;
     }
     rest += text.slice(from);
-    const frame = frameOf(rest, text);
+    const frame = frameOf(file, rest, text);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
     const computed = new Set<string>();
@@ -455,7 +464,7 @@ export function definitions(state: string): Definition[] {
         if (isData(module, false)) {
           if (CODE.test(module)) {
             const loader = fs.readFileSync(path.join(state, module), "utf8").replace(/\r\n/g, "\n");
-            loaders[module] = frameOf(loader);
+            loaders[module] = frameOf(module, loader);
             data = { ...data, ...namedData(state, module, codeTokens(loader)) };
             queue.push(module);
           } else loaders[module] = held(state, module)[module]!;
@@ -509,7 +518,9 @@ export function redefined(before: Definition, after: Definition, candidate: stri
     if (!stat?.isFile()) return `${module}, which it reaches, is gone`;
     if (typeof was === "string") {
       if (held(candidate, module)[module] !== was) return `${module}, which it reaches, holds other than it did`;
-    } else if (!keepsFrame(was, frameOf(fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n"))))
+    } else if (
+      !keepsFrame(was, frameOf(module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")))
+    )
       return `${module}, which it reaches, no longer states what it did`;
   }
   for (const [entry, was] of Object.entries(before.data))
@@ -560,7 +571,7 @@ export function witnesses(state: string, modules: string[]): Witness[] {
   return modules.flatMap((module) => {
     const text = fs.readFileSync(path.join(state, module), "utf8");
     const toks = codeTokens(text);
-    const loader = module.endsWith(".js") || module.endsWith(".mjs") || module.endsWith(".cjs") ? "js" : "ts";
+    const loader = loaderFor(module);
     return toks.flatMap((t, i) =>
       alternatives(t, toks, i).flatMap((to) => {
         const source = text.slice(0, t.start) + to + text.slice(t.end);
