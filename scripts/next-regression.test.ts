@@ -13,7 +13,7 @@ const LAYERS = fileURLToPath(new URL("../test-data/next-regression/", import.met
 const WAVES = "requirements/waves/requirement.md";
 const POLITE = "requirements/greets-politely/requirement.md";
 const GREETING = "brain/learning/k/26/01/01/01/nodes/greeting.md";
-/** The first regression of the line: adding, greeting and greeting by name, on Linux and Windows, adding also shown by the seal checks, served by a suite one of its cases belongs to. */
+/** A synthetic first regression, not KAAL's own: adding, greeting and greeting by name, on Linux and Windows, adding also shown by the seal checks, served by a suite one of its cases belongs to. */
 const r0 = () => layeredState("feature/planned", "feature/promised", "acceptance/protected", "next-regression/r0");
 /** Whether `candidate` is accepted over `accepted`, by the accepted regression's own judgement, as the checker judges it. */
 const judged = (accepted: string, candidate: string) =>
@@ -27,39 +27,64 @@ const places = (state: string) => protectionOf(state).protection.commitments.map
 
 // Why: requirements/derived-regression/requirement.md
 // Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
-test("each regression of a line is derived from the one before by the same operation, whatever the candidate newly promises or gives up", () => {
+test("the next regression is the accepted one, less what is given up, with what is newly promised and demonstrated: F only, A only, F and A, or neither", () => {
   const R0 = r0();
+  const derived = (layer: string) => {
+    const candidate = succeeding(R0, layer);
+    assert.deepEqual(judged(R0, candidate), []);
+    const next = nextRegression(R0, candidate);
+    assert.deepEqual(next.errors, []);
+    // The candidate's own regression is the one derived for it.
+    assert.deepEqual(next.protection, protectionOf(candidate).protection);
+    return next;
+  };
+  const inherited = protectionOf(R0).protection;
   // F only: a new promise, demonstrated, enters with its case; everything inherited stays.
+  const f = derived("next-regression/waves");
+  assert.deepEqual([f.promises, f.demonstrated], [[WAVES], [WAVES]]);
+  assert.deepEqual(
+    f.protection.commitments.map((c) => c.place),
+    [...places(R0), WAVES].sort(),
+  );
+  // A only: exactly the case given up goes, and every commitment stays.
+  const a = derived("next-regression/fixture-given-up");
+  assert.deepEqual(a.promises, []);
+  assert.deepEqual(
+    a.protection.cases.map((c) => c.title),
+    inherited.cases.map((c) => c.title).filter((t) => t !== "adds as its fixture says"),
+  );
+  assert.deepEqual(
+    a.protection.commitments.map((c) => c.place),
+    places(R0),
+  );
+  // F and A: a replacement is a new promise demonstrated and what it replaces given up, never anything else.
+  const fa = derived("next-regression/polite");
+  assert.deepEqual(fa.demonstrated, [POLITE]);
+  assert.deepEqual(
+    fa.protection.commitments.map((c) => c.place),
+    [...places(R0).filter((p) => p !== GREETING), POLITE].sort(),
+  );
+  // Neither: code rearranged, nothing promised or given up, and the protection is the inherited one.
+  assert.deepEqual(derived("next-regression/refactored").protection, inherited);
+});
+
+// Why: requirements/derived-regression/requirement.md
+// Why: brain/learning/genesis/26/09/28/06/nodes/testing.md
+test("the derived regression is the accepted input of the same operation again", () => {
+  const R0 = r0();
   const R1 = succeeding(R0, "next-regression/waves");
   assert.deepEqual(judged(R0, R1), []);
-  const first = nextRegression(R0, R1);
-  assert.deepEqual([first.promises, first.demonstrated, first.errors], [[WAVES], [WAVES], []]);
-  assert.deepEqual(first.protection, protectionOf(R1).protection);
-  assert.deepEqual(places(R1), [...places(R0), WAVES].sort());
-  // A only, from the regression just derived, as its own accepted regression: exactly the case given up goes.
+  // R1, read as an accepted regression, is exactly what was derived for it: nothing is restated by hand.
+  assert.deepEqual(protectionOf(R1).protection, nextRegression(R0, R1).protection);
   const R2 = succeeding(R1, "next-regression/fixture-given-up");
   assert.deepEqual(judged(R1, R2), []);
   const second = nextRegression(R1, R2);
   assert.deepEqual([second.promises, second.errors], [[], []]);
   assert.deepEqual(second.protection, protectionOf(R2).protection);
-  assert.deepEqual(
-    second.protection.cases.map((c) => c.title),
-    protectionOf(R1)
-      .protection.cases.map((c) => c.title)
-      .filter((t) => t !== "adds as its fixture says"),
-  );
+  // What R1 newly brought in is inherited protection now: silence keeps it, and only what R2 gives up goes.
   assert.deepEqual(places(R2), places(R1));
-  // F and A: a replacement is a new promise demonstrated and what it replaces given up, never anything else.
-  const R3 = succeeding(R2, "next-regression/polite");
-  assert.deepEqual(judged(R2, R3), []);
-  const third = nextRegression(R2, R3);
-  assert.deepEqual([third.demonstrated, third.errors], [[POLITE], []]);
-  assert.deepEqual(third.protection, protectionOf(R3).protection);
-  assert.deepEqual(places(R3), [...places(R2).filter((p) => p !== GREETING), POLITE].sort());
-  // Neither: code rearranged, nothing promised or given up, and the protection is the inherited one.
-  const R4 = succeeding(R3, "next-regression/refactored");
-  assert.deepEqual(judged(R3, R4), []);
-  assert.deepEqual(nextRegression(R3, R4).protection, protectionOf(R3).protection);
+  assert.ok(second.protection.cases.some((c) => c.places.includes(WAVES)));
+  assert.ok(!second.protection.cases.some((c) => c.title === "adds as its fixture says"));
 });
 
 // Why: requirements/derived-regression/requirement.md

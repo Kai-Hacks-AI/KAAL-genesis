@@ -227,9 +227,10 @@ export function layeredState(...layers: string[]): string {
  * A candidate succeeding `accepted`: a scratch copy of it with layers from
  * test-data laid over it in order, whose Regression Plan names `accepted`'s
  * regression, by its identity, as the one it was derived from, as a candidate
- * derived from it would. Layers from test-data/next-regression make a line of
- * regressions: `r0`, laid over the protected state of test-data/acceptance,
- * one of whose cases belongs to the suite serving its plan; `waves`, a
+ * derived from it would. Layers from test-data/next-regression are synthetic
+ * regressions, not KAAL's own: `r0`, a first regression laid over the
+ * protected state of test-data/acceptance, one of whose cases belongs to the
+ * suite serving its plan, over which the other layers are laid; `waves`, a
  * Requirement that a greeting comes with a wave, named by the plan and
  * demonstrated by a case of its own; `waves-broken`, that wave's code
  * failing its case; `fixture-given-up`, a record excluding the case of adding

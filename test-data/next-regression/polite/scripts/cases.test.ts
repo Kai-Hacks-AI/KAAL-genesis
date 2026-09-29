@@ -15,6 +15,12 @@ test("greets politely", () => {
   assert.equal(greet("x"), "hello x");
 });
 
+// Why: src/add.ts
+test("adds as its fixture says", () => {
+  const sum = Number(fs.readFileSync(new URL("./fixtures/sum.txt", import.meta.url), "utf8"));
+  assert.equal(add(1, 2), sum);
+});
+
 // Why: requirements/greets-by-name/requirement.md
 test("greets by name", () => {
   assert.match(greet("x"), /x/);
