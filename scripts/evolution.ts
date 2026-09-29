@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { transformSync } from "esbuild";
 import type { Conditions } from "../skills/testing/scripts/plan.js";
-import { caseFiles, caseStarts, PLAN, testedDefects } from "./links.js";
+import { caseDefects, caseFiles, caseStarts, PLAN } from "./links.js";
 import type { Held, Protection } from "./next-regression.js";
 import { isData, type Result, runTrusted } from "./regression.js";
 import {
@@ -115,7 +115,12 @@ export const asSets = (sets: Conditions[]) => [...new Set(sets.map((set) => cano
  * set, since one bound beside another changes nothing the other does; the
  * statements are a sequence.
  */
-type Frame = { imports: string[]; statements: string[] };
+type Frame = {
+  imports: string[];
+  statements: string[];
+  /** Every name the module's code says, its cases included: what an added declaration must not take. */
+  names: string[];
+};
 
 /**
  * What defines a case, as far as the files show it: its claim, the case's own
@@ -173,7 +178,7 @@ function bindings(statement: Token[]): string[] {
 }
 
 /** The frame of a module's text: its imports' bindings and its other top-level statements. */
-function frameOf(text: string): Frame {
+function frameOf(text: string, whole = text): Frame {
   const imports: string[] = [];
   const rest: string[] = [];
   for (const statement of statements(text)) {
@@ -182,24 +187,89 @@ function frameOf(text: string): Frame {
       imports.push(...bindings(statement));
     else rest.push(code(statement));
   }
-  return { imports: sorted(imports), statements: rest.filter(Boolean) };
+  return {
+    imports: sorted(imports),
+    statements: rest.filter(Boolean),
+    names: sorted(tokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
+  };
+}
+
+/** The top-level tokens of `toks`, each with the depth of brackets it is at. */
+function depths(toks: Token[]): { t: Token; depth: number }[] {
+  let depth = 0;
+  return toks.map((t) => {
+    if (t.kind === "punct" && [")", "]", "}"].includes(t.text)) depth--;
+    const at = { t, depth };
+    if (t.kind === "punct" && ["(", "[", "{"].includes(t.text)) depth++;
+    return at;
+  });
 }
 
 /**
- * Whether `after` still states all `before` did: every binding it imported,
- * and every other statement, in order, as it was. What is added beside them,
- * such as another import or a helper for a case added, leaves what was there
- * as it was.
+ * Whether `statement`, the code of a top-level statement added beside
+ * inherited cases, evaluates nothing as its module loads, and takes no name
+ * `used` holds: a declaration of a type, a function, or a constant bound to a
+ * function, under a name the old code never says. Anything else, a call, an
+ * assignment, a value computed, a class or a declaration taking a name the
+ * old code says, can change what the inherited cases do, however they read.
+ */
+function inert(statement: string, used: Set<string>): boolean {
+  let toks = tokens(statement).filter((t) => t.kind !== "comment");
+  while (toks[0]?.text === "export" || toks[0]?.text === "declare") toks = toks.slice(1);
+  const [first, second, third] = toks;
+  if (!first || !second) return false;
+  const top = depths(toks).filter((d) => d.depth === 0);
+  if (top.some((d) => d.t.text === ",")) return false;
+  const fresh = (name: Token | undefined) => name?.kind === "name" && !used.has(name.text);
+  if (first.text === "interface") return fresh(second);
+  if (first.text === "type") return fresh(second) && (third?.text === "=" || third?.text === "<");
+  const fn = first.text === "async" ? toks.slice(1) : toks;
+  if (fn[0]?.text === "function") return fresh(fn[1]?.text === "*" ? fn[2] : fn[1]);
+  if (!["const", "let", "var"].includes(first.text) || !fresh(second)) return false;
+  // Bound to a function: what follows its = is a function expression, or an arrow whose head is all it begins with.
+  const eq = top.findIndex((d) => d.t.text === "=");
+  const value = top.slice(eq + 1).map((d) => d.t);
+  const all = toks.slice(toks.indexOf(top[eq]?.t as Token) + 1);
+  if (eq < 0 || !value.length) return false;
+  if (value[0]!.text === "function" || (value[0]!.text === "async" && all[1]?.text === "function")) return true;
+  const head = value[0]!.text === "async" ? all.slice(1) : all;
+  const arrow = depths(head).findIndex((d) => d.depth === 0 && d.t.text === "=>");
+  if (arrow < 0) return false;
+  const before = head.slice(0, arrow);
+  return (
+    (before.length === 1 && before[0]!.kind === "name") ||
+    (["(", "<"].includes(before[0]!.text) &&
+      !depths(before).some((d) => d.depth === 0 && ["=", "?"].includes(d.t.text)))
+  );
+}
+
+/**
+ * Whether `after` still states all `before` did, and adds nothing that could
+ * change it: every binding it imported, and every other statement, in order,
+ * as it was. An import added beside them binds from a module the file already
+ * loads, or from Node itself, so no module it did not load runs; any other
+ * statement added evaluates nothing, as \`inert\` says. Anything else added is
+ * a change to every case of the module, whatever the cases say.
  */
 function keepsFrame(before: Frame, after: Frame): boolean {
   if (!before.imports.every((b) => after.imports.includes(b))) return false;
+  const used = new Set(before.names);
+  const loaded = new Set(before.imports.map((b) => b.split("|")[0]));
+  for (const binding of after.imports.filter((b) => !before.imports.includes(b))) {
+    const [from, , local] = binding.split("|");
+    if (from === undefined || !(from.startsWith("node:") || loaded.has(from))) return false;
+    if (local && used.has(local)) return false;
+  }
+  const added: string[] = [];
   let at = 0;
   for (const statement of before.statements) {
-    at = after.statements.indexOf(statement, at);
-    if (at < 0) return false;
-    at++;
+    const found = after.statements.indexOf(statement, at);
+    if (found < 0) return false;
+    added.push(...after.statements.slice(at, found));
+    at = found + 1;
   }
-  return true;
+  added.push(...after.statements.slice(at));
+  return added.every((statement) => inert(statement, used));
 }
 
 /** The end of the call opened by the first `(` from `start` in `text`, with the `;` that ends its statement, if any. */
@@ -305,7 +375,7 @@ export function definitions(state: string): Definition[] {
       from = c.end;
     }
     rest += text.slice(from);
-    const frame = frameOf(rest);
+    const frame = frameOf(rest, text);
     const loaders: Record<string, Frame | string> = {};
     const subjects = new Set<string>();
     const computed = new Set<string>();
@@ -494,12 +564,12 @@ function detected(results: Result[], cases: string[]): Set<string> {
  * in the order they are read. Two cases at one address are two cases, so each
  * is matched to its own result, never to another's.
  */
-export const occurrence = (c: { file: string; title: string }, nth: number) => `${address(c)}\0${nth}`;
+export const occurrence = (c: { file: string; title: string }, nth: number) => JSON.stringify([c.file, c.title, nth]);
 
 /** Whether the case at `at`, an occurrence, passed in `results`: the result at its place among those at its address. */
 function passed(results: Result[], at: string): boolean {
-  const [file, title, nth] = at.split("\0");
-  return results.filter((r) => r.file === file && r.name === title)[Number(nth)]?.outcome === "pass";
+  const [file, title, nth] = JSON.parse(at) as [string, string, number];
+  return results.filter((r) => r.file === file && r.name === title)[nth]?.outcome === "pass";
 }
 
 /**
@@ -519,7 +589,7 @@ function detections(
   const out = { old: new Map<string, Set<number>>(), now: new Map<string, Set<number>>() };
   for (const at of old) out.old.set(at, new Set());
   for (const at of now) out.now.set(at, new Set());
-  const files = (addresses: string[]) => new Set(addresses.map((at) => at.split("\0")[0]!));
+  const files = (cases: string[]) => new Set(cases.map((at) => (JSON.parse(at) as [string])[0]));
   const run = (subject: string, side: "old" | "now"): Set<string> => {
     const [trusted, addresses] = side === "old" ? [accepted, old] : [candidate, now];
     if (!addresses.length) return new Set();
@@ -746,11 +816,14 @@ export function evolution(
     } catch {
       results = [];
     }
-    const defects = testedDefects(candidate).tested;
+    // Which defects each case tests, by its occurrence, as its result is matched: never another's at its address.
+    const defects = caseDefects(candidate);
+    const defectsOf = (k: number) =>
+      defects.filter((d) => address(d) === address(ownCases[k]!))[nthAt(ownCases, k)]?.defects ?? [];
     for (const { k, why } of enteringCases) {
       const c = ownCases[k]!;
       const holds = passed(results, occurrence(c, nthAt(ownCases, k)));
-      const tests = (defects.find((d) => address(d) === address(c))?.defects ?? []).filter((d) =>
+      const tests = defectsOf(k).filter((d) =>
         fs.lstatSync(path.join(candidate, d, "defect.md"), { throwIfNoEntry: false })?.isFile(),
       );
       if (holds) add("strengthened", named(c), `${why}; it holds of the accepted state too`);

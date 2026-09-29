@@ -111,12 +111,14 @@ function scan(
   cases: Case[];
   stray: number[];
   tested: Tested[];
+  defectsOf: string[][];
   strayTests: number[];
   suites: string[][];
   straySuites: number[];
 } {
   const cases: Case[] = [];
   const tested: Tested[] = [];
+  const defectsOf: string[][] = [];
   const suites: string[][] = [];
   const owned = new Set<number>();
   const ownedTests = new Set<number>();
@@ -145,12 +147,13 @@ function scan(
     }
     cases.push({ file, title, places });
     suites.push(joined);
+    defectsOf.push(defects);
     if (defects.length) tested.push({ file, title, defects });
   }
   const stray = lines.flatMap((line, i) => (LINK_LIKE.test(line) && !owned.has(i) ? [i + 1] : []));
   const strayTests = lines.flatMap((line, i) => (TESTS_LIKE.test(line) && !ownedTests.has(i) ? [i + 1] : []));
   const straySuites = lines.flatMap((line, i) => (SUITE_LIKE.test(line) && !ownedSuites.has(i) ? [i + 1] : []));
-  return { cases, stray, tested, strayTests, suites, straySuites };
+  return { cases, stray, tested, defectsOf, strayTests, suites, straySuites };
 }
 
 /**
@@ -227,6 +230,18 @@ export function repoCases(repo: string): Case[] {
  * links directly above it, read as every other link of a case is read. A suite
  * never lists its cases, so this is how KAAL finds a suite's cases.
  */
+/**
+ * Every case a repository runs, in the order its cases are read, with the
+ * defects it says it tests, none where it says none: read as every other link
+ * of a case is read, so each case is told apart from another at its address.
+ */
+export function caseDefects(repo: string): Tested[] {
+  return caseFiles(repo).flatMap((file) => {
+    const { cases, defectsOf } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
+    return cases.map(({ title }, i) => ({ file, title, defects: defectsOf[i]! }));
+  });
+}
+
 export function caseSuites(repo: string): Member[] {
   return caseFiles(repo).flatMap((file) => {
     const { cases, suites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));

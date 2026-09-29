@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { type Change, definitions, evolution, redefined, witnesses } from "./evolution.js";
 import { interpolations, stringValue, templatePrefix, tokens } from "./source.js";
 import { PLAN } from "./links.js";
@@ -331,6 +332,46 @@ test("a case is defined by its claim, what its file states around its cases, the
   assert.deepEqual(changes(edited(succeeding(R0), "scripts/fixtures/greeting.golden", () => "hello|")), [
     "greets nobody as its golden file says: its data scripts/fixtures/greeting.golden holds other than it did",
   ]);
+  // Added beside the cases, but not inert: each can change what every case of the file does, however they read.
+  const cases = (candidate: string) =>
+    changes(candidate).filter((c) => !c.startsWith("says goodbye") && !c.startsWith("greets nobody"));
+  const redefinedAll = definitions(R0)
+    .filter((d) => d.file === CASES)
+    .map((d) => `${d.title}: ${CASES} no longer states what it did around its cases`);
+  const withVerify = succeeding(
+    edited(R0, CASES, (t) =>
+      t.replace(
+        'import { greet } from "../src/greet.js";\n',
+        'import { greet } from "../src/greet.js";\n\nlet verify = (n: number) => assert.equal(n, 3);\n',
+      ),
+    ),
+  );
+  for (const [added, why] of [
+    ["verify = () => {};", "an assignment disabling what the frame asserts"],
+    ["function Number(text: string) {\n  return 3;\n}", "a declaration taking a name the cases use"],
+    ["const helper = verify(3);", "a value computed as the module loads"],
+  ] as const)
+    assert.deepEqual(
+      cases(
+        edited(succeeding(withVerify), CASES, (t) =>
+          t.replace("// Why: src/add.ts\n// Suite", `${added}\n\n// Why: src/add.ts\n// Suite`),
+        ),
+      ),
+      redefinedAll,
+      why,
+    );
+  // A module the file did not load, loaded now: its code runs beside the cases.
+  assert.deepEqual(
+    cases(
+      edited(succeeding(withVerify), CASES, (t) =>
+        t.replace(
+          'import test from "node:test";\n',
+          'import test from "node:test";\nimport { bye } from "../src/bye.js";\n',
+        ),
+      ),
+    ),
+    redefinedAll,
+  );
 });
 
 // Why: requirements/protection-evolution/requirement.md
@@ -486,4 +527,41 @@ test("a case entering at an inherited case's address is judged by its own result
   );
   assert.deepEqual(judged(R0, agreeing), []);
   assert.deepEqual(verdicts(R0, agreeing), [`strengthened ${CASES}: "adds"`]);
+});
+
+// Why: requirements/protection-evolution/requirement.md
+test("a case entering is judged by its own occurrence throughout: its own result, its own defects, whatever its title holds", () => {
+  const R0 = base();
+  // The inherited "greets" tests a recorded defect; a second "greets", expecting what only the candidate does, tests none.
+  fs.cpSync(
+    path.join(fileURLToPath(new URL("../test-data/protection-evolution/repaired/defects", import.meta.url))),
+    path.join(R0, "defects"),
+    { recursive: true },
+  );
+  edited(R0, CASES, (t) =>
+    t.replace(`${GREETING_LINK}\n${GREETS}`, `${GREETING_LINK}\n// Tests: defects/greets-untrimmed\n${GREETS}`),
+  );
+  const borrowing = edited(
+    edited(
+      succeeding(R0),
+      "src/greet.ts",
+      () => 'export const greet = (name: string): string => (name === "y" ? "hey y" : `hello ${name}`);\n',
+    ),
+    CASES,
+    (t) => `${t}\n${GREETING_LINK}\ntest("greets", () => {\n  assert.equal(greet("y"), "hey y");\n});\n`,
+  );
+  const errors = judged(R0, borrowing);
+  assert.equal(errors.length, 1, errors.join("\n"));
+  assert.match(
+    errors[0]!,
+    /^scripts\/cases\.test\.ts: "greets": unresolved: added: .*does not hold of the accepted state/,
+  );
+  // A title holding a NUL is a title like any other.
+  const nul = edited(
+    succeeding(R0),
+    CASES,
+    (t) => `${t}\n// Why: src/add.ts\ntest("adds\\u0000nothing", () => {\n  assert.equal(add(0, 0), 0);\n});\n`,
+  );
+  assert.deepEqual(judged(R0, nul), []);
+  assert.deepEqual(verdicts(R0, nul), [`strengthened ${CASES}: "adds\\u0000nothing"`]);
 });
