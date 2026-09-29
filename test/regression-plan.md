@@ -29,7 +29,7 @@ Each commitment is owned by one capability of KAAL and stated in one place, wher
 
 ## How this regression differs from the one it was derived from
 
-Derived from: the accepted regression `4865c87c5582e54cd84c76bc86b10c79c32f39d2a5815f1a74cc3ab33039368f`.
+Derived from: the accepted regression `0a4e489cce2239dd142c8884560c0a7495a46bccda878d3c446c9856ebf6c8ea`.
 
 - Replaces: `brain/learning/genesis/26/09/26/03/nodes/testing.md` by `brain/learning/genesis/26/09/28/06/nodes/testing.md`, `brain/learning/genesis/26/09/27/01/nodes/genesis.md` by `brain/learning/genesis/26/09/28/06/nodes/genesis.md`.
 - Withdraws: nothing.
