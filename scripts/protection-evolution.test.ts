@@ -405,6 +405,7 @@ test("a case is defined by its claim, what its file states around its cases, the
     ["verify = () => {};", "an assignment disabling what the frame asserts"],
     ["function Number(text: string) {\n  return 3;\n}", "a declaration taking a name the cases use"],
     ["const { Number } = { Number: () => 3 };", "a destructuring taking a name the cases use"],
+    ["const [Number] = [() => 3];", "an array pattern taking a name the cases use"],
     ["const fresh = 1,\n  Number = () => 3;", "a second declaration taking a name the cases use"],
     [
       "const fresh = 1; function Number() {\n  return 3;\n}",
@@ -510,6 +511,19 @@ test("a case is defined by its claim, what its file states around its cases, the
       ),
     ),
     all(configured, "the settings its code is compiled with are others"),
+  );
+  // So are settings a list of configurations brings: each is read, the last of them too.
+  const listing = succeeding(configured);
+  fs.writeFileSync(path.join(listing, "strict.json"), '{ "compilerOptions": { "strict": true } }\n');
+  fs.writeFileSync(path.join(listing, "tsconfig.json"), '{ "extends": ["./strict.json", "./base.json"] }\n');
+  const listed = succeeding(listing);
+  assert.deepEqual(
+    judging(listed)(
+      edited(succeeding(listed), "base.json", (t) =>
+        t.replace('"verbatimModuleSyntax": true', '"verbatimModuleSyntax": true, "jsxFactory": "h"'),
+      ),
+    ),
+    all(listed, "the settings its code is compiled with are others"),
   );
   // A module named by an alias the tsconfig maps into the state is the module tsx loads, and is followed.
   const aliasing = succeeding(R0);

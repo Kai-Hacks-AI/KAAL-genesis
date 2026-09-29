@@ -408,8 +408,9 @@ function inert(statement: string, used: Set<string>): boolean {
   let k = 0;
   while (DECLARES.has(toks[k]?.text ?? "")) k++;
   if (["const", "let", "var"].includes(toks[k]?.text ?? "")) k++;
-  if (k > 0 && toks[k]?.kind === "name") {
-    if (used.has(toks[k]!.text)) return false;
+  if (k > 0) {
+    // One plain name, new to the code, and no other: a pattern binds names KAAL does not read, so it is never inert.
+    if (toks[k]?.kind !== "name" || used.has(toks[k]!.text)) return false;
     if (depths(toks).some((d) => d.depth === 0 && d.t.text === ",")) return false;
   }
   try {

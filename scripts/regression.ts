@@ -157,19 +157,27 @@ function checkCommand(repo: string): string | undefined {
 
 /**
  * How TypeScript is compiled for the checker and the cases: a state's
- * `tsconfig.json` and every local configuration it extends, in order, or the
- * first `extends` that leads out of the state, which the identity cannot see.
+ * `tsconfig.json` and every local configuration it extends, one or a list,
+ * in order, or the first `extends` that leads out of the state, which the
+ * identity cannot see.
  */
 export function typescriptConfig(repo: string): { files: string[]; outside?: string } {
   const files: string[] = [];
-  let at = "tsconfig.json";
-  while (fs.existsSync(path.join(repo, at)) && !files.includes(at)) {
+  const queue = ["tsconfig.json"];
+  while (queue.length) {
+    const at = queue.shift()!;
+    if (files.includes(at) || !fs.existsSync(path.join(repo, at))) continue;
     files.push(at);
-    const base = /"extends"\s*:\s*"(\.{1,2}\/[^"]+)"/.exec(fs.readFileSync(path.join(repo, at), "utf8"))?.[1];
-    if (!base) break;
-    const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
-    if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
-    at = fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`;
+    // What it extends: one configuration, or, as TypeScript also allows, a list of them, each read in turn.
+    const value = /"extends"\s*:\s*("(?:[^"\\]|\\.)*"|\[[^\]]*\])/.exec(
+      fs.readFileSync(path.join(repo, at), "utf8"),
+    )?.[1];
+    const bases = value ? [...value.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]!) : [];
+    for (const base of bases.filter((b) => /^\.{1,2}\//.test(b))) {
+      const next = path.posix.normalize(path.posix.join(path.posix.dirname(at), base));
+      if (next === ".." || next.startsWith("../")) return { files, outside: `${at}: ${base}` };
+      queue.push(fs.existsSync(path.join(repo, next)) || next.endsWith(".json") ? next : `${next}.json`);
+    }
   }
   return { files };
 }
