@@ -40,6 +40,10 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
       idea: "KAAL's protected main could become its release boundary, where a kaal/<name> line whose next Regression is demonstrated through FAR is sealed, released and versioned",
     },
     {
+      name: "review",
+      idea: "KAAL could need an account of what may end adversarial review of a candidate, and of how patterns in review findings should affect the way the candidate is being repaired or proven, remembered as Review, a problem not yet a capability",
+    },
+    {
       name: "we-can-go-far",
       idea: "KAAL's forward planning and testing loop could connect with a backward loop of worked evidence, learning and refactoring, remembered provisionally as WE CAN GO FAR",
     },
