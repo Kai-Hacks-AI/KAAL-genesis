@@ -1,19 +1,23 @@
 ---
 idea: KAAL's forward planning and testing loop could connect with a backward
-  loop of worked evidence, learning and refactoring, remembered provisionally as
-  WE CAN GO FAR
+  loop of worked evidence, learning and refactoring, through which the Owner
+  gets enhanced by holistic experience reviews, remembered provisionally as
+  TOGETHER WE CAN GO FAR
 ---
 
 The mnemonic and its current working expansion are:
 
+- TOGETHER: The Owner Gets Enhanced Through Holistic Experience Reviews;
 - WE: Worked Evidence;
 - CAN: Changes Adaption Now;
 - GO: Getting Optimized;
 - FAR: Features Accepted Regression.
 
-The wording is deliberately not final. "CAN" is grammatically awkward; an earlier formulation was "Change Adapts Now". None of WE, CAN or GO is a KAAL capability or committed architecture, and the acronym should not be completed by inventing concepts to fit its letters. The slogan matters less than the possibility it names: connecting KAAL's forward planning and testing loop with a backward loop of evidence, learning and refactoring.
+The wording is deliberately not final. "CAN" is grammatically awkward; an earlier formulation was "Change Adapts Now". None of TOGETHER, WE, CAN or GO is a KAAL capability or committed architecture, and the acronym should not be completed by inventing concepts to fit its letters. The slogan matters less than the possibility it names: connecting KAAL's forward planning and testing loop with a backward loop of evidence, learning and refactoring, so that the Owner gets enhanced by it.
 
 The Idea emerged from work on `kaal/testing`, especially the repeated review and fix cycles around #53. The observed pattern was roughly: work produces evidence; failures and observations accumulate; repeated evidence reveals shared concerns; those concerns can be analyzed across capabilities; that analysis may expose duplicated mechanisms or poor module boundaries; refactoring can improve the structure; changes introduce or alter behavior; Feature, Acceptance and Regression can eventually determine what new behavior is demonstrated, deliberately accepted and inherited as regression; and subsequent work produces more evidence. That suggests a continuous loop rather than a one-way delivery pipeline.
+
+TOGETHER is the part of the phrase that says for whom and how the loop is meant to matter: the Owner gets enhanced through reviews of experience taken holistically. It is remembered as the wording of the possibility, not as a definition. This record does not define the Owner, Experience or Review, and does not say what a holistic review would be, who performs it or when. It only retains that the possibility named the Owner as the one enhanced, through reviewing experience, and that WE CAN GO FAR was the way that enhancement was imagined to happen.
 
 Worked Evidence is a description, not an artifact. KAAL already has Test Cases, Test Runs, observations, Defects, review findings and Regression evidence. The hypothesis is that evidence becomes especially valuable after the system has actually been exercised. The existing testing architecture remains authoritative.
 
@@ -25,4 +29,4 @@ Requirements state what must hold. Suites group testing around a shared concern,
 
 FAR refers to the planned testing sequence of Feature Test Plan, Acceptance Test Plan and Regression Test Plan, which is not landed architecture. "Features Accepted Regression" captures the possibility that features which survive deliberate acceptance become future regression protection.
 
-This record retains the possibility. It is not a Requirement, a Plan or a roadmap commitment, and it does not commit KAAL to the current expansions, to capabilities for evidence, changes, backlog, roadmap or optimization, to any FAR semantics, or to implementing this loop.
+This record retains the possibility. It is not a Requirement, a Plan or a roadmap commitment, and it does not commit KAAL to the current expansions, to capabilities for the Owner, experience, review, evidence, changes, backlog, roadmap or optimization, to any FAR semantics, or to implementing this loop.

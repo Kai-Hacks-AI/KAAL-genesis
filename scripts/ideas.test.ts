@@ -45,7 +45,7 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
     },
     {
       name: "we-can-go-far",
-      idea: "KAAL's forward planning and testing loop could connect with a backward loop of worked evidence, learning and refactoring, remembered provisionally as WE CAN GO FAR",
+      idea: "KAAL's forward planning and testing loop could connect with a backward loop of worked evidence, learning and refactoring, through which the Owner gets enhanced by holistic experience reviews, remembered provisionally as TOGETHER WE CAN GO FAR",
     },
   ]);
   const record = fs.readFileSync(MODULAR, "utf8");
