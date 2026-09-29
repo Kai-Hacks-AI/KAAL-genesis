@@ -35,13 +35,13 @@ export function genesis(repo = "."): void {
  * The learning Genesis births: KAAL's understanding as it is now, as of this
  * learning, which no node KAAL holds for a name born here may be newer than.
  */
-export const LEARNING = "26/09/29/01";
+export const LEARNING = "26/09/29/04";
 
 /**
  * KAAL's current understanding, born in order into the BRAIN at `root`: each
  * node says what KAAL's current node of that name says, without how KAAL came
  * to it, such as what taught this KAAL a meaning: a new KAAL lived none of it. What Genesis births is stated in
- * brain/learning/genesis/26/09/29/01/nodes/genesis.md.
+ * brain/learning/genesis/26/09/29/04/nodes/genesis.md.
  */
 function birth(root: string): void {
   createNode({

@@ -26,7 +26,7 @@ const edited = (state: string, file: string, change: (text: string) => string) =
 const places = (state: string) => protectionOf(state).protection.commitments.map((c) => c.place);
 
 // Why: requirements/next-regression/requirement.md
-// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("the next regression is the accepted one, less what is given up, with what is newly promised and demonstrated: F only, A only, F and A, or neither", () => {
   const R0 = r0();
   const derived = (layer: string) => {
@@ -69,7 +69,7 @@ test("the next regression is the accepted one, less what is given up, with what 
 });
 
 // Why: requirements/next-regression/requirement.md
-// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("the derived regression is the accepted input of the same operation again", () => {
   const R0 = r0();
   const R1 = succeeding(R0, "next-regression/waves");
@@ -88,7 +88,7 @@ test("the derived regression is the accepted input of the same operation again",
 });
 
 // Why: requirements/next-regression/requirement.md
-// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("silence never gives up protection: an inherited case, suite, membership, link, condition or proof left out without a record is refused", () => {
   const R1 = succeeding(r0(), "next-regression/waves");
   const from = (change: (state: string) => string) => judged(R1, change(succeeding(R1)));
@@ -194,7 +194,7 @@ test("no commitment enters the regression but what the candidate newly promises 
 });
 
 // Why: requirements/next-regression/requirement.md
-// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("a regression is derived from the accepted one as it is now, and an old acceptance record gives up nothing again", () => {
   const R0 = r0();
   const R1 = succeeding(R0, "next-regression/waves");
@@ -385,7 +385,7 @@ test("the cases demonstrating a new promise run in a copy of the candidate, neve
 });
 
 // Why: requirements/next-regression/requirement.md
-// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("what enters with the candidate beyond what it newly promises strengthens what it inherits, and other data does not enter", () => {
   const R1 = succeeding(r0(), "next-regression/waves");
   // A case of the candidate's own for a commitment it inherits is inherited protection once it is accepted: more of it.
@@ -416,7 +416,7 @@ test("what enters with the candidate beyond what it newly promises strengthens w
 });
 
 // Why: requirements/next-regression/requirement.md
-// Why: brain/learning/genesis/26/09/29/01/nodes/testing.md
+// Why: brain/learning/genesis/26/09/29/04/nodes/testing.md
 test("a case entering with a new promise brings more only where it holds of the accepted state, or back where a case was given up, with what that case had", () => {
   const R0 = r0();
   // A new case demonstrating the promise that also helps prove adding, or joins the suite, adds to protection no new

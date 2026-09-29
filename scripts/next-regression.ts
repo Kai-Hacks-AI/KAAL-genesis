@@ -25,7 +25,7 @@ import { entriesIn, entryAt, entryBytes } from "./state.js";
  * decides only how it is demonstrated. Once accepted, the candidate is the
  * accepted regression the
  * same derivation starts from next. What the regression is for KAAL is stated
- * in brain/learning/genesis/26/09/29/01/nodes/testing.md.
+ * in brain/learning/genesis/26/09/29/04/nodes/testing.md.
  */
 
 /** A commitment a regression requires, by its place, with what shows it. */
