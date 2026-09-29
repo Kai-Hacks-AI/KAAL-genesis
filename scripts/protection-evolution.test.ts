@@ -460,6 +460,10 @@ test("the reader of a case's source tells code from strings, templates, regular 
   const unknown = definitions(state)[1]!;
   assert.deepEqual(unknown.computed, ["src/loader.ts"]);
   assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts imports what is named only as it runs/);
+  // So is one named by a literal with anything joined to it: the literal is not the module's name.
+  for (const call of ['import("./" + m + ".js")', 'require("./" + m)'])
+    (fs.writeFileSync(path.join(state, "src/loader.ts"), `export const load = (m: string) => ${call};\n`),
+      assert.deepEqual(definitions(state)[1]!.computed, ["src/loader.ts"], call));
 });
 
 // Why: requirements/protection-evolution/requirement.md
@@ -498,6 +502,22 @@ test("each retirement is judged by the witnesses of the code its own cases reach
     'unresolved scripts/bye.test.ts: "says goodbye to each name its fixture lists"',
     `unresolved ${CASES}: "adds"`,
   ]);
+  // Judging leaves nothing behind: every copy made to run a witness, or the cases against it, is removed.
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-scratch-"));
+  const was = process.env.TMPDIR;
+  process.env.TMPDIR = scratch;
+  try {
+    judge(2);
+  } finally {
+    // Unset stays unset: an environment variable given undefined would hold the text "undefined".
+    if (was === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = was;
+  }
+  // Only the test runner's own compile cache stays: it is tsx's, kept for any later run.
+  assert.deepEqual(
+    fs.readdirSync(scratch).filter((entry) => !entry.startsWith("tsx-")),
+    [],
+  );
 });
 
 // Why: requirements/protection-evolution/requirement.md

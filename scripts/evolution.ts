@@ -431,7 +431,16 @@ function tokensSpecifiers(source: string): { specifiers: string[]; computed: boo
     // After \`import\` or \`from\`, only a string names a module; in a call, whatever is passed does.
     if (!isSpecifier(toks, i) || (t.kind !== "string" && toks[i - 1]?.text !== "(")) return [];
     const template = templatePrefix(t);
-    const value = t.kind === "string" ? stringValue(t) : template && !template.computed ? template.text : undefined;
+    // Passed to import() or require(), a literal names the module only when it is the whole argument: anything joined
+    // to it, such as "./dir/" + name, is computed as it runs.
+    const whole = toks[i - 1]?.text !== "(" || [")", ","].includes(toks[i + 1]?.text ?? "");
+    const value = !whole
+      ? undefined
+      : t.kind === "string"
+        ? stringValue(t)
+        : template && !template.computed
+          ? template.text
+          : undefined;
     // A module named by what is computed as it runs: which one, nothing can say before it runs.
     if (value === undefined) computed = true;
     return value === undefined ? [] : [value];
@@ -538,6 +547,11 @@ function withDependencies(state: string, of: string): string {
   return copyOf(state, of);
 }
 
+/** Removes a copy made by \`copyOf\`, with the directory made to hold it. */
+function removeCopy(copy: string): void {
+  fs.rmSync(path.dirname(copy), { recursive: true, force: true });
+}
+
 /** A copy of `state`, without Git's files, sharing the dependencies `of` holds. */
 function copyOf(state: string, of: string): string {
   const copy = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-witness-")), "repo");
@@ -607,8 +621,12 @@ function detections(
   const failing = { old: run(candidate, "old"), now: run(candidate, "now") };
   found.forEach((witness, w) => {
     const subject = withWitness(candidate, witness);
-    for (const side of ["old", "now"] as const)
-      for (const at of run(subject, side)) if (!failing[side].has(at)) out[side].get(at)!.add(w);
+    try {
+      for (const side of ["old", "now"] as const)
+        for (const at of run(subject, side)) if (!failing[side].has(at)) out[side].get(at)!.add(w);
+    } finally {
+      removeCopy(subject);
+    }
   });
   return out;
 }
@@ -812,7 +830,12 @@ export function evolution(
     const files = new Set(enteringCases.map((e) => ownCases[e.k]!.file));
     let results: Result[] = [];
     try {
-      results = runTrusted(candidate, withDependencies(accepted, candidate), (file) => files.has(file));
+      const subject = withDependencies(accepted, candidate);
+      try {
+        results = runTrusted(candidate, subject, (file) => files.has(file));
+      } finally {
+        removeCopy(subject);
+      }
     } catch {
       results = [];
     }

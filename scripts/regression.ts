@@ -581,6 +581,8 @@ export function execute(
     ...(timeout === undefined ? {} : { timeout, killSignal: "SIGKILL" as const }),
   });
   const lines = fs.readFileSync(out, "utf8").split("\n").filter(Boolean);
+  // What the runner reported is read: the directory made to hold it is not kept.
+  fs.rmSync(path.dirname(out), { recursive: true, force: true });
   // A runner that could not start, was stopped, or did not report to its end has not said what every case did.
   if (run.error || run.signal || lines.at(-1) !== JSON.stringify({ end: true }))
     throw new Error(
@@ -615,69 +617,76 @@ export function runTrusted(
   timeout?: number,
 ): Result[] {
   const code = scratchCopy(candidate, false);
-  const files = caseFiles(trusted).filter((file) => !only || only(file));
-  // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
-  // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
-  // A path that climbs out of the copy names none of its files, so nothing is removed for it.
-  for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
-    fs.rmSync(within(code, rel), { force: true });
-  const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
-  if (plan.length) {
-    // What a place of the accepted plan reaches by a wildcard, it knew by that place: anything there the accepted
-    // state does not have is the candidate's addition, which its own cases prove, so the accepted cases do not see it.
-    for (const place of planCommitments(fs.readFileSync(path.join(trusted, PLAN), "utf8")).filter((p) =>
-      p.includes("*"),
-    )) {
-      const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
-      for (const match of fs.globSync(place, { cwd: code }).map((m) => m.split(path.sep).join("/"))) {
-        if (fs.existsSync(path.join(trusted, match))) continue;
-        // A match the accepted state lacks: all of it that is new, the wildcard's directory if that is new too.
-        const top = match.split("/").slice(0, depth).join("/");
-        const at = fs.existsSync(path.join(trusted, top)) ? match : top;
-        if (inside(code, at)) fs.rmSync(within(code, at), { recursive: true, force: true });
+  // The copies the cases run in and are handed are the run's own: none is kept once it has reported.
+  let tested: string | undefined;
+  try {
+    const files = caseFiles(trusted).filter((file) => !only || only(file));
+    // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
+    // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
+    // A path that climbs out of the copy names none of its files, so nothing is removed for it.
+    for (const rel of [...caseFiles(candidate), PLAN].filter((rel) => inside(code, rel)))
+      fs.rmSync(within(code, rel), { force: true });
+    const plan = fs.existsSync(path.join(trusted, PLAN)) ? [PLAN] : [];
+    if (plan.length) {
+      // What a place of the accepted plan reaches by a wildcard, it knew by that place: anything there the accepted
+      // state does not have is the candidate's addition, which its own cases prove, so the accepted cases do not see it.
+      for (const place of planCommitments(fs.readFileSync(path.join(trusted, PLAN), "utf8")).filter((p) =>
+        p.includes("*"),
+      )) {
+        const depth = place.split("/").reduce((last, part, i) => (part.includes("*") ? i + 1 : last), 0);
+        for (const match of fs.globSync(place, { cwd: code }).map((m) => m.split(path.sep).join("/"))) {
+          if (fs.existsSync(path.join(trusted, match))) continue;
+          // A match the accepted state lacks: all of it that is new, the wildcard's directory if that is new too.
+          const top = match.split("/").slice(0, depth).join("/");
+          const at = fs.existsSync(path.join(trusted, top)) ? match : top;
+          if (inside(code, at)) fs.rmSync(within(code, at), { recursive: true, force: true });
+        }
       }
     }
+    // Which cases the regression has is the accepted regression's own selection, not the candidate's.
+    // The manifest is written afresh, never through a link the candidate may have made of it.
+    const manifest = within(code, "package.json");
+    const test = (
+      JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts?: { test?: string } }
+    ).scripts?.test;
+    const own = (
+      fs.statSync(manifest, { throwIfNoEntry: false })?.isFile() ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {}
+    ) as { scripts?: Record<string, string> };
+    fs.rmSync(manifest, { recursive: true, force: true });
+    fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
+    for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
+      const to = within(code, rel);
+      fs.rmSync(to, { recursive: true, force: true });
+      fs.mkdirSync(path.dirname(to), { recursive: true });
+      fs.cpSync(path.join(trusted, rel), to, { recursive: true, verbatimSymlinks: true });
+      // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
+      recordedModes(to);
+    }
+    // The state the accepted cases judge is the candidate itself, as it is, not the copy they are run in, which
+    // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
+    // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
+    // its own, so no case sees more of it than the regression judges, or writes into it.
+    const handedState = scratchCopy(candidate, true);
+    tested = handedState;
+    const handed = plannedData(trusted, code);
+    // A title is skipped in every file a run executes, so each file with cases to skip is run on its own, where its
+    // titles, each unique there, name only its own cases.
+    const alone = skip ? files.filter((file) => skip(file).length) : [];
+    return [
+      ...execute(
+        code,
+        files.filter((file) => !alone.includes(file)),
+        handedState,
+        false,
+        handed,
+        [],
+        timeout,
+      ),
+      ...alone.flatMap((file) => execute(code, [file], handedState, false, handed, skip!(file), timeout)),
+    ];
+  } finally {
+    for (const copy of [code, tested]) if (copy) fs.rmSync(path.dirname(copy), { recursive: true, force: true });
   }
-  // Which cases the regression has is the accepted regression's own selection, not the candidate's.
-  // The manifest is written afresh, never through a link the candidate may have made of it.
-  const manifest = within(code, "package.json");
-  const test = (
-    JSON.parse(fs.readFileSync(path.join(trusted, "package.json"), "utf8")) as { scripts?: { test?: string } }
-  ).scripts?.test;
-  const own = (
-    fs.statSync(manifest, { throwIfNoEntry: false })?.isFile() ? JSON.parse(fs.readFileSync(manifest, "utf8")) : {}
-  ) as { scripts?: Record<string, string> };
-  fs.rmSync(manifest, { recursive: true, force: true });
-  fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
-  for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
-    const to = within(code, rel);
-    fs.rmSync(to, { recursive: true, force: true });
-    fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.cpSync(path.join(trusted, rel), to, { recursive: true, verbatimSymlinks: true });
-    // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
-    recordedModes(to);
-  }
-  // The state the accepted cases judge is the candidate itself, as it is, not the copy they are run in, which
-  // holds the accepted regression's cases, data and plan beside the candidate's code. It is handed as the replay
-  // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
-  // its own, so no case sees more of it than the regression judges, or writes into it.
-  const tested = scratchCopy(candidate, true);
-  const handed = plannedData(trusted, code);
-  // A title is skipped in every file a run executes, so each file with cases to skip is run on its own, where its
-  // titles, each unique there, name only its own cases.
-  const alone = skip ? files.filter((file) => skip(file).length) : [];
-  return [
-    ...execute(
-      code,
-      files.filter((file) => !alone.includes(file)),
-      tested,
-      false,
-      handed,
-      [],
-      timeout,
-    ),
-    ...alone.flatMap((file) => execute(code, [file], tested, false, handed, skip!(file), timeout)),
-  ];
 }
 
 /**
