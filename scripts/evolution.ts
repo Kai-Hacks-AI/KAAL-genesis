@@ -123,6 +123,8 @@ type Frame = {
   names: string[];
   /** The modules its imports load, in the order they are evaluated: the order they are first imported in. */
   loads: string[];
+  /** Its export statements as it runs: what makes the namespace a case importing it sees. */
+  exports: string[];
 };
 
 /**
@@ -191,7 +193,7 @@ function frameOf(file: string, text: string, whole = text): Frame {
     else rest.push(code(statement));
   }
   return {
-    loads: loadsOf(file, whole),
+    ...runtimeOf(file, whole),
     imports: sorted(imports),
     statements: rest.filter(Boolean),
     names: sorted(codeTokens(whole).flatMap((t) => (t.kind === "name" ? [t.text] : []))),
@@ -208,38 +210,32 @@ export function loaderFor(file: string): "ts" | "js" {
 }
 
 /**
- * The modules `text`, the module at `file`, loads as it is evaluated, in the order it loads them:
- * read from the module as the transformer that runs it compiles it, never
- * from its source, since an import only of types, or of names used only as
- * types, loads nothing. A module that does not compile loads nothing KAAL can
- * know of.
+ * What `text`, the module at `file`, does as it is evaluated that its cases
+ * can see besides its statements: the modules it loads, in the order it loads
+ * them, and its export statements, which make its namespace. Both are read
+ * from the module as the transformer that runs it compiles it, never from its
+ * source, since an import only of types, or of names used only as types,
+ * loads nothing, and an export only of types exports nothing. A module that
+ * does not compile loads and exports nothing KAAL can know of.
  */
-function loadsOf(file: string, text: string): string[] {
+function runtimeOf(file: string, text: string): { loads: string[]; exports: string[] } {
   let compiled: string;
   try {
     compiled = transformSync(text, { loader: loaderFor(file), format: "esm" }).code;
   } catch {
-    return [];
+    return { loads: [], exports: [] };
   }
   const loads: string[] = [];
+  const exports: string[] = [];
   for (const statement of statements(compiled)) {
     const first = statement[0]?.text;
     if (first !== "import" && first !== "export") continue;
     if (statement[1]?.text === "(" || statement[1]?.text === ".") continue;
+    if (first === "export") exports.push(code(statement));
     const named = moduleReferences(statement).find((r) => r.at !== undefined);
     if (named && named.at !== undefined && !loads.includes(named.value)) loads.push(named.value);
   }
-  return loads;
-}
-
-/** The index of the bracket closing the one opened at `open` in `toks`, or -1 where none does. */
-function closing(toks: Token[], open: number): number {
-  let depth = 0;
-  for (let k = open; k < toks.length; k++) {
-    if (["(", "[", "{"].includes(toks[k]!.text)) depth++;
-    else if ([")", "]", "}"].includes(toks[k]!.text) && --depth === 0) return k;
-  }
-  return -1;
+  return { loads, exports: sorted(exports) };
 }
 
 /** The top-level tokens of `toks`, each with the depth of brackets it is at. */
@@ -253,56 +249,47 @@ function depths(toks: Token[]): { t: Token; depth: number }[] {
   });
 }
 
+/** The words that come before the one name a declaration binds. */
+const DECLARES = new Set([
+  "export",
+  "declare",
+  "abstract",
+  "async",
+  "function",
+  "*",
+  "class",
+  "interface",
+  "type",
+  "enum",
+]);
+
 /**
  * Whether `statement`, the code of a top-level statement added beside
  * inherited cases, evaluates nothing as its module loads, and takes no name
- * `used` holds: a declaration of a type, a function, or a constant bound to a
- * function, under a name the old code never says. Anything else, a call, an
- * assignment, a value computed, a class or a declaration taking a name the
- * old code says, can change what the inherited cases do, however they read.
+ * `used` holds. Whether it evaluates anything is the transformer's to say, not
+ * KAAL's: compiled alone as `loader` reads it, dropping every binding it can
+ * drop without changing what runs, nothing is left of it. So a call, an
+ * assignment, a value computed or a class with code of its own is kept, and can
+ * change what the inherited cases do, however they read. The name it declares,
+ * the one after its declaring words, must be new, and it declares only that
+ * one: the transformer drops a pure binding whatever name it takes.
  */
-function inert(statement: string, used: Set<string>): boolean {
-  let toks = tokens(statement).filter((t) => t.kind !== "comment");
-  // What a module exports is part of what a case importing it sees, as its namespace, however inert the value: only
-  // an exported type, erased as it runs, adds nothing there.
-  if (toks[0]?.text === "export" && !["type", "interface"].includes(toks[1]?.text ?? "")) return false;
-  while (toks[0]?.text === "export" || toks[0]?.text === "declare") toks = toks.slice(1);
-  const [first, second, third] = toks;
-  if (!first || !second) return false;
-  const top = depths(toks).filter((d) => d.depth === 0);
-  if (top.some((d) => d.t.text === ",")) return false;
-  const fresh = (name: Token | undefined) => name?.kind === "name" && !used.has(name.text);
-  if (first.text === "interface") return fresh(second);
-  if (first.text === "type") return fresh(second) && (third?.text === "=" || third?.text === "<");
-  const fn = first.text === "async" ? toks.slice(1) : toks;
-  if (fn[0]?.text === "function") return fresh(fn[1]?.text === "*" ? fn[2] : fn[1]);
-  if (!["const", "let", "var"].includes(first.text) || !fresh(second)) return false;
-  // Bound to a function, and to nothing else: what follows its = is one function expression, whole, or an arrow whose
-  // head is all it begins with. A function called where it is written, as function () {}(), runs as the module loads.
-  const eq = top.findIndex((d) => d.t.text === "=");
-  if (eq < 0) return false;
-  let all = toks.slice(toks.indexOf(top[eq]!.t) + 1);
-  if (all.at(-1)?.text === ";") all = all.slice(0, -1);
-  if (!all.length) return false;
-  const expression = all[0]!.text === "async" ? all.slice(1) : all;
-  if (expression[0]?.text === "function") {
-    // Its body is the first block after its parameters; nothing may follow the block that closes it.
-    const params = expression.findIndex((t) => t.text === "(");
-    const close = params < 0 ? -1 : closing(expression, params);
-    const body = close < 0 ? -1 : expression.findIndex((t, k) => k > close && t.text === "{");
-    return body >= 0 && closing(expression, body) === expression.length - 1;
+function inert(statement: string, used: Set<string>, loader: "ts" | "js"): boolean {
+  const toks = tokens(statement).filter((t) => t.kind !== "comment");
+  let k = 0;
+  while (DECLARES.has(toks[k]?.text ?? "") || (toks[k]?.text === "const" && toks[k + 1]?.text === "enum")) k++;
+  if (["const", "let", "var"].includes(toks[k]?.text ?? "")) k++;
+  if (k > 0 && toks[k]?.kind === "name") {
+    if (used.has(toks[k]!.text)) return false;
+    if (depths(toks).some((d) => d.depth === 0 && d.t.text === ",")) return false;
   }
-  const head = expression;
-  const arrow = depths(head).findIndex((d) => d.depth === 0 && d.t.text === "=>");
-  if (arrow < 0) return false;
-  const before = head.slice(0, arrow);
-  // A block body is the whole of what follows the arrow; an expression body runs only when the function is called.
-  if (head[arrow + 1]?.text === "{" && closing(head, arrow + 1) !== head.length - 1) return false;
-  return (
-    (before.length === 1 && before[0]!.kind === "name") ||
-    (["(", "<"].includes(before[0]!.text) &&
-      !depths(before).some((d) => d.depth === 0 && ["=", "?"].includes(d.t.text)))
-  );
+  try {
+    // No annotation calling a call pure is trusted: the call still runs.
+    const compiled = transformSync(statement, { loader, format: "esm", treeShaking: true, ignoreAnnotations: true });
+    return compiled.code.trim() === "";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -310,10 +297,10 @@ function inert(statement: string, used: Set<string>): boolean {
  * change it: every binding it imported, and every other statement, in order,
  * as it was. An import added beside them binds from a module the file already
  * loads, or from Node itself, so no module it did not load runs; any other
- * statement added evaluates nothing, as \`inert\` says. Anything else added is
+ * statement added evaluates nothing, as `inert` says. Anything else added is
  * a change to every case of the module, whatever the cases say.
  */
-function keepsFrame(before: Frame, after: Frame): boolean {
+function keepsFrame(before: Frame, after: Frame, loader: "ts" | "js"): boolean {
   if (!before.imports.every((b) => after.imports.includes(b))) return false;
   // Imported modules are evaluated in the order they are first imported, so what they do in that order is kept only
   // where it still is that order.
@@ -321,6 +308,8 @@ function keepsFrame(before: Frame, after: Frame): boolean {
   const own = (loads: string[]) => loads.filter((m) => !m.startsWith("node:"));
   if (canonical(own(after.loads).filter((m) => before.loads.includes(m))) !== canonical(own(before.loads)))
     return false;
+  // What a module exports is part of what a case importing it sees, as its namespace, however inert the value.
+  if (canonical(after.exports) !== canonical(before.exports)) return false;
   const used = new Set(before.names);
   // A module loaded now that was not loaded before runs its code beside the cases, however it came to be loaded: by
   // an import added, or by a name imported only as a type coming to be used as a value. Only Node's own may.
@@ -339,7 +328,7 @@ function keepsFrame(before: Frame, after: Frame): boolean {
     at = found + 1;
   }
   added.push(...after.statements.slice(at));
-  return added.every((statement) => inert(statement, used));
+  return added.every((statement) => inert(statement, used, loader));
 }
 
 /** The end of the call opened by the first `(` from `start` in `text`, with the `;` that ends its statement, if any. */
@@ -515,14 +504,19 @@ export function redefined(before: Definition, after: Definition, candidate: stri
   if (before.claim !== after.claim) return "its claim is another";
   if (before.computed.length)
     return `${before.computed.join(", ")} imports what is named only as it runs, so what defines it cannot be compared`;
-  if (!keepsFrame(before.frame, after.frame)) return `${after.file} no longer states what it did around its cases`;
+  if (!keepsFrame(before.frame, after.frame, loaderFor(after.file)))
+    return `${after.file} no longer states what it did around its cases`;
   for (const [module, was] of Object.entries(before.loaders)) {
     const stat = fs.lstatSync(path.join(candidate, module), { throwIfNoEntry: false });
     if (!stat?.isFile()) return `${module}, which it reaches, is gone`;
     if (typeof was === "string") {
       if (held(candidate, module)[module] !== was) return `${module}, which it reaches, holds other than it did`;
     } else if (
-      !keepsFrame(was, frameOf(module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")))
+      !keepsFrame(
+        was,
+        frameOf(module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")),
+        loaderFor(module),
+      )
     )
       return `${module}, which it reaches, no longer states what it did`;
   }

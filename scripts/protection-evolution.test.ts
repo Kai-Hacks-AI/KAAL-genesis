@@ -336,17 +336,25 @@ test("a case is defined by its claim, what its file states around its cases, the
     "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
   ]);
   // A value a loader comes to export is seen by a case importing its namespace, however inert; a type is not.
-  assert.deepEqual(
-    changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => `${t}export const bypass = () => {};\n`)),
-    [
-      "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
-      "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
-    ],
-  );
-  assert.deepEqual(
-    changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => `${t}export type Who = string;\n`)),
-    [],
-  );
+  for (const added of [
+    "export const bypass = () => {};",
+    "const bypass = () => {};\nexport { bypass };",
+    'export * from "./test-data/check.mjs";',
+  ])
+    assert.deepEqual(
+      changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => `${t}${added}\n`)),
+      [
+        "says goodbye to each name its fixture lists: scripts/test-data.ts, which it reaches, no longer states what it did",
+        "greets nobody as its golden file says: scripts/test-data.ts, which it reaches, no longer states what it did",
+      ],
+      added,
+    );
+  for (const added of [
+    "export type Who = string;",
+    "export interface Whom {\n  name: string;\n}",
+    "type Where = string;\nexport type { Where };",
+  ])
+    assert.deepEqual(changes(edited(succeeding(R0), "scripts/test-data.ts", (t) => `${t}${added}\n`)), [], added);
   // In JavaScript, an import loads its module even where what it binds is used for nothing.
   assert.deepEqual(
     changes(
@@ -378,10 +386,15 @@ test("a case is defined by its claim, what its file states around its cases, the
   for (const [added, why] of [
     ["verify = () => {};", "an assignment disabling what the frame asserts"],
     ["function Number(text: string) {\n  return 3;\n}", "a declaration taking a name the cases use"],
+    ["const { Number } = { Number: () => 3 };", "a destructuring taking a name the cases use"],
+    ["const fresh = 1,\n  Number = () => 3;", "a second declaration taking a name the cases use"],
     ["const helper = verify(3);", "a value computed as the module loads"],
     ["const fresh = function () {\n  verify = () => {};\n}();", "a function called where it is written"],
     ["const fresh = (function () {\n  verify = () => {};\n})();", "a wrapped function called where it is written"],
     ["const fresh = (() => {\n  verify = () => {};\n})();", "an arrow called where it is written"],
+    ["const fresh = /* @__PURE__ */ verify(3);", "a call annotated as pure, which still runs"],
+    ["class Fresh {\n  static {\n    verify = () => {};\n  }\n}", "a class whose static block runs as it is declared"],
+    ["namespace Fresh {\n  verify = () => {};\n}", "a namespace, whose body runs as it is declared"],
   ] as const)
     assert.deepEqual(
       cases(
