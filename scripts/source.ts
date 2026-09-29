@@ -310,15 +310,78 @@ export function templatePrefix(t: Token): { text: string; computed: boolean } | 
   return text === undefined ? undefined : { text, computed };
 }
 
-/** Whether the token at `i` of `toks` names a module to import, not a value: after `import` or `from`, or passed to `import()` or `require()`. */
+/**
+ * A module a module's code refers to: by a literal it can be read from, at
+ * `at` among the tokens, with its `value`; or by what is computed as it runs,
+ * which nothing can read before it runs.
+ */
+export type ModuleReference = { at: number; value: string } | { at?: undefined; computed: true };
+
+const references = new WeakMap<Token[], ModuleReference[]>();
+
+/**
+ * Every module `toks`, a module's code without comments, refers to: after
+ * \`import\` or \`from\`, the string naming it; passed to \`import()\` or
+ * \`require()\`, its first argument, read to the bracket that closes it,
+ * however many parentheses wrap it, and a literal only when it is the whole of
+ * that argument. The one reading of which modules code names, so nothing
+ * that names a module is read as a value, and nothing computed is read as a name.
+ */
+export function moduleReferences(toks: Token[]): ModuleReference[] {
+  const known = references.get(toks);
+  if (known) return known;
+  const found: ModuleReference[] = [];
+  toks.forEach((t, i) => {
+    const before = toks[i - 1];
+    if (t.kind === "string" && before?.kind === "name" && (before.text === "from" || before.text === "import")) {
+      const value = stringValue(t);
+      found.push(value === undefined ? { computed: true } : { at: i, value });
+      return;
+    }
+    const call =
+      t.kind === "name" &&
+      (t.text === "import" || t.text === "require") &&
+      toks[i + 1]?.text === "(" &&
+      before?.text !== ".";
+    if (!call) return;
+    // The first argument: what lies between the call's parenthesis and the one closing it, up to a comma outside any.
+    let depth = 0;
+    let end = i + 2;
+    for (; end < toks.length; end++) {
+      const x = toks[end]!.text;
+      if (depth === 0 && (x === ")" || x === ",")) break;
+      if (["(", "[", "{"].includes(x)) depth++;
+      else if ([")", "]", "}"].includes(x)) depth--;
+    }
+    let from = i + 2;
+    let to = end;
+    // Parentheses wrapping all of it change nothing it names.
+    while (to - from >= 3 && toks[from]!.text === "(" && toks[to - 1]!.text === ")") {
+      let d = 0;
+      let wraps = true;
+      for (let k = from; k < to - 1; k++) {
+        if (toks[k]!.text === "(") d++;
+        else if (toks[k]!.text === ")") d--;
+        if (d === 0) {
+          wraps = false;
+          break;
+        }
+      }
+      if (!wraps) break;
+      from++;
+      to--;
+    }
+    const only = to - from === 1 ? toks[from]! : undefined;
+    const template = only && templatePrefix(only);
+    const value =
+      only?.kind === "string" ? stringValue(only) : template && !template.computed ? template.text : undefined;
+    found.push(value === undefined ? { computed: true } : { at: from, value });
+  });
+  references.set(toks, found);
+  return found;
+}
+
+/** Whether the token at `i` of `toks` is the literal naming a module, as \`moduleReferences\` reads them. */
 export function isSpecifier(toks: Token[], i: number): boolean {
-  const before = toks[i - 1];
-  const twoBefore = toks[i - 2];
-  return (
-    (before?.kind === "name" && (before.text === "from" || before.text === "import")) ||
-    (before?.text === "(" &&
-      twoBefore?.kind === "name" &&
-      (twoBefore.text === "import" || twoBefore.text === "require") &&
-      toks[i - 3]?.text !== ".")
-  );
+  return moduleReferences(toks).some((r) => r.at === i);
 }

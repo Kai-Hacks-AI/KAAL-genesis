@@ -12,6 +12,7 @@ import {
   codeTokens,
   interpolations,
   isSpecifier,
+  moduleReferences,
   statements,
   stringValue,
   templatePrefix,
@@ -425,27 +426,12 @@ export function definitions(state: string): Definition[] {
 
 /** The specifiers a module imports. */
 function tokensSpecifiers(source: string): { specifiers: string[]; computed: boolean } {
-  const toks = tokens(source).filter((t) => t.kind !== "comment");
-  let computed = false;
-  const specifiers = toks.flatMap((t, i) => {
-    // After \`import\` or \`from\`, only a string names a module; in a call, whatever is passed does.
-    if (!isSpecifier(toks, i) || (t.kind !== "string" && toks[i - 1]?.text !== "(")) return [];
-    const template = templatePrefix(t);
-    // Passed to import() or require(), a literal names the module only when it is the whole argument: anything joined
-    // to it, such as "./dir/" + name, is computed as it runs.
-    const whole = toks[i - 1]?.text !== "(" || [")", ","].includes(toks[i + 1]?.text ?? "");
-    const value = !whole
-      ? undefined
-      : t.kind === "string"
-        ? stringValue(t)
-        : template && !template.computed
-          ? template.text
-          : undefined;
+  const read = moduleReferences(tokens(source).filter((t) => t.kind !== "comment"));
+  return {
+    specifiers: read.flatMap((r) => (r.at === undefined ? [] : [r.value])),
     // A module named by what is computed as it runs: which one, nothing can say before it runs.
-    if (value === undefined) computed = true;
-    return value === undefined ? [] : [value];
-  });
-  return { specifiers, computed };
+    computed: read.some((r) => r.at === undefined),
+  };
 }
 
 /**

@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { type Change, definitions, evolution, redefined, witnesses } from "./evolution.js";
-import { interpolations, stringValue, templatePrefix, tokens } from "./source.js";
+import { interpolations, moduleReferences, stringValue, templatePrefix, tokens } from "./source.js";
 import { PLAN } from "./links.js";
 import { evolvedRegression, nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
 import { regressionIdentity } from "./regression.js";
@@ -460,6 +460,33 @@ test("the reader of a case's source tells code from strings, templates, regular 
   const unknown = definitions(state)[1]!;
   assert.deepEqual(unknown.computed, ["src/loader.ts"]);
   assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts imports what is named only as it runs/);
+  // Which modules code names is read one way: however a literal is wrapped, it names its module only when it is the
+  // whole of what is passed, and anything else passed is computed as it runs.
+  const named = (text: string) =>
+    moduleReferences(tokens(text).filter((t) => t.kind !== "comment")).map((r) =>
+      r.at === undefined ? "computed" : r.value,
+    );
+  assert.deepEqual(
+    named(
+      [
+        'import a from "./a.js";',
+        'export * from "./b.js";',
+        'import "./c.js";',
+        'await import(("./d.js"));',
+        'await import(((`./e.js`)), { with: { type: "json" } });',
+        'require(("./f.js"));',
+        'x.require("./not-a-module.js");',
+        "import.meta.url;",
+      ].join("\n"),
+    ),
+    ["./a.js", "./b.js", "./c.js", "./d.js", "./e.js", "./f.js"],
+  );
+  assert.deepEqual(named('import((m)); import(("./" + m)); require((`./${m}`)); import(("./a.js") + m);'), [
+    "computed",
+    "computed",
+    "computed",
+    "computed",
+  ]);
   // So is one named by a literal with anything joined to it: the literal is not the module's name.
   for (const call of ['import("./" + m + ".js")', 'require("./" + m)'])
     (fs.writeFileSync(path.join(state, "src/loader.ts"), `export const load = (m: string) => ${call};\n`),
