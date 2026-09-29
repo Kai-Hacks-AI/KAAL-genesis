@@ -318,6 +318,24 @@ test("a case is defined by its claim, what its file states around its cases, the
   );
   assert.deepEqual(changes(added), []);
   assert.equal(definitions(added).length, definitions(R0).length + 1);
+  // A line break is layout, except where it ends a statement: after `return`, the assertion no longer runs.
+  const returning = succeeding(
+    edited(succeeding(R0), CASES, greetsAs('  return assert.equal(greet("x"), "hello x");')),
+  );
+  const since = new Map(definitions(returning).map((d) => [d.title, d]));
+  const redefinedFrom = (candidate: string) =>
+    definitions(candidate).flatMap((d) => {
+      const why = since.has(d.title) && redefined(since.get(d.title)!, d, candidate);
+      return why ? [`${d.title}: ${why}`] : [];
+    });
+  assert.deepEqual(
+    redefinedFrom(edited(succeeding(returning), CASES, (t) => t.replace("return assert", "return assert\n    "))),
+    [],
+  );
+  assert.deepEqual(
+    redefinedFrom(edited(succeeding(returning), CASES, (t) => t.replace("return assert", "return\n    assert"))),
+    ["greets: its claim is another"],
+  );
   // What every case of a file shares, changed: each of them is another case now.
   assert.deepEqual(
     changes(
@@ -510,9 +528,9 @@ test("the reader of a case's source tells code from strings, templates, regular 
   fs.writeFileSync(path.join(state, "scripts/x.test.ts"), cases);
   const [computed, shouts] = definitions(state);
   // Each case is its whole statement, whatever its strings and patterns hold, and nothing of the other.
-  assert.match(computed!.claim, /assert \. match \( "\}\);" , \/\\\)\/ \) ; \} \) ;$/);
+  assert.match(computed!.claim, /assert\.match\("\}\);",\/\\\)\/\)\}\);$/);
   assert.ok(!computed!.claim.includes("shout"));
-  assert.equal(shouts!.claim, 'test ( "shouts" , ( ) => { assert . equal ( shout ( "a" , 1 ) , "A! xa" ) ; } ) ;');
+  assert.equal(shouts!.claim, 'test("shouts",()=>{assert.equal(shout("a",1),"A! xa")});');
   assert.deepEqual(computed!.frame.statements, []);
   // Data named by a template: the directory its certain part names.
   assert.deepEqual(Object.keys(computed!.data).sort(), ["scripts/fixtures/a.txt"]);

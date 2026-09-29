@@ -182,6 +182,22 @@ function bindings(statement: Token[]): string[] {
   return out.length ? out : [`${from}|`];
 }
 
+/**
+ * What `text`, code of the module at `file`, says, as the transformer that
+ * runs it reads it: parsed, with its semicolons inserted where a line break
+ * ends a statement, and printed back without comments, layout or types. Two
+ * texts saying the same are the same here however laid out; a line break that
+ * changes what runs, as after `return`, changes it. Text that does not parse
+ * alone is kept as it is written, so any change to it is a change.
+ */
+function spoken(file: string, text: string): string {
+  try {
+    return transformSync(text, { loader: loaderFor(file), minifyWhitespace: true, legalComments: "none" }).code.trim();
+  } catch {
+    return `\0${text}`;
+  }
+}
+
 /** The frame of a module's text: its imports' bindings and its other top-level statements. */
 function frameOf(file: string, text: string, whole = text): Frame {
   const imports: string[] = [];
@@ -190,7 +206,7 @@ function frameOf(file: string, text: string, whole = text): Frame {
     const first = statement[0];
     if (first?.kind === "name" && first.text === "import" && statement[1]?.text !== "(")
       imports.push(...bindings(statement));
-    else rest.push(code(statement));
+    else rest.push(spoken(file, text.slice(first!.start, statement.at(-1)!.end)));
   }
   return {
     ...runtimeOf(file, whole),
@@ -249,35 +265,25 @@ function depths(toks: Token[]): { t: Token; depth: number }[] {
   });
 }
 
-/** The words that come before the one name a declaration binds. */
-const DECLARES = new Set([
-  "export",
-  "declare",
-  "abstract",
-  "async",
-  "function",
-  "*",
-  "class",
-  "interface",
-  "type",
-  "enum",
-]);
+/** The words that come before the one name a declaration binds, in JavaScript as the transformer prints it. */
+const DECLARES = new Set(["export", "async", "function", "*", "class"]);
 
 /**
- * Whether `statement`, the code of a top-level statement added beside
- * inherited cases, evaluates nothing as its module loads, and takes no name
- * `used` holds. Whether it evaluates anything is the transformer's to say, not
- * KAAL's: compiled alone as `loader` reads it, dropping every binding it can
- * drop without changing what runs, nothing is left of it. So a call, an
- * assignment, a value computed or a class with code of its own is kept, and can
- * change what the inherited cases do, however they read. The name it declares,
- * the one after its declaring words, must be new, and it declares only that
- * one: the transformer drops a pure binding whatever name it takes.
+ * Whether `statement`, a top-level statement added beside inherited cases, as
+ * the transformer prints it, evaluates nothing as its module loads, and takes
+ * no name `used` holds. Whether it evaluates anything is the transformer's to
+ * say, not KAAL's: compiled alone, dropping every binding it can drop without
+ * changing what runs, nothing is left of it. So a call, an assignment, a value
+ * computed or a class with code of its own is kept, and can change what the
+ * inherited cases do, however they read. A type declared was never printed. The
+ * name it declares, the one after its declaring words, must be new, and it
+ * declares only that one: the transformer drops a pure binding whatever name it
+ * takes.
  */
-function inert(statement: string, used: Set<string>, loader: "ts" | "js"): boolean {
+function inert(statement: string, used: Set<string>): boolean {
   const toks = tokens(statement).filter((t) => t.kind !== "comment");
   let k = 0;
-  while (DECLARES.has(toks[k]?.text ?? "") || (toks[k]?.text === "const" && toks[k + 1]?.text === "enum")) k++;
+  while (DECLARES.has(toks[k]?.text ?? "")) k++;
   if (["const", "let", "var"].includes(toks[k]?.text ?? "")) k++;
   if (k > 0 && toks[k]?.kind === "name") {
     if (used.has(toks[k]!.text)) return false;
@@ -285,7 +291,12 @@ function inert(statement: string, used: Set<string>, loader: "ts" | "js"): boole
   }
   try {
     // No annotation calling a call pure is trusted: the call still runs.
-    const compiled = transformSync(statement, { loader, format: "esm", treeShaking: true, ignoreAnnotations: true });
+    const compiled = transformSync(statement, {
+      loader: "js",
+      format: "esm",
+      treeShaking: true,
+      ignoreAnnotations: true,
+    });
     return compiled.code.trim() === "";
   } catch {
     return false;
@@ -300,7 +311,7 @@ function inert(statement: string, used: Set<string>, loader: "ts" | "js"): boole
  * statement added evaluates nothing, as `inert` says. Anything else added is
  * a change to every case of the module, whatever the cases say.
  */
-function keepsFrame(before: Frame, after: Frame, loader: "ts" | "js"): boolean {
+function keepsFrame(before: Frame, after: Frame): boolean {
   if (!before.imports.every((b) => after.imports.includes(b))) return false;
   // Imported modules are evaluated in the order they are first imported, so what they do in that order is kept only
   // where it still is that order.
@@ -328,7 +339,7 @@ function keepsFrame(before: Frame, after: Frame, loader: "ts" | "js"): boolean {
     at = found + 1;
   }
   added.push(...after.statements.slice(at));
-  return added.every((statement) => inert(statement, used, loader));
+  return added.every((statement) => inert(statement, used));
 }
 
 /** The end of the call opened by the first `(` from `start` in `text`, with the `;` that ends its statement, if any. */
@@ -471,7 +482,7 @@ export function definitions(state: string): Definition[] {
       return {
         file,
         title: c.title,
-        claim: code(tokens(own)),
+        claim: spoken(file, own),
         frame,
         loaders,
         data: { ...data, ...namedData(state, file, codeTokens(own)) },
@@ -504,19 +515,14 @@ export function redefined(before: Definition, after: Definition, candidate: stri
   if (before.claim !== after.claim) return "its claim is another";
   if (before.computed.length)
     return `${before.computed.join(", ")} imports what is named only as it runs, so what defines it cannot be compared`;
-  if (!keepsFrame(before.frame, after.frame, loaderFor(after.file)))
-    return `${after.file} no longer states what it did around its cases`;
+  if (!keepsFrame(before.frame, after.frame)) return `${after.file} no longer states what it did around its cases`;
   for (const [module, was] of Object.entries(before.loaders)) {
     const stat = fs.lstatSync(path.join(candidate, module), { throwIfNoEntry: false });
     if (!stat?.isFile()) return `${module}, which it reaches, is gone`;
     if (typeof was === "string") {
       if (held(candidate, module)[module] !== was) return `${module}, which it reaches, holds other than it did`;
     } else if (
-      !keepsFrame(
-        was,
-        frameOf(module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")),
-        loaderFor(module),
-      )
+      !keepsFrame(was, frameOf(module, fs.readFileSync(path.join(candidate, module), "utf8").replace(/\r\n/g, "\n")))
     )
       return `${module}, which it reaches, no longer states what it did`;
   }
