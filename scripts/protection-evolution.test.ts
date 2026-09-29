@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { type Change, definitions, redefined, witnesses } from "./evolution.js";
+import { type Change, definitions, evolution, redefined, witnesses } from "./evolution.js";
 import { interpolations, stringValue, templatePrefix, tokens } from "./source.js";
 import { PLAN } from "./links.js";
 import { evolvedRegression, nextRegression, protectionOf, regressionErrors } from "./next-regression.js";
@@ -419,4 +419,42 @@ test("the reader of a case's source tells code from strings, templates, regular 
   const unknown = definitions(state)[1]!;
   assert.deepEqual(unknown.computed, ["src/loader.ts"]);
   assert.match(redefined(unknown, unknown, state) ?? "", /src\/loader\.ts imports what is named only as it runs/);
+});
+
+// Why: requirements/protection-evolution/requirement.md
+test("each retirement is judged by the witnesses of the code its own cases reach, however many other retirements reach", () => {
+  const R0 = base();
+  // Adding's case and goodbye's case, each rewritten to claim the same: each reaches two witnesses, three between them.
+  const both = edited(
+    edited(succeeding(R0), CASES, (t) =>
+      t.replace("  assert.equal(add(1, 2), 3);", "  const sum = add(1, 2);\n  assert.equal(sum, 3);"),
+    ),
+    "scripts/bye.test.ts",
+    (t) => t.replace("assert.ok(bye(name).includes(says));", "assert.ok(bye(name).includes(says), name);"),
+  );
+  const derived = nextRegression(R0, both);
+  const judge = (max: number) =>
+    evolution(
+      R0,
+      both,
+      derived.protection,
+      protectionOf(both).protection,
+      derived.inherited,
+      derived.promises,
+      new Set(),
+      max,
+    )
+      .changes.filter((c) => c.verdict !== "strengthened")
+      .map((c) => `${c.verdict} ${c.what}`)
+      // Adding's case carries adding and the suite serving the plan: each retires, judged alike.
+      .filter((c, i, all) => all.indexOf(c) === i)
+      .sort();
+  assert.deepEqual(judge(2), [
+    'preserved scripts/bye.test.ts: "says goodbye to each name its fixture lists"',
+    `preserved ${CASES}: "adds"`,
+  ]);
+  assert.deepEqual(judge(1), [
+    'unresolved scripts/bye.test.ts: "says goodbye to each name its fixture lists"',
+    `unresolved ${CASES}: "adds"`,
+  ]);
 });

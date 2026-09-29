@@ -553,7 +553,8 @@ const saying = (o: Obligation) => (o.kind === "commitment" ? `helps prove ${o.pl
  * record gives up, as `derived` holds them; `promises` are what the candidate
  * newly promises, whose links FAR brings in; `refused` are the addresses of
  * the candidate's cases that do not pass as the next regression, which the
- * successor checks already refuse.
+ * successor checks already refuse. `maxWitnesses` is the most witnesses each
+ * retirement is judged by, counted over the code its own cases reach.
  */
 export function evolution(
   accepted: string,
@@ -563,6 +564,7 @@ export function evolution(
   inherited: Held[],
   promises: string[],
   refused: Set<string> = new Set(),
+  maxWitnesses = MAX_WITNESSES,
 ): { changes: Change[]; errors: string[] } {
   const changes: Change[] = [];
   const errors: string[] = [];
@@ -772,53 +774,65 @@ export function evolution(
     );
   }
   const toShow = accounting.filter((r) => r.by.length);
-  if (toShow.length) {
-    const modules = sorted(
-      [
-        ...toShow.flatMap((r) => inheritedDefs[r.i]?.subjects ?? []),
-        ...toShow.flatMap((r) => r.by.flatMap((k) => ownDefs[k]?.subjects ?? [])),
-      ].filter((m) => fs.lstatSync(path.join(candidate, m), { throwIfNoEntry: false })?.isFile()),
-    );
-    const found = witnesses(candidate, modules);
-    const unshown = (why: string) => {
-      for (const r of toShow) add("unresolved", named(inherited[r.i]!), `${r.why}; ${why}`);
-    };
-    if (!found.length)
-      unshown("no witness can be made of the code its cases reach, so nothing shows what it protected kept");
-    else if (found.length > MAX_WITNESSES)
-      unshown(
-        `its cases reach code with ${found.length} witnesses, more than the ${MAX_WITNESSES} a change is judged by`,
+  // Each retirement is judged by the witnesses of the code its own cases reach: the retiring case and those now
+  // carrying the obligation. Witnesses of code only another retirement reaches neither help nor count against it.
+  const held = (m: string) => fs.lstatSync(path.join(candidate, m), { throwIfNoEntry: false })?.isFile();
+  const reach = new Map(
+    toShow.map((r) => [
+      r,
+      sorted([...(inheritedDefs[r.i]?.subjects ?? []), ...r.by.flatMap((k) => ownDefs[k]?.subjects ?? [])]).filter(
+        held,
+      ),
+    ]),
+  );
+  const count = new Map([...new Set([...reach.values()].flat())].map((m) => [m, witnesses(candidate, [m]).length]));
+  const judged = toShow.filter((r) => {
+    const n = reach.get(r)!.reduce((sum, m) => sum + count.get(m)!, 0);
+    if (!n)
+      add(
+        "unresolved",
+        named(inherited[r.i]!),
+        `${r.why}; no witness can be made of the code its cases reach, so nothing shows what it protected kept`,
       );
-    else {
-      const oldAt = sorted(toShow.map((r) => address(inherited[r.i]!)));
-      const nowAt = sorted(toShow.flatMap((r) => r.by.map((k) => address(ownCases[k]!))));
-      const seen = detections(accepted, candidate, found, oldAt, nowAt);
-      for (const r of toShow) {
-        const retired = inherited[r.i]!;
-        const before = seen.old.get(address(retired))!;
-        const after = new Set(r.by.flatMap((k) => [...seen.now.get(address(ownCases[k]!))!]));
-        const lost = [...before].filter((w) => !after.has(w));
-        const where = (w: number) => `${found[w]!.module}:${found[w]!.line} ${found[w]!.from} → ${found[w]!.to}`;
-        if (!before.size)
-          add(
-            "unresolved",
-            named(retired),
-            `${r.why}; it detects none of the ${found.length} witnesses made of the code it reaches, so nothing shows what it protected kept`,
-          );
-        else if (lost.length)
-          add(
-            "reduced",
-            named(retired),
-            `${r.why}; what now ${saying(r.o)} no longer detects ${lost.map(where).join(", ")}, which it detected`,
-            `${named(retired)}: ${r.why}, and no acceptance record excludes it, but what now ${saying(r.o)} no longer detects ${lost.map(where).join(", ")}, which it detected`,
-          );
-        else
-          add(
-            "preserved",
-            named(retired),
-            `${r.why}; every one of the ${before.size} witnesses it detected is detected by what now ${saying(r.o)}`,
-          );
-      }
+    else if (n > maxWitnesses)
+      add(
+        "unresolved",
+        named(inherited[r.i]!),
+        `${r.why}; its cases reach code with ${n} witnesses, more than the ${maxWitnesses} a change is judged by`,
+      );
+    return n > 0 && n <= maxWitnesses;
+  });
+  if (judged.length) {
+    const found = witnesses(candidate, sorted(judged.flatMap((r) => reach.get(r)!)));
+    const oldAt = sorted(judged.map((r) => address(inherited[r.i]!)));
+    const nowAt = sorted(judged.flatMap((r) => r.by.map((k) => address(ownCases[k]!))));
+    const seen = detections(accepted, candidate, found, oldAt, nowAt);
+    const where = (w: number) => `${found[w]!.module}:${found[w]!.line} ${found[w]!.from} → ${found[w]!.to}`;
+    for (const r of judged) {
+      const retired = inherited[r.i]!;
+      const own = new Set(found.flatMap((w, n) => (reach.get(r)!.includes(w.module) ? [n] : [])));
+      const before = new Set([...seen.old.get(address(retired))!].filter((w) => own.has(w)));
+      const after = new Set(r.by.flatMap((k) => [...seen.now.get(address(ownCases[k]!))!]));
+      const lost = [...before].filter((w) => !after.has(w));
+      if (!before.size)
+        add(
+          "unresolved",
+          named(retired),
+          `${r.why}; it detects none of the ${own.size} witnesses made of the code it reaches, so nothing shows what it protected kept`,
+        );
+      else if (lost.length)
+        add(
+          "reduced",
+          named(retired),
+          `${r.why}; what now ${saying(r.o)} no longer detects ${lost.map(where).join(", ")}, which it detected`,
+          `${named(retired)}: ${r.why}, and no acceptance record excludes it, but what now ${saying(r.o)} no longer detects ${lost.map(where).join(", ")}, which it detected`,
+        );
+      else
+        add(
+          "preserved",
+          named(retired),
+          `${r.why}; every one of the ${before.size} witnesses it detected is detected by what now ${saying(r.o)}`,
+        );
     }
   }
   return { changes, errors: [...new Set(errors)] };
