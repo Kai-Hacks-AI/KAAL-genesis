@@ -16,6 +16,10 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
   assert.deepEqual(ideaErrors(IDEAS), []);
   assert.deepEqual(readIdeas(IDEAS), [
     {
+      name: "composable-capabilities",
+      idea: "KAAL could be assembled from independently birthable capability packages, with Genesis composing a selected configuration of required dependencies and optional integrations and establishing that configuration's initial sealed Regression R0",
+    },
+    {
       name: "modular-kaal",
       idea: "KAAL can become modular through packages whose dependencies close the selected capability composition",
     },
