@@ -28,6 +28,10 @@ test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possi
       idea: "KAAL's work could stay observable to the Human, be challenged by agents other than the one producing it, and turn the observations that matter into durable experience that informs its next goals, remembered provisionally as HOW ARE WE DOING?",
     },
     {
+      name: "less-is-more",
+      idea: "LESS IS MORE, remembered as a possible guiding principle: Let Experience Support Simple Implementations So More Optimization Reaches Enhancements",
+    },
+    {
       name: "modular-kaal",
       idea: "KAAL can become modular through packages whose dependencies close the selected capability composition",
     },
