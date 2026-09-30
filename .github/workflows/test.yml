@@ -1,6 +1,8 @@
-# Runs the full suite, typecheck and format check on Linux and Windows. Which
-# cases run where is a Test Run concern; deciding it selectively would need a
-# Test Plan, not yet needed.
+# Runs the full suite, KAAL's Regression Test Plan, typecheck and format check
+# on Linux and Windows. How KAAL tests: test/strategy.md. Until KAAL derives
+# the current Regression Test Plan, the Plan is named here explicitly, as a
+# bootstrap: the first one, which supersedes nothing. Which cases run where is
+# not selected.
 #
 # Job names are unique across all workflows: required status checks select by
 # job name alone, so they must never be ambiguous and must not change when a
@@ -39,5 +41,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run testing:run -- change/regression-testing/26/09/30/01/test/regression.md
       - run: npm run typecheck
       - run: npm run format:check
