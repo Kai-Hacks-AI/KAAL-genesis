@@ -28,7 +28,7 @@ jobs:
       THIS_REPO: ${{ github.repository }}
     steps:
       # main's own checkout, never the change's: the rule lives in
-      # scripts/branch-guard.ts, tested there, and runs from main.
+      # scripts/guard-branch.ts, tested there, and runs from main.
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -37,4 +37,4 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx tsx scripts/branch-guard.ts
+      - run: npx tsx scripts/guard-branch.ts
