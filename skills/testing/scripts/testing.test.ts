@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateData, planData, rootData } from "./test-data.js";
-import { loaderArgs, readPlan, readPlanSuites, report, runPlan } from "./testing.js";
+import { loaderArgs, PLATFORMS, readPlan, readPlanSuites, report, runPlan } from "./testing.js";
 
 const RUN = fileURLToPath(new URL("./run.ts", import.meta.url));
 const outcomes = (run: ReturnType<typeof runPlan>) =>
@@ -18,8 +18,9 @@ test("a Plan collects its Suites, and each Suite every Case beneath it, in sorte
       place: "suites/mixed",
       concern: "Cases that prove nothing or fail.",
       cases: ["fails.test.ts", "no-test.test.ts", "skips.test.ts"],
+      conditions: [],
     },
-    { place: "suites/marked", concern: "The candidate carries its marker.", cases: ["marked.test.ts"] },
+    { place: "suites/marked", concern: "The candidate carries its marker.", cases: ["marked.test.ts"], conditions: [] },
   ]);
 });
 
@@ -131,6 +132,34 @@ test("a Case runs under the runner's loaders, never its other options, however e
     "--import=./other.mjs",
     "-r",
     "hook.cjs",
+  ]);
+});
+
+test("a skipped test proves nothing unless its Suite declares it not applicable here, and a declaration must name a test its Case reports", () => {
+  const run = runPlan("plan.md", rootData("conditioned"));
+  assert.deepEqual(
+    run.observations.map((o) => [o.case, o.passed, o.notApplicable]),
+    [
+      ["suites/declared/skips.test.ts", true, ["does not apply # here"]],
+      ["suites/elsewhere/skips.test.ts", false, []],
+      ["suites/stale/applies.test.ts", false, []],
+    ],
+  );
+  assert.equal(run.holds, false);
+  assert.match(report(run), /\npass suites\/declared\/skips\.test\.ts \(1 not applicable\)\nfail /);
+});
+
+test("refuses conditions that are not a list, not objects, not on a Case of the Suite, twice for a test, on unknown platforms or without a reason", () => {
+  assert.deepEqual(readPlanSuites(rootData("broken-conditions"), "plan.md").errors, [
+    'suites/broken/suite.json: test "t" of "suites/broken/a.test.ts" has two conditions',
+    'suites/broken/suite.json: unknown "why" in a condition',
+    'suites/broken/suite.json: condition names "suites/other/a.test.ts", not a Case of this Suite',
+    "suites/broken/suite.json: a condition's test must be a non-empty name",
+    `suites/broken/suite.json: a condition's notOn must list platforms among ${PLATFORMS.join(", ")}`,
+    "suites/broken/suite.json: a condition must say because why",
+    `suites/broken/suite.json: a condition's notOn must list platforms among ${PLATFORMS.join(", ")}`,
+    "suites/broken/suite.json: a condition must be an object",
+    "suites/listless/suite.json: conditions must be a list",
   ]);
 });
 
