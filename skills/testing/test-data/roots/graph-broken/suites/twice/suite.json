@@ -1,0 +1,4 @@
+{
+  "concern": "Names a Plan that exists, twice.",
+  "tests": ["plans/plan.md", "plans/plan.md"]
+}
