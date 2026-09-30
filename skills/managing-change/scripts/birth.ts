@@ -60,8 +60,12 @@ export function birthChange(input: Birth): string {
         fs.mkdirSync(level);
         created.push(level);
       } catch (e) {
-        // Another birth created the same level meanwhile: it is shared, not ours.
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+        // Something appeared at this level meanwhile. A directory another
+        // birth created is shared, not ours; anything else is never entered.
+        const stat = fs.lstatSync(level);
+        if (stat.isSymbolicLink()) throw new Error(`${level}: symlink in Change path`);
+        if (!stat.isDirectory()) throw new Error(`${level}: not a directory`);
       }
     }
     // An existing occurrence, even an empty one, is refused.

@@ -149,6 +149,26 @@ test("a birth that shares its levels with a Change born meanwhile beside it stil
   );
 });
 
+test("a birth refuses a level that appears meanwhile as a symlink, writing nothing through it", (t) => {
+  const root = scratchChanges("valid");
+  const before = tree(root);
+  const outside = fs.mkdtempSync(path.join(path.dirname(root), "outside-"));
+  const mkdir = fs.mkdirSync;
+  const level = path.resolve(root, "other");
+  // Fault injection: another process puts a symlink where this birth is about
+  // to create a level, after the path was checked. Built at run time because a
+  // symlink cannot be committed portably.
+  t.mock.method(fs, "mkdirSync", (dir: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
+    if (path.resolve(String(dir)) === level && !fs.existsSync(level)) fs.symlinkSync(outside, level, "dir");
+    return mkdir(dir, options);
+  });
+  assert.throws(() => birthChange({ root, lineage: "other", occurrence: "26/09/30/01" }), /symlink in Change path/);
+  t.mock.restoreAll();
+  assert.deepEqual(fs.readdirSync(outside), []);
+  fs.rmSync(level);
+  assert.deepEqual(tree(root), before);
+});
+
 test("traversal is deterministic: lineages by name, each lineage's occurrences in sorted order, whatever order they were born in", () => {
   const expected = ["change/26/09/30/01", "testing/26/09/30/01", "testing/26/09/30/02", "testing/26/10/01/01"];
   assert.deepEqual(identities(changeData("valid")), expected);
