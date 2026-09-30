@@ -1,0 +1,23 @@
+{
+  "unit": "change/regression-testing/26/09/30/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "test/feature.md",
+      "sha256": "bb874690eb6ec0d77c51b186c00a99a969b133be24e0bc6bc32c3d60fdd33473"
+    },
+    {
+      "path": "test/regression.md",
+      "sha256": "b0f2581b5662b5e87aa5ba5d1dfbeffb05386b51d3da22b4fb04132d59691466"
+    },
+    {
+      "path": "test/testing/plan.test.ts",
+      "sha256": "1a54b2801aef52740789bcdffbd4f223de50b2cb86240c5c511dfd4de6f2e597"
+    },
+    {
+      "path": "test/testing/suite.json",
+      "sha256": "ab166de4ec8dbf0cc9809be47b991fb6cc7750c467bf38b0eeb234b0852c1d69"
+    }
+  ],
+  "seal": "5c1361e586bbe7dfeceef60ef607f245e3ff3198b2caecf40bf0473695baae19"
+}

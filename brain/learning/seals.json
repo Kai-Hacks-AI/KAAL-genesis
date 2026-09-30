@@ -12,6 +12,12 @@
     ],
     "seal": "ccbdb92d3e9ba8abcd69cb7391e4f2267ad97b324018d43500ad2a9ccb56c6f3"
   },
+  "regression-testing": {
+    "units": [
+      "regression-testing/26/09/30/01"
+    ],
+    "seal": "8f9ea2f367c88c0a086d3c748ea3b239b1bd61615beb12dea0a2a3c311eb3d7a"
+  },
   "requirements": {
     "units": [
       "requirements/26/09/30/01",

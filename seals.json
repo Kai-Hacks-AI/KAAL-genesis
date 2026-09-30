@@ -1,4 +1,10 @@
 {
+  "regression-testing": {
+    "units": [
+      "change/regression-testing/26/09/30/01"
+    ],
+    "seal": "5c1361e586bbe7dfeceef60ef607f245e3ff3198b2caecf40bf0473695baae19"
+  },
   "requirements": {
     "units": [
       "change/requirements/26/09/30/01",
