@@ -5,7 +5,7 @@ description: Create, read and validate Requirements, durable Markdown statements
 
 # Managing Requirements
 
-A Requirement is durable meaning: a Markdown file stating, for Humans and agents, something that must hold. Its YAML frontmatter holds the one fact this skill owns, its `id`; the body is the meaning. Other frontmatter may sit beside `id`: this skill does not read it, gives it no meaning and does not refuse it, so whatever owns it may interpret it. Requirements live as files directly in a directory the caller supplies, `<dir>/<id>.md`; the `*.md` files directly in it are the Requirements, and nothing else in or near it is this skill's:
+A Requirement is durable meaning: a Markdown file stating, for Humans and agents, something that must hold. Its YAML frontmatter holds the one fact this skill owns, its `id`; the body is the meaning, kept exactly as written: only the blank lines before it and the whitespace after it are framing, so the indentation of its first line is content. Other frontmatter may sit beside `id`: this skill does not read it, gives it no meaning and does not refuse it, so whatever owns it may interpret it. Requirements live as files directly in a directory the caller supplies, `<dir>/<id>.md`; the `*.md` files directly in it are the Requirements, and nothing else in or near it is this skill's:
 
 ```
 ---
@@ -15,7 +15,7 @@ id: works-offline
 The system works without a network connection.
 ```
 
-The `id` is the Requirement's identity. It is portable: lowercase kebab-case (`a-z`, `0-9`, single hyphens), never a Windows reserved device name such as `con` or `nul`, and equal to the file's name without `.md`. It derives from no version control, hosting or location: moving the file, or the directory, or the repository, changes neither identity nor meaning. An id is never reused for different meaning. A Requirement that later replaces another is a new Requirement with a new id; this skill keeps no relation between them.
+The `id` is the Requirement's identity. It is portable: lowercase kebab-case (`a-z`, `0-9`, single hyphens), never a Windows reserved device name such as `con` or `nul`, at most 64 characters so that `<id>.md` is always a portable file name, and equal to the file's name without `.md`. It derives from no version control, hosting or location: moving the file, or the directory, or the repository, changes neither identity nor meaning. An id is never reused for different meaning. A Requirement that later replaces another is a new Requirement with a new id; this skill keeps no relation between them.
 
 Other material references a Requirement by its `id`: the reference belongs to the referrer, which may name any number of Requirements, and any number of referrers may name the same one. A Requirement never names what refers to it.
 

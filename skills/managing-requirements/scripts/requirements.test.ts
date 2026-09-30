@@ -151,3 +151,29 @@ test("a byte order mark, and the same root supplied twice, change nothing; a dup
   assert.equal(errors.length, 1);
   assert.deepEqual(resolve(requirements, ["a"]).errors, ["a: no such Requirement"]);
 });
+
+test("meaning is kept exactly as written, apart from its framing", () => {
+  const dir = scratch();
+  const indented = "    const code = 1;\n\nThen prose.\n   ";
+  createRequirement(dir, "a", "\n\n" + indented);
+  const { requirements } = readRequirements([dir]);
+  assert.equal(requirements[0].meaning, "    const code = 1;\n\nThen prose.");
+  // The same text hand-authored, and a second create-read, read back the same.
+  fs.writeFileSync(path.join(dir, "b.md"), "---\nid: b\n---\n\n" + indented + "\n");
+  assert.equal(readRequirements([dir]).requirements[1].meaning, requirements[0].meaning);
+});
+
+test("an id is refused when its file name could not be portable, by create and validate alike", () => {
+  const dir = scratch();
+  const ok = "a".repeat(64);
+  const long = "a".repeat(65);
+  createRequirement(dir, ok, "x");
+  assert.throws(() => createRequirement(dir, long, "x"), /longer than 64/);
+  fs.writeFileSync(path.join(dir, `${long}.md`), `---\nid: ${long}\n---\n\nx\n`);
+  const { requirements, errors } = readRequirements([dir]);
+  assert.deepEqual(
+    requirements.map((r) => r.id),
+    [ok],
+  );
+  assert.match(errors.join("\n"), /longer than 64/);
+});

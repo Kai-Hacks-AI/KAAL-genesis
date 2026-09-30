@@ -8,20 +8,33 @@ export type Requirement = { id: string; meaning: string; file: string };
 /** Windows reserves these device names as file names, with or without an extension. */
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
 
+/** Far inside the common 255-byte file name limit once `.md` is added, so every accepted id can be a file name. */
+export const MAX_ID = 64;
+
 /**
  * An id is the Requirement's identity and its file name, so it must resolve to
  * the same file on every supported platform: lowercase kebab-case rules out
  * case collisions, dots and separators, and Windows reserved names are refused.
  */
 export function idError(id: string): string | undefined {
+  if (id.length > MAX_ID) return `id "${id.slice(0, 16)}..." is longer than ${MAX_ID} characters`;
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) return `id "${id}" must be lowercase kebab-case (a-z, 0-9, single hyphens)`;
   if (RESERVED.test(id)) return `id "${id}" is reserved on Windows`;
   return undefined;
 }
 
+/**
+ * The meaning as written, less only its framing: whole blank lines before it
+ * and whitespace after it. Indentation of the first line is content (a
+ * Markdown code block starts with it), so it is never trimmed.
+ */
+export function framed(text: string): string {
+  return text.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
+}
+
 /** The text of a Requirement file: frontmatter holding only its id, then its meaning. */
 export function render(id: string, meaning: string): string {
-  return `---\n${YAML.stringify({ id }).trimEnd()}\n---\n\n${meaning.trim()}\n`;
+  return `---\n${YAML.stringify({ id }).trimEnd()}\n---\n\n${framed(meaning)}\n`;
 }
 
 /** Parses one Requirement file, or says why it is not one. `file` is only used to name errors. */
@@ -40,7 +53,7 @@ export function parse(text: string, file: string): Requirement | string {
   const error = idError(id);
   if (error) return `${file}: ${error}`;
   if (path.basename(file) !== `${id}.md`) return `${file}: file name must be ${id}.md`;
-  const meaning = match[2].trim();
+  const meaning = framed(match[2]);
   if (!meaning) return `${file}: a Requirement must state its meaning`;
   return { id, meaning, file };
 }
