@@ -12,12 +12,29 @@ import { kaalRequirements, REQUIREMENT_DIR, requirementRoots } from "./requireme
 // introduces inside its one occurrence. Why: brain/learning/requirements/26/09/30/01/nodes/managing-requirements.md
 const repo = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-requirements-"));
 
-test("KAAL's own Requirements are valid and each resolves by its id", () => {
+test("KAAL's own Requirements are valid, unique and each resolves by its id", () => {
   const { requirements, errors } = kaalRequirements();
   assert.deepEqual(errors, []);
-  const ids = ["git-independence", "github-independence", "linux-support", "windows-support"];
+  const ids = requirements.map((r) => r.id);
+  assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(resolve(requirements, ids).errors, []);
-  assert.deepEqual(requirements.map((r) => r.id).sort(), [...ids].sort());
+});
+
+test("a valid Requirement born in a new Change occurrence is discovered without any central list changing", () => {
+  const dir = repo();
+  fs.cpSync("change", path.join(dir, "change"), { recursive: true });
+  const before = kaalRequirements(dir);
+  assert.deepEqual(before.errors, []);
+  const root = path.join(dir, "change");
+  const born = birthChange({ root, lineage: "hotfix-probe", occurrence: "26/09/30/01" });
+  createRequirement(path.join(born, REQUIREMENT_DIR), "hotfix-probe-requirement", "It holds.");
+  const after = kaalRequirements(dir);
+  assert.deepEqual(after.errors, []);
+  assert.deepEqual(
+    after.requirements.map((r) => r.id).sort(),
+    [...before.requirements.map((r) => r.id), "hotfix-probe-requirement"].sort(),
+  );
+  assert.deepEqual(resolve(after.requirements, ["hotfix-probe-requirement"]).errors, []);
 });
 
 test("Requirements sit inside the Change occurrence, which gains no identity of their own", () => {
