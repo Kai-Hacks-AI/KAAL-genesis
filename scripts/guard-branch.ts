@@ -17,7 +17,7 @@ export interface PullRequestOrigin {
  * `kaal/hotfix/*`, the path for repairing accepted evidence, or from Dependabot.
  * Anything else, such as an unnamed agent branch or a fork, is refused.
  */
-export function branchGuardError({ headRef, headRepo, author, thisRepo }: PullRequestOrigin): string | undefined {
+export function guardBranchError({ headRef, headRepo, author, thisRepo }: PullRequestOrigin): string | undefined {
   const local = headRepo === thisRepo;
   if (local && author === "dependabot[bot]" && headRef.startsWith("dependabot/")) return undefined;
   if (local && headRef.startsWith("kaal/")) return undefined;
@@ -28,7 +28,7 @@ export function branchGuardError({ headRef, headRepo, author, thisRepo }: PullRe
 // text, so a branch name cannot inject anything.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { HEAD_REF = "", HEAD_REPO = "", AUTHOR = "", THIS_REPO = "" } = process.env;
-  const error = branchGuardError({ headRef: HEAD_REF, headRepo: HEAD_REPO, author: AUTHOR, thisRepo: THIS_REPO });
+  const error = guardBranchError({ headRef: HEAD_REF, headRepo: HEAD_REPO, author: AUTHOR, thisRepo: THIS_REPO });
   if (error) {
     console.error(`::error::${error}`);
     process.exitCode = 1;
