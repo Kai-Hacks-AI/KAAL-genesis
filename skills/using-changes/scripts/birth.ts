@@ -21,13 +21,31 @@ function rejectSymlinks(root: string, dir: string): void {
 }
 
 /**
+ * Removes the levels a failed birth created, from the occurrence's parent up
+ * to `created`, the first level it created. Never recursive: a level another
+ * birth has since filled, even with a Change of the same identity, is left as
+ * it is, and so is every level above it.
+ */
+function removeCreated(dir: string, created: string): void {
+  const top = path.resolve(created);
+  for (let level = path.resolve(path.dirname(dir)); ; level = path.dirname(level)) {
+    try {
+      fs.rmdirSync(level);
+    } catch {
+      return;
+    }
+    if (level === top) return;
+  }
+}
+
+/**
  * Births a Change: creates its occurrence directory, empty, and nothing in it.
  * What the Change will hold is not birth's concern. Refuses an unportable
  * lineage, a malformed occurrence and a symlinked path before writing
  * anything, and refuses an occurrence that already exists: a Change is never
  * born again, so an earlier Change is never written over. If birth fails
- * partway, the directories it created are removed. Returns the occurrence's
- * directory.
+ * partway, the directories it created are removed while they are still
+ * empty. Returns the occurrence's directory.
  */
 export function birthChange(input: Birth): string {
   const root = input.root ?? ROOT;
@@ -40,7 +58,7 @@ export function birthChange(input: Birth): string {
     // Not recursive: an existing occurrence, even an empty one, is refused.
     fs.mkdirSync(dir);
   } catch (e) {
-    if (created) fs.rmSync(created, { recursive: true, force: true });
+    if (created) removeCreated(dir, created);
     if ((e as NodeJS.ErrnoException).code === "EEXIST") {
       throw new Error(`${input.lineage}/${input.occurrence}: already exists; a Change is never born again`);
     }

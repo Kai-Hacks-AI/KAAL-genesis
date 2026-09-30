@@ -88,6 +88,24 @@ test("a birth that fails partway removes the directories it created", (t) => {
   assert.deepEqual(tree(root), before);
 });
 
+test("a birth that loses a race for the same occurrence refuses, leaving the Change born beside it", (t) => {
+  const root = scratchChanges("valid");
+  const mkdir = fs.mkdirSync;
+  // Fault injection: another birth creates the same occurrence, and gives it
+  // material, between this birth creating its levels and creating the occurrence.
+  t.mock.method(fs, "mkdirSync", (dir: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
+    if (options?.recursive) return mkdir(dir, options);
+    t.mock.restoreAll();
+    birthChange({ root, lineage: "other", occurrence: "26/09/30/01" });
+    fs.writeFileSync(path.join(String(dir), "owned.txt"), "theirs\n");
+    return mkdir(dir, options);
+  });
+  assert.throws(() => birthChange({ root, lineage: "other", occurrence: "26/09/30/01" }), /already exists/);
+  t.mock.restoreAll();
+  assert.equal(tree(root)["other/26/09/30/01/owned.txt"], "theirs\n");
+  assert.deepEqual(validate(root), []);
+});
+
 test("traversal is deterministic: lineages by name, each lineage's occurrences in sorted order, whatever order they were born in", () => {
   const expected = ["change/26/09/30/01", "testing/26/09/30/01", "testing/26/09/30/02", "testing/26/10/01/01"];
   assert.deepEqual(identities(changeData("valid")), expected);
