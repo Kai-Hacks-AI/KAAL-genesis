@@ -1,0 +1,11 @@
+{
+  "unit": "change/26/09/30/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/managing-change.md",
+      "sha256": "abb00002a779d45feb8fe439e2a3dff8874273f22d7deafb9158b9e972316a12"
+    }
+  ],
+  "seal": "e3cdd83cdd94748e991de9f0549f125c6e5536f174fdcb9a74c8b73c25dedea8"
+}

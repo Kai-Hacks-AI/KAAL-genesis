@@ -1,4 +1,11 @@
 {
+  "change": {
+    "units": [
+      "change/26/09/30/01",
+      "change/26/09/30/02"
+    ],
+    "seal": "ac1501656421674c45f6751b96379485c5a281ba0530aec7fd81c60c8289a0c8"
+  },
   "genesis": {
     "units": [
       "genesis/26/09/25/01"
