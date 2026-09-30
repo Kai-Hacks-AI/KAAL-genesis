@@ -1,0 +1,6 @@
+{
+  "concern": "Skills follow the Agent Skills standard and are born from their own init.",
+  "cases": [
+    "skills/using-skills/scripts/skills.test.ts"
+  ]
+}

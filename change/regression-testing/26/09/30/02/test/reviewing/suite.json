@@ -1,0 +1,6 @@
+{
+  "concern": "The reviewing skill's init writes its instructions, and nothing else, where it is told to.",
+  "cases": [
+    "skills/reviewing/scripts/init.test.ts"
+  ]
+}

@@ -18,7 +18,7 @@ export type Plan = { concern: string; suites: string[] };
  */
 export type Condition = { case: string; test: string; notOn: string[]; because: string };
 
-/** A Suite: its place relative to the testing root, its concern, its Cases as posix paths relative to it, and its Conditions. */
+/** A Suite: its place, its Cases as posix paths relative to the testing root, its concern and its Conditions. */
 export type Suite = { place: string; concern: string; cases: string[]; conditions: Condition[] };
 
 /**
@@ -48,8 +48,8 @@ const concernError = (value: Record<string, unknown>): string | undefined =>
   typeof value.concern === "string" && value.concern.trim() ? undefined : "concern must be a non-empty string";
 
 /** A place is a relative posix path that stays beneath the root it is read from. */
-function placeError(place: unknown): string | undefined {
-  if (typeof place !== "string" || !place) return "a suite must be a non-empty path";
+function placeError(place: unknown, what = "suite"): string | undefined {
+  if (typeof place !== "string" || !place) return `a ${what} must be a non-empty path`;
   const parts = place.split("/");
   if (
     place.startsWith("/") ||
@@ -57,7 +57,7 @@ function placeError(place: unknown): string | undefined {
     place.includes("\\") ||
     parts.some((p) => !p || p === "." || p === "..")
   )
-    return `suite "${place}" must be a relative posix path beneath the root`;
+    return `${what} "${place}" must be a relative posix path beneath the root`;
   return undefined;
 }
 
@@ -152,30 +152,58 @@ function readConditions(file: string, value: unknown, cases: string[]): { condit
   return errors.length ? { conditions: [], errors } : { conditions: value as Condition[], errors };
 }
 
-/** The Suite at `place` beneath `root`: its concern and its Cases, in sorted order. */
+/** Every Case file at or beneath `place` in `root`, as posix paths relative to `root`, in sorted order. */
+function casesAt(root: string, place: string): string[] | undefined {
+  const at = path.join(root, ...place.split("/"));
+  const stat = fs.lstatSync(at, { throwIfNoEntry: false });
+  if (stat?.isFile()) return CASE.test(place) ? [place] : undefined;
+  if (!stat?.isDirectory()) return undefined;
+  return fs
+    .readdirSync(at, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && CASE.test(entry.name))
+    .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * The Suite at `place` beneath `root`: its concern and its Cases. Its
+ * `cases` name them, each a Case file or a directory contributing every Case
+ * file beneath it, as places beneath the root; without `cases`, a Suite
+ * names its own directory.
+ */
 export function readSuite(root: string, place: string): { suite?: Suite; errors: string[] } {
   const dir = path.join(root, ...place.split("/"));
   const stat = fs.lstatSync(dir, { throwIfNoEntry: false });
   if (!stat?.isDirectory()) return { errors: [`${place}: not a directory`] };
+  const file = `${place}/${SUITE_FILE}`;
   const { value, error } = readJson(path.join(dir, SUITE_FILE));
-  if (error) return { errors: [`${place}/${SUITE_FILE}: unreadable suite (${error})`] };
-  if (!isObject(value)) return { errors: [`${place}/${SUITE_FILE}: a suite must be an object`] };
+  if (error) return { errors: [`${file}: unreadable suite (${error})`] };
+  if (!isObject(value)) return { errors: [`${file}: a suite must be an object`] };
   const errors: string[] = [];
-  const extra = Object.keys(value).filter((key) => key !== "concern" && key !== "conditions");
-  if (extra.length) errors.push(`${place}/${SUITE_FILE}: unknown ${extra.map((key) => `"${key}"`).join(", ")}`);
+  const extra = Object.keys(value).filter((key) => !["concern", "cases", "conditions"].includes(key));
+  if (extra.length) errors.push(`${file}: unknown ${extra.map((key) => `"${key}"`).join(", ")}`);
   const concern = concernError(value);
-  if (concern) errors.push(`${place}/${SUITE_FILE}: ${concern}`);
-  const cases = fs
-    .readdirSync(dir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && CASE.test(entry.name))
-    .map((entry) => path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  if (!cases.length) errors.push(`${place}: holds no Case`);
-  const conditions = readConditions(
-    `${place}/${SUITE_FILE}`,
-    value.conditions,
-    cases.map((file) => `${place}/${file}`),
-  );
+  if (concern) errors.push(`${file}: ${concern}`);
+  const named = value.cases === undefined ? [place] : value.cases;
+  const cases: string[] = [];
+  if (!Array.isArray(named)) errors.push(`${file}: cases must be a list`);
+  else {
+    for (const at of named) {
+      const invalid = placeError(at, "case");
+      if (invalid) {
+        errors.push(`${file}: ${invalid}`);
+        continue;
+      }
+      const found = casesAt(root, at as string);
+      if (!found) errors.push(`${file}: case "${at}" is neither a Case file nor a directory`);
+      for (const one of found ?? []) {
+        if (cases.includes(one)) errors.push(`${file}: case "${one}" is named twice`);
+        else cases.push(one);
+      }
+    }
+    if (!cases.length && !errors.length) errors.push(`${place}: holds no Case`);
+  }
+  const conditions = readConditions(file, value.conditions, cases);
   errors.push(...conditions.errors);
   return errors.length
     ? { errors }
@@ -271,8 +299,7 @@ export function runPlan(plan: string, root = ".", candidate = root): Run {
   if (errors.length) throw new Error(`refusing to run ${plan}:\n${errors.join("\n")}`);
   const observations: Observation[] = [];
   for (const suite of suites) {
-    for (const name of suite.cases) {
-      const at = `${suite.place}/${name}`;
+    for (const at of suite.cases) {
       const declared = suite.conditions.filter((c) => c.case === at);
       const here = declared.filter((c) => c.notOn.includes(process.platform)).map((c) => c.test);
       const file = path.resolve(root, ...at.split("/"));

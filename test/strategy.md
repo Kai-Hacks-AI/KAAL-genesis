@@ -6,7 +6,7 @@ How KAAL uses the `testing` skill. Why KAAL uses it is in BRAIN.
 
 Each Change carries its own protection transition, sparsely, beneath its occurrence's `test/`: `change/<lineage>/YY/MM/DD/CC/test/`.
 
-- **Suites** it contributes, one directory per concern, such as `test/testing/`.
+- **Suites** it contributes, one directory per concern, such as `test/testing/`. A Suite may name Cases anywhere in the repository by path from its root, so protection a Change's material does not own is collected where its owner keeps it, never copied or moved.
 - **Feature Plan**, `test/feature.md`: the Suites the Change introduces.
 - **Acceptance Plan**, `test/acceptance.md`: accepted Suites the Change gives up. Present only when it gives some up.
 - **Regression Test Plan**, `test/regression.md`: every Suite that must hold after the Change lands.
@@ -19,9 +19,15 @@ A new Regression Test Plan supersedes the one before it, backward: its own front
 
 Whether a Change's Regression Test Plan follows from the one it supersedes, with its Feature and Acceptance Plans, is for review to judge. Testing never decides that a Suite left out was given up.
 
+## Reconstructed history
+
+Protection landed on \`main\` before KAAL had Regression Test Plans, beginning with Genesis. A Change born later may reconstruct it, beneath its own \`test/reconstructed/<landing>/\`: a \`feature.md\` and a \`regression.md\` for each semantic landing, and an \`acceptance.md\` only where the evidence shows accepted protection was intentionally given up. A deleted, moved or rewritten file is not by itself Acceptance. The reconstructing Change owns these Plans; they name historical material, never edit the Changes or landings they describe, cite Git and GitHub only as evidence of what shipped, and state their uncertainty. They describe history and take no part in supersession: KAAL's chain of Regression Test Plans begins with the first native one.
+
 ## Cases
 
-A Case reaches what it tests through its working directory, the candidate, and the candidate's public entry points, never through its own location, so a sealed Case can judge candidates written after it.
+A Case a Change owns reaches what it tests through its working directory, the candidate, and the candidate's public entry points, never through its own location, so a sealed Case can judge candidates written after it.
+
+A Case collected where its owner keeps it, such as a skill's own tests, is not sealed with the Suite that names it: it changes with its owner, and a Plan naming it protects whatever it is in the candidate.
 
 ## Conditions
 

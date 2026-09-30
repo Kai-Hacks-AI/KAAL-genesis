@@ -1,0 +1,6 @@
+{
+  "concern": "KAAL's skills stay independent: none imports another, and every one is born from its own init.",
+  "cases": [
+    "scripts/skills.test.ts"
+  ]
+}
