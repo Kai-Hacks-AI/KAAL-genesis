@@ -1,8 +1,11 @@
 # Why: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
 brain/
+# Why: brain/learning/change/26/09/30/01/nodes/using-changes.md
+change/
 # Why: the tests reading these fixtures compare them byte for byte.
 skills/using-brain/test-data/
 skills/using-seals/test-data/
+skills/using-changes/test-data/
 skills/using-agents/test-data/
 skills/using-skills/test-data/
 test-data/
