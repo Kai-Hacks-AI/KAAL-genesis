@@ -88,7 +88,7 @@ test("a birth that fails partway removes the directories it created", (t) => {
   assert.deepEqual(tree(root), before);
 });
 
-test("traversal is deterministic: lineages by name, each lineage's Changes oldest first, however they were born", () => {
+test("traversal is deterministic: lineages by name, each lineage's occurrences in sorted order, whatever order they were born in", () => {
   const expected = ["change/26/09/30/01", "testing/26/09/30/01", "testing/26/09/30/02", "testing/26/10/01/01"];
   assert.deepEqual(identities(changeData("valid")), expected);
   const root = scratchChanges();

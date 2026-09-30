@@ -2,8 +2,8 @@ import { pathToFileURL } from "node:url";
 import { identity, readChanges, ROOT } from "./changes.js";
 
 // Lists every Change beneath [root], one identity per line: lineages by name,
-// each lineage's Changes oldest first. Lists nothing from a root that is not
-// valid, so a listed identity is always a Change.
+// each lineage's Changes in sorted occurrence order. Lists nothing from a root
+// that is not valid, so a listed identity is always a Change.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [root = ROOT, ...rest] = process.argv.slice(2);
   if (rest.length) {

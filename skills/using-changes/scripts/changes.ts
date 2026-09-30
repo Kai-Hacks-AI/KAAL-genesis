@@ -26,7 +26,7 @@ export function lineageError(lineage: string): string | undefined {
 /**
  * An occurrence is `YY/MM/DD/CC`: the calendar date a Change was born and a
  * counter from 01 for Changes born the same day. Fixed-width digits are
- * portable, and sorting each level orders a lineage's Changes in time.
+ * portable, and sorting each level makes traversal deterministic.
  */
 export function occurrenceError(occurrence: string): string | undefined {
   const match = /^(\d{2})\/(\d{2})\/(\d{2})\/(\d{2})$/.exec(occurrence);
@@ -52,8 +52,8 @@ function entries(dir: string): fs.Dirent[] {
 
 /**
  * Every Change beneath `root`, lineages by name and each lineage's Changes
- * oldest first, with everything at the levels Changes own that is not a
- * Change. What a Change holds is never interpreted: only that it is its own
+ * in sorted occurrence order, with everything at the levels Changes own that
+ * is not a Change. What a Change holds is never interpreted: only that it is its own
  * files and directories, never a symlink or special entry. A missing root
  * holds no Changes.
  */
