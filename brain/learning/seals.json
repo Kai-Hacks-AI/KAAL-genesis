@@ -6,6 +6,12 @@
     ],
     "seal": "ac1501656421674c45f6751b96379485c5a281ba0530aec7fd81c60c8289a0c8"
   },
+  "defects": {
+    "units": [
+      "defects/26/09/30/01"
+    ],
+    "seal": "83e96076445c7143cf94d829246b988f378d58500f5533d9ffe0c85d7835b842"
+  },
   "genesis": {
     "units": [
       "genesis/26/09/25/01"
