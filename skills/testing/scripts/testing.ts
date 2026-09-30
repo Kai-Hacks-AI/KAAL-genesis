@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import YAML from "yaml";
 
 /** The file that makes a directory a Suite and states its concern. */
@@ -137,7 +139,11 @@ export function readPlanSuites(root: string, plan: string): { plan?: Plan; suite
   return { plan: read.plan, suites, errors };
 }
 
-/** The TAP summary count Node's test runner reports under `name`. */
+/**
+ * The TAP summary count Node's test runner reports under `name`. Read only
+ * from the report the runner writes to its own destination, never from what
+ * the Case itself prints, so a Case cannot forge it.
+ */
 const count = (tap: string, name: string): number => Number(new RegExp(`^# ${name} (\\d+)$`, "m").exec(tap)?.[1] ?? 0);
 
 /** Node options that load code before a Case runs, such as a TypeScript loader. */
@@ -159,24 +165,84 @@ export function loaderArgs(argv: string[]): string[] {
 }
 
 /**
+ * Loader options as they resolve from `from`, the runner's working directory:
+ * a loader named by a relative path (`./hook.mjs`, `../x.cjs`) is made
+ * absolute there, as a file URL for the ES module options, so it still names
+ * the same file when a Case runs in another working directory. Absolute
+ * paths, URLs and package names are kept as given.
+ */
+export function resolveLoaders(args: string[], from: string): string[] {
+  const resolved: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const [option, joined] = args[i].includes("=") ? args[i].split(/=(.*)/s) : [args[i], undefined];
+    const value = joined ?? args[++i];
+    const relative =
+      value.startsWith("./") || value.startsWith("../") || value.startsWith(".\\") || value.startsWith("..\\");
+    const absolute = path.resolve(from, value);
+    const fixed = !relative
+      ? value
+      : option === "--require" || option === "-r"
+        ? absolute
+        : pathToFileURL(absolute).href;
+    resolved.push(...(joined === undefined ? [option, fixed] : [`${option}=${fixed}`]));
+  }
+  return resolved;
+}
+
+/**
+ * `NODE_OPTIONS` split as Node splits it: at spaces, except inside double
+ * quotes, where a backslash escapes the next character.
+ */
+export function nodeOptions(value: string): string[] {
+  const options: string[] = [];
+  let current = "";
+  let quoted = false;
+  let started = false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (quoted && c === "\\" && i + 1 < value.length) current += value[++i];
+    else if (c === '"') [quoted, started] = [!quoted, true];
+    else if (c === " " && !quoted) {
+      if (started || current) options.push(current);
+      [current, started] = ["", false];
+    } else current += c;
+  }
+  if (started || current) options.push(current);
+  return options;
+}
+
+/**
  * Executes one Case in its own Node process, in the candidate as its working
- * directory, under the same Node and loaders this process runs under, and
- * none of its other options. It
- * passed only if the process succeeded and every test it reported ran and
- * passed. Its tests report to it even when this process runs inside a test
- * runner.
+ * directory, under the same Node and loaders this process runs under,
+ * whether given on its command line or in `NODE_OPTIONS`, and none of its
+ * other options. It passed only if the process succeeded and every test the
+ * runner reported ran and passed. The runner reports to a file of its own,
+ * apart from what the Case prints, and to it even when this process runs
+ * inside a test runner.
  */
 export function runCase(file: string, candidate: string): { passed: boolean; output: string } {
-  const { NODE_TEST_CONTEXT: _, ...env } = process.env;
-  const result = spawnSync(process.execPath, [...loaderArgs(process.execArgv), "--test-reporter=tap", file], {
-    cwd: candidate,
-    env,
-    encoding: "utf8",
-  });
-  const output = `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? String(result.error) : ""}`;
-  const tests = count(output, "tests");
-  const passed = result.status === 0 && tests > 0 && count(output, "pass") === tests;
-  return { passed, output };
+  const { NODE_TEST_CONTEXT: _, NODE_OPTIONS, ...env } = process.env;
+  const cwd = process.cwd();
+  const loaders = [
+    ...resolveLoaders(loaderArgs(nodeOptions(NODE_OPTIONS ?? "")), cwd),
+    ...resolveLoaders(loaderArgs(process.execArgv), cwd),
+  ];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testing-run-"));
+  const report = path.join(dir, "report.tap");
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [...loaders, "--test-reporter=tap", `--test-reporter-destination=${report}`, file],
+      { cwd: candidate, env, encoding: "utf8" },
+    );
+    const tap = fs.existsSync(report) ? fs.readFileSync(report, "utf8") : "";
+    const output = `${tap}${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? String(result.error) : ""}`;
+    const tests = count(tap, "tests");
+    const passed = result.status === 0 && tests > 0 && count(tap, "pass") === tests;
+    return { passed, output };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
 }
 
 /**

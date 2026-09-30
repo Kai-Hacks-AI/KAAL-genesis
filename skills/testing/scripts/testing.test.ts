@@ -4,7 +4,8 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateData, planData, rootData } from "./test-data.js";
-import { loaderArgs, readPlan, readPlanSuites, report, runPlan } from "./testing.js";
+import { pathToFileURL } from "node:url";
+import { loaderArgs, nodeOptions, readPlan, readPlanSuites, report, resolveLoaders, runPlan } from "./testing.js";
 
 const RUN = fileURLToPath(new URL("./run.ts", import.meta.url));
 const outcomes = (run: ReturnType<typeof runPlan>) =>
@@ -132,6 +133,57 @@ test("a Case runs under the runner's loaders, never its other options, however e
     "-r",
     "hook.cjs",
   ]);
+});
+
+test("a Case cannot forge the runner's report by printing a summary of its own", () => {
+  const run = runPlan("plan.md", rootData("forged"));
+  assert.deepEqual(outcomes(run), ["fail suites/forged/forges.test.ts"]);
+});
+
+test("a loader named relative to the runner still names the same file when a Case runs elsewhere", () => {
+  const base = path.resolve("base");
+  assert.deepEqual(
+    resolveLoaders(
+      ["--import", "./hook.mjs", "--require=../pre.cjs", "--import", "tsx", "--import=file:///x.mjs", "-r", "/abs.cjs"],
+      base,
+    ),
+    [
+      "--import",
+      pathToFileURL(path.resolve(base, "hook.mjs")).href,
+      `--require=${path.resolve(base, "..", "pre.cjs")}`,
+      "--import",
+      "tsx",
+      "--import=file:///x.mjs",
+      "-r",
+      "/abs.cjs",
+    ],
+  );
+  const { NODE_TEST_CONTEXT: _, ...env } = process.env;
+  const result = spawnSync(
+    process.execPath,
+    [...process.execArgv, "--import", "./hook.mjs", RUN, "plan.md", candidateData("marked")],
+    { cwd: rootData("hooked"), env, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /\npass suites\/hooked\/hooked\.test\.ts\nholds\n$/);
+});
+
+test("NODE_OPTIONS is split as Node splits it, and only its loaders reach a Case", () => {
+  assert.deepEqual(nodeOptions('--import ./a.mjs  --title="x y" "--require=q \\"r\\".cjs"'), [
+    "--import",
+    "./a.mjs",
+    "--title=x y",
+    '--require=q "r".cjs',
+  ]);
+  assert.deepEqual(loaderArgs(nodeOptions("--test-name-pattern=nope --import ./a.mjs")), ["--import", "./a.mjs"]);
+  const { NODE_TEST_CONTEXT: _, ...env } = process.env;
+  const result = spawnSync(process.execPath, [...process.execArgv, RUN, "plan.md", candidateData("marked")], {
+    cwd: rootData("holds"),
+    env: { ...env, NODE_OPTIONS: "--test-name-pattern=nope" },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /\nholds\n$/);
 });
 
 test("run.ts prints the Run and exits 0 only when the Plan holds", () => {
