@@ -1,6 +1,7 @@
-# Runs the full suite, KAAL's regression, typecheck and format check on Linux
-# and Windows. The regression runs every evolution's Regression Test Plan
-# against the checked-out candidate; which cases run where is not selected.
+# Runs the full suite, the Regression Test Plan of the Change being judged,
+# typecheck and format check on Linux and Windows. The Plan is named here,
+# explicitly: Testing never discovers a current Plan, and Change order is not
+# used to infer one. Which cases run where is not selected.
 #
 # Job names are <what>-<where> and unique across all workflows: required
 # status checks select by job name alone, so they must never be ambiguous
@@ -37,6 +38,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run regression
+      - run: npm run testing:run -- change/regression-testing/26/09/30/01/test/regression.json
       - run: npm run typecheck
       - run: npm run format:check

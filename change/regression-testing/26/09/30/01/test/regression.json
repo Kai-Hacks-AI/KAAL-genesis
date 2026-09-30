@@ -1,0 +1,4 @@
+{
+  "concern": "The protection that must hold after this Change: the testing capability it births.",
+  "suites": ["change/regression-testing/26/09/30/01/test/testing"]
+}

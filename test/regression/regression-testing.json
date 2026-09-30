@@ -1,4 +1,0 @@
-{
-  "concern": "The regression protection kaal/regression-testing leaves behind: the Test Suites its Changes contribute.",
-  "suites": ["change/regression-testing/26/09/30/01/test"]
-}

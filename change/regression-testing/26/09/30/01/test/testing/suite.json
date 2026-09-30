@@ -1,0 +1,3 @@
+{
+  "concern": "Testing runs a Regression Test Plan against a candidate and holds only when every Case of every Suite the Plan names passes."
+}
