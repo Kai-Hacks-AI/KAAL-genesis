@@ -3,7 +3,8 @@
 #
 # Runs `npm run seals:check` and, on a pull request, `npm run seals:guard`
 # against the target branch, allowing only seal state that is exactly what
-# main already holds (main is a ref of the fetched repository the change cannot
+# main already holds, or, for Changes, exactly what Change Sealing writes
+# (main is a ref of the fetched repository the change cannot
 # move); both decide what counts, not this workflow.
 #
 # On a pull request this runs as pull_request_target: GitHub takes the

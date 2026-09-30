@@ -4,12 +4,16 @@ import { validate } from "../skills/managing-change/scripts/validate.js";
 import {
   checkChain,
   HEADS_FILE,
+  type Head,
+  isSealed,
   LOCK_FILE,
   readHeads,
   SEAL_FILE,
   sealChains,
 } from "../skills/using-seals/scripts/seals.js";
 import { entries, type SealState } from "./brain-seals.js";
+import fs from "node:fs";
+import os from "node:os";
 
 /**
  * KAAL's sealing policy for Changes. managing-change births and validates
@@ -78,6 +82,39 @@ export function sealChanges(repo = "."): string[] {
 }
 
 /**
+ * Change Sealing: seals the named Change occurrences (`<lineage>/YY/MM/DD/CC`,
+ * as `change:list` names them) before their evolution reaches main. It is the
+ * same sealing main runs, over the same chains and the same units, and writes
+ * the same seal state; only which Changes it seals differs. Chains keep
+ * sealed history first, so a Change can be sealed only once every Change
+ * before it in its lineage is sealed or named too: sealing never seals a
+ * Change nobody asked for. Refuses, writing nothing, on any invalid Change,
+ * any broken seal, an unknown Change, or a Change that would drag another in.
+ */
+export function sealChange(repo: string, ...occurrences: string[]): string[] {
+  if (!occurrences.length) throw new Error("name at least one Change to seal");
+  const errors = changeErrors(repo);
+  if (errors.length) throw new Error(`refusing to seal Changes:\n${errors.join("\n")}`);
+  const chains = changeChains(repo);
+  const named = new Map<string, Set<string>>();
+  for (const occurrence of occurrences) {
+    const unit = `${CHANGE_ROOT}/${occurrence}`;
+    const lineage = occurrence.split("/")[0];
+    if (!chains.get(lineage)?.includes(unit)) throw new Error(`${occurrence}: not a Change`);
+    named.set(lineage, (named.get(lineage) ?? new Set()).add(unit));
+  }
+  const toSeal: [string, string[]][] = [];
+  for (const [lineage, units] of named) {
+    const all = chains.get(lineage)!;
+    const upTo = all.slice(0, Math.max(...[...units].map((u) => all.indexOf(u))) + 1);
+    const dragged = upTo.filter((u) => !units.has(u) && !isSealed(repo, u));
+    if (dragged.length) throw new Error(`sealing would also seal ${dragged.join(", ")}: name it too`);
+    toSeal.push([lineage, upTo]);
+  }
+  return sealChains(repo, toSeal);
+}
+
+/**
  * The one definition of which paths are seal state for Changes. `file` is a
  * posix path relative to the repository: the chain heads and the lock at its
  * top, and each Change's seal (`change/<lineage>/YY/MM/DD/CC/seal.json`). A
@@ -120,4 +157,49 @@ export function changeSealingOutputErrors(nameStatus: string): string[] {
         : `${kind} ${status === "A" ? "added" : status === "M" ? "modified" : status === "D" ? "deleted" : status}`;
     return [`${file}: sealing never commits this (${what})`];
   });
+}
+
+/**
+ * Why the seal state of Changes a change touches is not the output of Change
+ * Sealing, or none where it is. `touched` is a `git diff --name-status
+ * --no-renames` output; `before` is the chain heads the change started from.
+ *
+ * A Change is sealed the same way on main and before it, so nothing marks who
+ * sealed it and authority cannot be a marker: seal state is Change Sealing's
+ * output exactly when it is what sealing writes and nothing else. Every touched
+ * path must be one sealing writes (a seal added to a Change, the heads added or
+ * extended), every chain of `before` must be kept and only extended, and the
+ * Changes at `repo` must verify with the existing checks, which accept only the
+ * exact bytes sealing writes. All or nothing: one entry sealing could not have
+ * written refuses every seal-state path.
+ */
+export function changeSealingAuthorityErrors(repo: string, before: Map<string, Head>, touched: string): string[] {
+  const state = entries(touched).filter(({ file }) => changeSealState(file));
+  if (!state.length) return [];
+  const lines = state.map(({ status, file }) => `${status}\t${file}`).join("\n");
+  const refuse = changeSealStateChanges(lines);
+  if (changeSealingOutputErrors(lines).length) return refuse;
+  let heads: Map<string, Head>;
+  try {
+    heads = readHeads(repo);
+  } catch {
+    return refuse;
+  }
+  for (const [chain, head] of before) {
+    const now = heads.get(chain)?.units;
+    if (!now || head.units.some((unit, i) => now[i] !== unit)) return refuse;
+  }
+  return checkChanges(repo).length ? refuse : [];
+}
+
+/** The chain heads recorded in `text`, or none where there were none. */
+export function headsFromText(text: string | undefined): Map<string, Head> {
+  if (text === undefined) return new Map();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-heads-"));
+  try {
+    fs.writeFileSync(path.join(dir, HEADS_FILE), text);
+    return readHeads(dir);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
