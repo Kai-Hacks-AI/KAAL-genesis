@@ -1,0 +1,6 @@
+{
+  "concern": "AGENTS.md entry points are placed exactly as supplied and never overwritten.",
+  "cases": [
+    "skills/using-agents/scripts/create-agents.test.ts"
+  ]
+}

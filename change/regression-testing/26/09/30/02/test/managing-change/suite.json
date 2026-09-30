@@ -1,0 +1,6 @@
+{
+  "concern": "Changes are immutable occurrences beneath their lineage, born once and validated.",
+  "cases": [
+    "skills/managing-change/scripts/changes.test.ts"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "concern": "KAAL seals its BRAIN: learnings close on main, and only sealing writes seal state.",
+  "cases": [
+    "scripts/brain-seals.test.ts"
+  ]
+}

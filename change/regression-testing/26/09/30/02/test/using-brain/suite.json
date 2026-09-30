@@ -1,0 +1,9 @@
+{
+  "concern": "BRAIN: nodes are born through one mechanism, read, related and validated.",
+  "cases": [
+    "skills/using-brain/scripts/brain.test.ts",
+    "skills/using-brain/scripts/create-brain.test.ts",
+    "skills/using-brain/scripts/create-node.test.ts",
+    "skills/using-brain/scripts/validate.test.ts"
+  ]
+}

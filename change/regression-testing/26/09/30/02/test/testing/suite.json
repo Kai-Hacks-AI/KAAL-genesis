@@ -1,0 +1,6 @@
+{
+  "concern": "The testing skill reads Plans and Suites and runs their Cases against a candidate as specified.",
+  "cases": [
+    "skills/testing/scripts/testing.test.ts"
+  ]
+}
