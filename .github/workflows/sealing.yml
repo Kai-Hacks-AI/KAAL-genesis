@@ -10,7 +10,7 @@
 # rulesets, so the sealing commit is pushed as the sealing GitHub App: the
 # ruleset's only bypass actor. Its client ID is the SEALING_APP_CLIENT_ID
 # variable and its private key the SEALING_APP_PRIVATE_KEY secret.
-name: sealing
+name: seal
 
 on:
   push:
@@ -26,8 +26,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  sealing:
-    name: sealing-linux
+  seal:
+    name: seal
     runs-on: ubuntu-latest
     permissions:
       contents: read
