@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   sealing:
-    name: sealing-linux
+    name: sealing
     runs-on: ubuntu-latest
     permissions:
       contents: read

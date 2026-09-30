@@ -2,9 +2,11 @@
 # cases run where is a Test Run concern; deciding it selectively would need a
 # Test Plan, not yet needed.
 #
-# Job names are <what>-<where> and unique across all workflows: required
-# status checks select by job name alone, so they must never be ambiguous
-# and must not change when a runner image does.
+# Job names are unique across all workflows: required status checks select by
+# job name alone, so they must never be ambiguous and must not change when a
+# runner image does. A name is <what>, and <what>-<where> only when the
+# environment is part of what the check asserts: here KAAL's tests must pass
+# on Linux and on Windows. Checks that hold on any runner carry no <where>.
 name: test
 
 on:
