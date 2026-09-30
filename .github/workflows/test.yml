@@ -1,6 +1,6 @@
-# Runs the full suite, typecheck and format check on Linux and Windows. Which
-# cases run where is a Test Run concern; deciding it selectively would need a
-# Test Plan, not yet needed.
+# Runs the full suite, KAAL's regression, typecheck and format check on Linux
+# and Windows. The regression runs every evolution's Regression Test Plan
+# against the checked-out candidate; which cases run where is not selected.
 #
 # Job names are <what>-<where> and unique across all workflows: required
 # status checks select by job name alone, so they must never be ambiguous
@@ -37,5 +37,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run regression
       - run: npm run typecheck
       - run: npm run format:check

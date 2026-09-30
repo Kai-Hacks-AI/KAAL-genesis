@@ -1,0 +1,3 @@
+{
+  "concern": "KAAL's regression: each evolution's Regression Test Plan collects exactly the Test Suites its Changes own, and Testing runs a Plan against the candidate, holding only when every collected Case passes."
+}

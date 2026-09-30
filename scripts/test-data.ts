@@ -87,3 +87,8 @@ export function scratchRepo(name: string): string {
   fs.cpSync(changeRepoData(name), repo, { recursive: true });
   return repo;
 }
+
+/** Path to a read-only repository holding Changes and Regression Test Plans in test-data/regression. */
+export function regressionData(name: string): string {
+  return path.join(DATA, "regression", name);
+}
