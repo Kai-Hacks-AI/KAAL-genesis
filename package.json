@@ -28,6 +28,7 @@
     "skills:check": "tsx skills/using-skills/scripts/check.ts skills",
     "seal": "tsx scripts/seal.ts",
     "seal:change": "tsx scripts/seal-change.ts",
+    "seals:pull-request": "tsx scripts/pull-request-sealing.ts",
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",
     "seals:sealing-check": "tsx scripts/sealing-check.ts",

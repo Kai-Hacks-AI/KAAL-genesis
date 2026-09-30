@@ -1,0 +1,7 @@
+# Feature
+
+This Change makes Change Sealing CI's act, not the agent's, wherever CI can write the result back. A Change is admitted to KAAL twice, from an agent's `claude/*` branch into a `kaal/*` flight and from the flight into main. At both, the `seal-change` workflow makes valid Change Sealing unavoidable before admission: it invokes the existing Change Sealing (`sealChange`) over exactly the Changes the pull request touches and has not sealed, commits only the seal state that wrote, and publishes the `seal-change` commit status, which is success only for a head whose Changes are all sealed. Into the flight that seals the Change; into main it normally finds the flight's Changes sealed and verifies them without rewriting anything. Forgetting `npm run seal:change` is no longer an agent decision.
+
+It composes; it does not seal. Which Changes are the pull request's, where a base admits it, whether CI may write back, and what the status says are `scripts/pull-request-sealing.ts`; what sealing means and the bytes it writes remain `scripts/change-seals.ts`. A draft is investigatory: nothing is sealed, the status stays pending, and GitHub does not merge a draft. A fork, or any branch other than a same-repository `claude/*` or `kaal/*`, is never written to: its Changes must arrive sealed and are refused otherwise.
+
+The sealing code, the workflow and the sealing App's secrets always come from the default branch, through `workflow_run`, never from the pull request's base or the change; the change is read only as data.
