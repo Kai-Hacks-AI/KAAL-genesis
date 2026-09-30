@@ -75,3 +75,15 @@ export function sealingDiff(from: string, to: string): string {
     .map((file) => `${file in before ? "M" : "A"}\t${ROOT}/${file}`)
     .join("\n");
 }
+
+/** Path to a read-only repository holding Changes in test-data/changes. */
+export function changeRepoData(name: string): string {
+  return path.join(DATA, "changes", name);
+}
+
+/** A writable copy of a repository holding Changes from test-data/changes. */
+export function scratchRepo(name: string): string {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-change-seals-"));
+  fs.cpSync(changeRepoData(name), repo, { recursive: true });
+  return repo;
+}
