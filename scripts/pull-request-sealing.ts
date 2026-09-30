@@ -115,33 +115,43 @@ export function sealPullRequest(options: {
 }
 
 /**
- * The commit status CI publishes for the pull request's head. Pending is never
- * success: a draft holds, and a head CI has just sealed is not yet verified,
- * because the push that carries the seal state starts the checks again.
+ * Why the change at `repo`'s HEAD may not be admitted yet, or none: a pull
+ * request that is ready, into a flight or main, must carry every Change it
+ * touches sealed. A draft is investigatory and never refused for this, and a
+ * base that is no admission is not judged. This is the requirement; CI's sealing
+ * is how it is met where it can write, and a head that cannot be written to
+ * stays refused until its Changes arrive sealed.
  */
-export function sealingStatus(run: { draft: boolean; succeeded: boolean; pushed: boolean }): {
-  state: "pending" | "success" | "failure";
-  description: string;
-} {
-  if (run.draft) return { state: "pending", description: "Draft: Changes are sealed when ready for review" };
-  if (!run.succeeded) return { state: "failure", description: "Changes cannot be sealed, or their seals are broken" };
-  if (run.pushed) return { state: "pending", description: "Changes sealed by CI; verifying the sealed head" };
-  return { state: "success", description: "Every Change this pull request carries is sealed" };
+export function unsealedErrors(options: { base: string; repo?: string; draft: boolean; admitted: boolean }): string[] {
+  if (options.draft || !options.admitted) return [];
+  return unsealedOccurrences(options.base, options.repo).map(
+    (occurrence) =>
+      `${CHANGE_ROOT}/${occurrence}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
+  );
 }
 
 // `seal <base> [repo]` seals the pull request's Changes; `admission` names
-// where its base admits it; `status` prints the commit status. The pull request reaches it as environment variables, never
+// where its base admits it; `gate` refuses a ready pull request with an unsealed Change. The pull request reaches it as environment variables, never
 // as arguments or script text, so a branch name cannot inject anything.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { HEAD_REF = "", HEAD_REPO = "", AUTHOR = "", THIS_REPO = "", DRAFT = "", PUSHED = "", OK = "" } = process.env;
+  const { HEAD_REF = "", HEAD_REPO = "", AUTHOR = "", THIS_REPO = "", DRAFT = "" } = process.env;
   const [command, base, repo] = process.argv.slice(2);
   const draft = DRAFT === "true";
   if (command === "admission") {
     const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
     console.log(admission(BASE_REF, DEFAULT_BRANCH) ?? "none");
-  } else if (command === "status") {
-    const { state, description } = sealingStatus({ draft, succeeded: OK === "true", pushed: PUSHED === "true" });
-    console.log(`${state}\t${description}`);
+  } else if (command === "gate" && base) {
+    const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
+    const errors = unsealedErrors({
+      base,
+      repo,
+      draft,
+      admitted: admission(BASE_REF, DEFAULT_BRANCH) !== undefined,
+    });
+    if (errors.length) {
+      console.error(errors.join("\n"));
+      process.exitCode = 1;
+    }
   } else if (command === "seal" && base) {
     try {
       const outcome = sealPullRequest({
@@ -157,7 +167,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exitCode = 1;
     }
   } else {
-    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | status");
+    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate <base> [repo]");
     process.exitCode = 2;
   }
 }

@@ -21,6 +21,10 @@
 # a skipped job still reports a check, and a skipped check counts as passing,
 # so a change's own branch must never produce a check-seals run at all.
 #
+# A pull request that is ready, into a kaal/* flight or main, must also carry
+# every Change it touches sealed (`npm run seals:pull-request -- gate`); a draft is
+# not held to it. seal-pull-request.yml is how that is met where CI can write.
+#
 # Verifies seals and writes nothing; the workflow that writes them on main is
 # sealing.yml, named seal.
 name: check-seals
@@ -76,5 +80,12 @@ jobs:
       - if: github.event_name == 'pull_request_target'
         run: npm run seals:guard -- "origin/${{ github.base_ref }}" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
         working-directory: trusted
+      - if: github.event_name == 'pull_request_target'
+        run: npm run seals:pull-request -- gate "origin/$BASE_REF" ../change
+        working-directory: trusted
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DRAFT: ${{ github.event.pull_request.draft }}
       - if: always() && github.event_name == 'pull_request_target'
-        run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=check-seals -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken or the change touches seal state' }}"
+        run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=check-seals -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken, the change touches seal state or carries an unsealed Change' }}"

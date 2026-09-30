@@ -11,7 +11,7 @@ import { kaalSealErrors, kaalSealingOutputErrors } from "./kaal-seals.js";
 import {
   admission,
   sealPullRequest,
-  sealingStatus,
+  unsealedErrors,
   touchedOccurrences,
   unsealedOccurrences,
   writebackRefusal,
@@ -216,9 +216,10 @@ test("an incomplete draft may stay investigatory: nothing is sealed, it is never
   const held = seal(repo, { draft: true });
   assert.equal(held.status, "hold");
   assert.deepEqual(tree(repo), before);
-  // The Change is still unsealed, and the status says so: pending, never success.
+  // The Change is still unsealed, and the draft is not held to it.
   assert.deepEqual(unsealedOccurrences("main", repo), ["feature/26/10/01/01"]);
-  assert.equal(sealingStatus({ draft: true, succeeded: true, pushed: false }).state, "pending");
+  assert.deepEqual(unsealedErrors({ base: "main", repo, draft: true, admitted: true }), []);
+  assert.equal(unsealedErrors({ base: "main", repo, draft: false, admitted: true }).length, 1);
 
   // A draft is held even where sealing it could never succeed.
   write(repo, "change/feature/26/10/01/notes.txt", "incomplete\n");
@@ -229,13 +230,24 @@ test("an incomplete draft may stay investigatory: nothing is sealed, it is never
   assert.throws(() => seal(repo), /refusing to seal Changes/);
 });
 
-test("the status is success only for a ready head whose Changes were already sealed", () => {
-  const state = (run: { draft: boolean; succeeded: boolean; pushed: boolean }) => sealingStatus(run).state;
-  assert.equal(state({ draft: false, succeeded: true, pushed: false }), "success");
-  assert.equal(state({ draft: false, succeeded: true, pushed: true }), "pending");
-  assert.equal(state({ draft: false, succeeded: false, pushed: false }), "failure");
-  assert.equal(state({ draft: false, succeeded: false, pushed: true }), "failure");
-  assert.equal(state({ draft: true, succeeded: false, pushed: false }), "pending");
+test("a ready pull request into a flight or main is refused while a Change it touches is unsealed; a draft is not", () => {
+  const repo = mainAndBranch();
+  authored(repo, "feature", "26/10/01/01");
+  const gate = (over: { draft?: boolean; admitted?: boolean } = {}) =>
+    unsealedErrors({ base: "main", repo, draft: false, admitted: true, ...over });
+
+  assert.match(gate().join(), /change\/feature\/26\/10\/01\/01: Change is not sealed/);
+  // Investigatory while a draft, and not judged where the base is no admission.
+  assert.deepEqual(gate({ draft: true }), []);
+  assert.deepEqual(gate({ admitted: false }), []);
+
+  // Once sealed, by CI or by hand, it is admitted; a Change the pull request does not touch never counts.
+  seal(repo);
+  assert.deepEqual(gate(), []);
+  const plain = mainAndBranch();
+  write(plain, "skills/x.txt", "ordinary\n");
+  commit(plain, "ordinary");
+  assert.deepEqual(unsealedErrors({ base: "main", repo: plain, draft: false, admitted: true }), []);
 });
 
 test("CI writes seal state back only to a claude/* or kaal/* branch of this repository", () => {
@@ -392,19 +404,18 @@ type Step = {
 const workflow = (name: string) => parse(fs.readFileSync(path.join(WORKFLOWS, name), "utf8")) as Record<string, any>;
 
 test("the workflow's trust boundary: main's workflow and code, the change only as data, a credential only for the push", () => {
-  const wf = workflow("seal-change.yml");
-  const steps: Step[] = wf.jobs["seal-change"].steps;
+  const wf = workflow("seal-pull-request.yml");
+  const steps: Step[] = wf.jobs["seal-pull-request"].steps;
   const index = (match: (s: Step) => boolean) => steps.findIndex(match);
 
   // workflow_run, which GitHub always takes from the default branch: never a trigger that runs
   // a workflow the change or a flight branch carries, and never scoped to main alone.
   assert.deepEqual(Object.keys(wf.on), ["workflow_run"]);
-  assert.deepEqual(wf.on.workflow_run.workflows, ["request-seal-change"]);
+  assert.deepEqual(wf.on.workflow_run.workflows, ["request-sealing"]);
   assert.deepEqual(wf.permissions, { contents: "read" });
-  assert.deepEqual(wf.jobs["seal-change"].permissions, {
+  assert.deepEqual(wf.jobs["seal-pull-request"].permissions, {
     contents: "read",
     "pull-requests": "read",
-    statuses: "write",
   });
 
   // Two checkouts, neither keeping a credential: the default branch's code, and the change as data.
@@ -458,20 +469,18 @@ test("the workflow's trust boundary: main's workflow and code, the change only a
     steps.find((s) => s.id === "sealable")?.if,
     "steps.admission.outputs.admitted == 'true' && env.DRAFT == 'false'",
   );
-  // The status step always reports, for every admitted pull request.
-  assert.equal(steps.at(-1)?.if, "always() && steps.admission.outputs.admitted == 'true'");
 });
 
 test("the workflow runs no change code: no PR-authored text in script position, only environment variables", () => {
-  const text = fs.readFileSync(path.join(WORKFLOWS, "seal-change.yml"), "utf8");
-  for (const step of workflow("seal-change.yml").jobs["seal-change"].steps as Step[]) {
+  const text = fs.readFileSync(path.join(WORKFLOWS, "seal-pull-request.yml"), "utf8");
+  for (const step of workflow("seal-pull-request.yml").jobs["seal-pull-request"].steps as Step[]) {
     assert.doesNotMatch(step.run ?? "", /\$\{\{\s*(github\.event\.|steps\.pr\.outputs|env\.)/);
   }
   assert.doesNotMatch(text, /pull_request_target|pull_request:\s*$/m);
 });
 
 test("the trigger is unprivileged: no secret, no write, no checkout, and it passes on only a number", () => {
-  const wf = workflow("request-seal-change.yml");
+  const wf = workflow("request-sealing.yml");
   assert.deepEqual(Object.keys(wf.on), ["pull_request"]);
   assert.deepEqual(wf.on.pull_request.types, [
     "opened",
@@ -483,9 +492,20 @@ test("the trigger is unprivileged: no secret, no write, no checkout, and it pass
   ]);
   assert.deepEqual(wf.permissions, {});
   assert.equal(wf["run-name"], "pr=${{ github.event.pull_request.number }}");
-  const text = fs.readFileSync(path.join(WORKFLOWS, "request-seal-change.yml"), "utf8");
+  const text = fs.readFileSync(path.join(WORKFLOWS, "request-sealing.yml"), "utf8");
   assert.doesNotMatch(text, /secrets\.|vars\.|actions\/checkout|GITHUB_TOKEN|github\.token/);
-  for (const step of wf.jobs["request-seal-change"].steps as Step[]) {
+  for (const step of wf.jobs["request-sealing"].steps as Step[]) {
     assert.doesNotMatch(step.run ?? "", /\$\{\{(?!\s*github\.event\.pull_request\.number\s*\}\})/);
   }
+});
+
+test("check-seals requires sealed Changes of a ready pull request, from main's code, with no write beyond statuses", () => {
+  const wf = workflow("seal.yml");
+  assert.deepEqual(Object.keys(wf.on), ["push", "pull_request_target"]);
+  assert.deepEqual(wf.jobs["check-seals"].permissions, { contents: "read", statuses: "write" });
+  const gate = (wf.jobs["check-seals"].steps as Step[]).find((s) => /seals:pull-request -- gate/.test(s.run ?? ""))!;
+  assert.equal(gate["working-directory"], "trusted");
+  assert.equal(gate.if, "github.event_name == 'pull_request_target'");
+  assert.equal(gate.env?.DRAFT, "${{ github.event.pull_request.draft }}");
+  assert.match(gate.run!, /\.\.\/change/);
 });
