@@ -23,6 +23,8 @@ Whether a Change's Regression Test Plan follows from the one it supersedes, with
 
 A Case reaches what it tests through its working directory, the candidate, and the candidate's public entry points, never through its own location, so a sealed Case can judge candidates written after it.
 
+A Case states the Requirements and Defects it tests in its header, `// @tests requirement <id>` or `// @tests defect <id>`, one line each. The reference belongs to the Case: the Requirement or Defect it names is never changed, and later Cases may reference earlier sealed meaning. `npm run case-tests:check` refuses a reference whose id names no Requirement or Defect in any Change, and `npm run case-tests:check -- requirement <id>` (or `defect <id>`) lists the Cases that test one, computed from the Cases. A Case tests only what it names: a Requirement that supersedes another is not tested by the Cases of the one it supersedes.
+
 ## Where and when
 
 CI runs the Regression Test Plan with `npm run testing:run -- <plan>` on Linux and Windows, checked out with `core.autocrlf=true`, on every push and pull request.
