@@ -1,4 +1,10 @@
 {
+  "far": {
+    "units": [
+      "change/far/26/09/25/01"
+    ],
+    "seal": "b9e753803bfb23fb4e9eedc349b481061d564b159d8368263cf35f1c13c02167"
+  },
   "regression-testing": {
     "units": [
       "change/regression-testing/26/09/30/01"
