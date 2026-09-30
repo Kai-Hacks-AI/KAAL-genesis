@@ -1,7 +1,13 @@
 import path from "node:path";
 import { ROOT as BRAIN_ROOT } from "../skills/using-brain/scripts/brain.js";
 import { brainErrors, entries, sealBrain, sealingOutputErrors, sealState, sealStateChanges } from "./brain-seals.js";
-import { changeErrors, changeSealingOutputErrors, changeSealStateChanges, sealChanges } from "./change-seals.js";
+import {
+  changeErrors,
+  changeSealingOutputErrors,
+  changeSealState,
+  changeSealStateChanges,
+  sealChanges,
+} from "./change-seals.js";
 
 /**
  * KAAL's sealed history: its BRAIN learnings and its Changes, each under its
@@ -24,9 +30,18 @@ export function sealKaal(repo = "."): string[] {
   return [...sealBrain(path.join(repo, BRAIN_ROOT)).map((unit) => `${BRAIN_ROOT}/${unit}`), ...sealChanges(repo)];
 }
 
-/** One error per seal-state path, of BRAIN or of Changes, that a change touches. */
-export function kaalSealStateChanges(nameStatus: string): string[] {
-  return [...sealStateChanges(nameStatus), ...changeSealStateChanges(nameStatus)];
+/**
+ * One error per seal-state path, of BRAIN or of Changes, that a change touches,
+ * except a path `accepted` says already holds, in the change, exactly the state
+ * accepted on main: that is main's own seal state, incorporated unchanged, not
+ * written by the change. `accepted` is asked only about seal-state paths.
+ */
+export function kaalSealStateChanges(nameStatus: string, accepted: (file: string) => boolean = () => false): string[] {
+  const touched = entries(nameStatus)
+    .filter(({ file }) => !((sealState(file) || changeSealState(file)) && accepted(file)))
+    .map(({ status, file }) => `${status}\t${file}`)
+    .join("\n");
+  return [...sealStateChanges(touched), ...changeSealStateChanges(touched)];
 }
 
 /** One error per staged entry that sealing, of BRAIN or of Changes, could not have produced. */
