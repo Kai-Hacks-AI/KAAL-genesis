@@ -1,7 +1,8 @@
-# Runs the full suite, the Regression Test Plan of the Change being judged,
-# typecheck and format check on Linux and Windows. The Plan is named here,
-# explicitly: Testing never discovers a current Plan, and Change order is not
-# used to infer one. Which cases run where is not selected.
+# Runs the full suite, KAAL's Regression Test Plan, typecheck and format check
+# on Linux and Windows. How KAAL tests: test/strategy.md. Until KAAL derives
+# the current Regression Test Plan, the Plan is named here explicitly, as a
+# bootstrap: the first one, which supersedes nothing. Which cases run where is
+# not selected.
 #
 # Job names are <what>-<where> and unique across all workflows: required
 # status checks select by job name alone, so they must never be ambiguous
