@@ -1,6 +1,6 @@
 # Guards main: a pull request into main must come from a `kaal/*` branch of
 # this repository, or from Dependabot. Anything else, such as an unnamed
-# agent branch or a fork, fails branch-guard-linux.
+# agent branch or a fork, fails guard-branch-linux.
 #
 # Runs as pull_request_target, like seal.yml: GitHub takes the workflow from
 # main, never from the change, so a change cannot weaken the guard that judges
@@ -19,7 +19,7 @@ permissions: {}
 
 jobs:
   branch-guard:
-    name: branch-guard-linux
+    name: guard-branch-linux
     runs-on: ubuntu-latest
     env:
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
