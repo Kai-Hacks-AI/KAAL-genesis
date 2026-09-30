@@ -32,7 +32,12 @@ name: check-seals
 on:
   push:
     branches: [main]
+  # The gate depends on the pull request's draft state and base, so every
+  # activity that changes either re-runs it: GitHub's default types (opened,
+  # synchronize, reopened) would leave a draft's success standing once the
+  # same head is ready, or retargeted into a flight or main.
   pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read

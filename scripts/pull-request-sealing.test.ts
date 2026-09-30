@@ -502,6 +502,15 @@ test("the trigger is unprivileged: no secret, no write, no checkout, and it pass
 test("check-seals requires sealed Changes of a ready pull request, from main's code, with no write beyond statuses", () => {
   const wf = workflow("seal.yml");
   assert.deepEqual(Object.keys(wf.on), ["push", "pull_request_target"]);
+  // The gate depends on draft state and base, so every activity that changes either re-runs it.
+  assert.deepEqual(wf.on.pull_request_target.types, [
+    "opened",
+    "reopened",
+    "synchronize",
+    "edited",
+    "ready_for_review",
+    "converted_to_draft",
+  ]);
   assert.deepEqual(wf.jobs["check-seals"].permissions, { contents: "read", statuses: "write" });
   const gate = (wf.jobs["check-seals"].steps as Step[]).find((s) => /seals:pull-request -- gate/.test(s.run ?? ""))!;
   assert.equal(gate["working-directory"], "trusted");
