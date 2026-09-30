@@ -16,14 +16,6 @@ on:
 permissions:
   contents: read
 
-# One commit's runs share a group. A pull_request run cancels a push run of the
-# same commit still in flight (a PR opened after the push started, past the
-# open-PR lookup below); a push run never cancels a pull_request run. Only
-# push-test-<where> jobs can be cancelled this way, never a required check.
-concurrency:
-  group: test-${{ github.event.pull_request.head.sha || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   # A push to a branch with an open pull request is covered by that pull
   # request's run, so it is skipped here. Push runs are named push-test-<where>,
@@ -56,6 +48,29 @@ jobs:
             fi
           fi
           echo "open=$open" >> "$GITHUB_OUTPUT"
+
+  # A PR opened after a push run passed the lookup above: the pull_request run
+  # cancels the still-running push runs of that branch and commit. It only ever
+  # cancels push runs, never itself, so it cannot displace a required check (a
+  # concurrency group could: a newer run replaces a pending one). Best effort.
+  cancel-push:
+    name: cancel-push
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          ids=$(gh api -X GET "repos/$REPO/actions/workflows/test.yml/runs" \
+            -f event=push -f branch="$BRANCH" -f head_sha="$SHA" \
+            --jq '.workflow_runs[] | select(.status != "completed") | .id') || ids=
+          for id in $ids; do gh run cancel "$id" -R "$REPO" || true; done
 
   test:
     needs: pr-open
