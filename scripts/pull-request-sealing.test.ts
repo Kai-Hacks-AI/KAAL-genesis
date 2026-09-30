@@ -16,7 +16,7 @@ import {
   writebackRefusal,
 } from "./pull-request-sealing.js";
 import { sealGuardErrors } from "./seal-guard.js";
-import { scratchRepo, tree } from "./test-data.js";
+import { scratchRepo } from "./test-data.js";
 
 const WORKFLOWS = fileURLToPath(new URL("../.github/workflows/", import.meta.url));
 const THIS_REPO = "Kai-Hacks-AI/KAAL";
@@ -27,6 +27,26 @@ function git(repo: string, ...args: string[]): string {
   return execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], {
     encoding: "utf8",
   }).trim();
+}
+
+/**
+ * Every file of the work tree, never `.git`: git's background maintenance
+ * creates and removes files there while a test reads, so reading it is a race.
+ */
+function tree(repo: string): Record<string, string> {
+  const files: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((x, y) => (x.name < y.name ? -1 : 1))) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!(dir === repo && entry.name === ".git")) walk(file);
+      } else if (entry.isFile()) {
+        files[path.relative(repo, file).split(path.sep).join("/")] = fs.readFileSync(file, "utf8");
+      }
+    }
+  };
+  walk(repo);
+  return files;
 }
 
 function commit(repo: string, message: string) {
@@ -114,9 +134,7 @@ test("the state CI writes is exactly what the existing Change Sealing writes", (
   authored(agent, "feature", "26/10/01/01");
   sealChange(agent, "feature/26/10/01/01");
 
-  const worktree = (repo: string) =>
-    Object.fromEntries(Object.entries(tree(repo)).filter(([file]) => !file.startsWith(".git/")));
-  assert.deepEqual(worktree(ci), worktree(agent));
+  assert.deepEqual(tree(ci), tree(agent));
 });
 
 test("an agent that sealed the Change itself leaves CI nothing to seal", () => {
