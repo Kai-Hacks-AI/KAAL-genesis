@@ -1,0 +1,7 @@
+A	change/change/26/10/01/01/seal.json
+M	change/change/26/09/30/01/seal.json
+D	change/testing/26/09/30/01/seal.json
+M	seals.json
+A	seals.json.lock
+A	change/change/26/10/01/01/nested/seal.json
+A	change/seal.json

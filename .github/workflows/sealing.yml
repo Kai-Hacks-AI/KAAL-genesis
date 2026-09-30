@@ -1,4 +1,5 @@
 # KAAL's sealing policy: brain/learning/genesis/26/09/25/01/nodes/using-seals.md
+# and, for Changes, brain/learning/change/26/09/30/02/nodes/managing-change.md
 #
 # Runs `npm run seal` after every push to main and commits what it wrote back
 # to main. Before anything is committed, `npm run seals:sealing-check` refuses
@@ -70,7 +71,7 @@ jobs:
           user_id="$(GH_TOKEN="$APP_TOKEN" gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)"
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
-          git commit -m "Seal BRAIN learnings" -m "$(cat "$RUNNER_TEMP/sealed.txt")"
+          git commit -m "Seal BRAIN learnings and Changes" -m "$(cat "$RUNNER_TEMP/sealed.txt")"
           # A push by the app starts workflows again, as any push does; this
           # workflow then finds nothing new to seal and stops.
           git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
