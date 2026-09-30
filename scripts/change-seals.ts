@@ -103,6 +103,30 @@ export function changeSealStateChanges(nameStatus: string): string[] {
     .map(({ status, file }) => `${file}: seal state may only be written by sealing on main (${status})`);
 }
 
+/** The Change a posix path beneath the Change root belongs to, as `change/<lineage>/YY/MM/DD/CC`. */
+function changeOf(file: string): string | undefined {
+  const parts = file.split("/");
+  return parts[0] === CHANGE_ROOT && parts.length > 6 ? parts.slice(0, 6).join("/") : undefined;
+}
+
+/**
+ * A Change, once born, is never rewritten by a later one. Seals prove that
+ * only once sealing on main has run, which follows acceptance, so a candidate
+ * is also refused if it adds, modifies or deletes anything in a Change that
+ * already exists on its target, sealed or not. Takes the candidate's
+ * `git diff --name-status --no-renames` output and every file the target
+ * holds (posix paths); returns one error per entry that rewrites a Change.
+ * Seal state is left to the seal-state guard.
+ */
+export function changeRewrites(nameStatus: string, target: string[]): string[] {
+  const born = new Set(target.map(changeOf).filter((change) => change !== undefined));
+  return entries(nameStatus).flatMap(({ status, file }) => {
+    const change = changeOf(file);
+    if (!change || !born.has(change) || changeSealState(file)) return [];
+    return [`${file}: rewrites Change ${change}, already born on the target (${status})`];
+  });
+}
+
 /**
  * What sealing on main may commit for Changes: a seal added to each newly
  * sealed Change, and the heads added or updated; nothing else. Takes staged

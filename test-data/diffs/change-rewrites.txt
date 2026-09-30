@@ -1,0 +1,6 @@
+M	change/change/26/09/30/01/owned.txt
+A	change/change/26/09/30/02/theirs.txt
+D	change/testing/26/09/30/01/test/cases/foo.txt
+A	change/change/26/10/01/01/owned.txt
+M	scripts/change-seals.ts
+A	change/change/26/09/30/01/seal.json

@@ -1,7 +1,13 @@
 import path from "node:path";
 import { ROOT as BRAIN_ROOT } from "../skills/using-brain/scripts/brain.js";
 import { brainErrors, entries, sealBrain, sealingOutputErrors, sealState, sealStateChanges } from "./brain-seals.js";
-import { changeErrors, changeSealingOutputErrors, changeSealStateChanges, sealChanges } from "./change-seals.js";
+import {
+  changeErrors,
+  changeRewrites,
+  changeSealingOutputErrors,
+  changeSealStateChanges,
+  sealChanges,
+} from "./change-seals.js";
 
 /**
  * KAAL's sealed history: its BRAIN learnings and its Changes, each under its
@@ -27,6 +33,15 @@ export function sealKaal(repo = "."): string[] {
 /** One error per seal-state path, of BRAIN or of Changes, that a change touches. */
 export function kaalSealStateChanges(nameStatus: string): string[] {
   return [...sealStateChanges(nameStatus), ...changeSealStateChanges(nameStatus)];
+}
+
+/**
+ * Everything the guard refuses in a candidate, given every file its target
+ * holds: seal state written, and any Change already born on the target
+ * rewritten.
+ */
+export function kaalGuardErrors(nameStatus: string, target: string[]): string[] {
+  return [...kaalSealStateChanges(nameStatus), ...changeRewrites(nameStatus, target)];
 }
 
 /** One error per staged entry that sealing, of BRAIN or of Changes, could not have produced. */
