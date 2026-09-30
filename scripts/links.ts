@@ -229,12 +229,6 @@ export function repoCases(repo: string): Case[] {
 
 /**
  * Every case a repository runs, in the order its cases are read, with the
- * suites it says it belongs to through `// Suite: <place>` lines among the
- * links directly above it, read as every other link of a case is read. A suite
- * never lists its cases, so this is how KAAL finds a suite's cases.
- */
-/**
- * Every case a repository runs, in the order its cases are read, with the
  * defects it says it tests, none where it says none: read as every other link
  * of a case is read, so each case is told apart from another at its address.
  */
@@ -245,9 +239,16 @@ export function caseDefects(repo: string): Tested[] {
   });
 }
 
-export function caseSuites(repo: string): Member[] {
-  return caseFiles(repo).flatMap((file) => {
-    const { cases, suites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
+/**
+ * Every case a repository runs, in the order its cases are read, with the
+ * suites it says it belongs to through `// Suite: <place>` lines among the
+ * links directly above it, read as every other link of a case is read. A suite
+ * never lists its cases, so this is how KAAL finds a suite's cases. Given
+ * `held`, the cases are those held there, as `repo` finds cases.
+ */
+export function caseSuites(repo: string, held: string = repo): Member[] {
+  return caseFiles(repo, held).flatMap((file) => {
+    const { cases, suites } = scan(file, fs.readFileSync(path.join(held, file), "utf8"));
     return cases.map(({ title }, i) => ({ file, title, suites: suites[i]! }));
   });
 }

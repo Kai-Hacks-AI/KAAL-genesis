@@ -7,7 +7,7 @@ import { type Conditions, evidence } from "../skills/testing/scripts/plan.js";
 import { acceptance, acceptedExclusions, acceptedProtection } from "./acceptance.js";
 import { type Carried, carriedCases, carriedErrors, carrying } from "./carried.js";
 import { featureRun, newPromises } from "./feature.js";
-import { caseDefects, caseFiles, fileCases, PLAN, planEntries } from "./links.js";
+import { caseDefects, caseFiles, caseSuites, fileCases, PLAN, planEntries } from "./links.js";
 import { type PlanRequirement, planError, planRequirements, readPlan } from "./plans.js";
 import {
   GENESIS,
@@ -142,17 +142,32 @@ function digest(at: string): string {
 }
 
 /** The cases `state` projects, each with only the commitments of `commitments` it names, less those `keep` does not. */
-function projected(state: string, commitments: Set<string>, keep: (c: Held) => boolean = () => true): Held[] {
-  return projectedCases(state).flatMap(({ source, cases }) =>
-    cases
-      .map((c) => ({
-        ...(source.change ? { change: source.change } : {}),
-        file: c.file,
-        title: c.title,
-        places: sorted(c.places.filter((p) => commitments.has(p))),
-      }))
-      .filter(keep),
-  );
+function projected(
+  state: string,
+  commitments: Set<string>,
+  suites: Set<string>,
+  keep: (c: Held) => boolean = () => true,
+): Held[] {
+  // A held case keeps the links it was admitted with, its suites among them, read from the evidence as it is held.
+  return sources(state).flatMap((source) => {
+    const skips = heldSkips(source);
+    const members = caseSuites(state, source.root);
+    return heldCases(state, source)
+      .flatMap((c, i): Held[] =>
+        skipped(skips, c.file, c.title)
+          ? []
+          : [
+              {
+                ...(source.change ? { change: source.change } : {}),
+                file: c.file,
+                title: c.title,
+                places: sorted(c.places.filter((p) => commitments.has(p))),
+                suites: sorted((members[i]?.suites ?? []).filter((s) => suites.has(s))),
+              },
+            ],
+      )
+      .filter(keep);
+  });
 }
 
 /**
@@ -178,7 +193,7 @@ export function protectionOf(state: string): { protection: Protection; errors: s
   try {
     cases = ordered(
       holdsEvidence(state)
-        ? projected(state, new Set(commitments))
+        ? projected(state, new Set(commitments), new Set(suites))
         : carriedCases(state, () => true, new Set(commitments), new Set(suites)),
     );
   } catch (e) {
@@ -266,7 +281,7 @@ export function nextRegression(
     // before, they were the candidate's own, carrying each inherited case, and each demonstrating a new promise.
     cases = ordered(
       holdsEvidence(accepted) || holdsEvidence(candidate)
-        ? projected(accepted, commitments, (c) => !given(c))
+        ? projected(accepted, commitments, suites, (c) => !given(c))
         : carrying(
             carriedCases(accepted, (c) => !given(c), commitments, suites),
             carriedCases(accepted, given, commitments, suites),
