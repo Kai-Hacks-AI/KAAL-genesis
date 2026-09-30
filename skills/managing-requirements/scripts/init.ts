@@ -1,0 +1,39 @@
+import fs from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const SKILL = fileURLToPath(new URL("../SKILL.md", import.meta.url));
+
+/** This skill's SKILL.md. The skill is born from init: SKILL.md is generated from here, never edited by hand. */
+export const SKILL_MD = `---
+name: managing-requirements
+description: Create, read and validate Requirements, durable Markdown statements of what must hold, each with a portable id other material can reference.
+---
+
+# Managing Requirements
+
+A Requirement is durable meaning: a Markdown file stating, for Humans and agents, something that must hold. Its YAML frontmatter holds one fact, its \`id\`, and nothing else; the body is the meaning. Requirements live as files directly in a directory the caller supplies, \`<dir>/<id>.md\`:
+
+\`\`\`
+---
+id: git-independence
+---
+
+KAAL semantics are independent of Git.
+\`\`\`
+
+The \`id\` is the Requirement's identity. It is portable: lowercase kebab-case (\`a-z\`, \`0-9\`, single hyphens), never a Windows reserved device name such as \`con\` or \`nul\`, and equal to the file's name without \`.md\`. It derives from no version control, hosting or location: moving the file, or the directory, or the repository, changes neither identity nor meaning. An id is never reused for different meaning. A Requirement that later replaces another is a new Requirement with a new id; this skill keeps no relation between them.
+
+Other material references a Requirement by its \`id\`: the reference belongs to the referrer, which may name any number of Requirements, and any number of referrers may name the same one. A Requirement never names what refers to it.
+
+Create with \`scripts/create.ts <dir> <id> <meaning>\`: it writes \`<dir>/<id>.md\`, refuses an unportable id, a blank meaning and an existing file, so a Requirement is never rewritten. Validate with \`scripts/validate.ts <dir>...\`: a directory holds Requirement files and nothing else, each with exactly the frontmatter above, a non-blank meaning and a file name equal to its id, and an id is defined once across all the directories given. A missing directory holds no Requirements. Read with \`scripts/read.ts --root <dir>... [id]...\`: it prints each id's meaning, prints every id when none is named, and fails on an id that names no Requirement. From code, \`readRequirements\` and \`resolve\` in \`scripts/requirements.ts\` return the same.
+
+Validation reads the files as they are now and cannot prove a Requirement was never edited. The skill knows where neither the directories nor the referrers are. Why Requirements are kept, where they live, and what refers to them belong to the using system.
+`;
+
+/** Generates this skill's SKILL.md at \`target\` (by default, next to this skill's scripts). */
+export function init(target = SKILL): string {
+  fs.writeFileSync(target, SKILL_MD);
+  return target;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) init();
