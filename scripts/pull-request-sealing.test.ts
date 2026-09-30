@@ -9,6 +9,7 @@ import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import { sealChange, sealChanges } from "./change-seals.js";
 import { kaalSealErrors, kaalSealingOutputErrors } from "./kaal-seals.js";
 import {
+  admission,
   sealPullRequest,
   sealingStatus,
   touchedOccurrences,
@@ -24,9 +25,13 @@ const ORIGIN = { headRef: "kaal/work", headRepo: THIS_REPO, author: "ChBrain", t
 const MAIN = "refs/heads/main";
 
 function git(repo: string, ...args: string[]): string {
-  return execFileSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", ...args], {
-    encoding: "utf8",
-  }).trim();
+  return execFileSync(
+    "git",
+    ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.autocrlf=false", ...args],
+    {
+      encoding: "utf8",
+    },
+  ).trim();
 }
 
 /**
@@ -233,29 +238,109 @@ test("the status is success only for a ready head whose Changes were already sea
   assert.equal(state({ draft: true, succeeded: false, pushed: false }), "pending");
 });
 
-test("CI writes seal state back only to a kaal/* branch of this repository", () => {
+test("CI writes seal state back only to a claude/* or kaal/* branch of this repository", () => {
   assert.equal(writebackRefusal(ORIGIN), undefined);
   assert.equal(writebackRefusal({ ...ORIGIN, headRef: "kaal/hotfix/thing" }), undefined);
+  assert.equal(writebackRefusal({ ...ORIGIN, headRef: "claude/agent-branch" }), undefined);
   for (const over of [
     { headRepo: "someone/KAAL" },
-    { headRepo: "someone/KAAL", headRef: "kaal/work" },
+    { headRepo: "someone/KAAL", headRef: "claude/work" },
     { headRef: "main" },
-    { headRef: "claude/agent-branch" },
+    { headRef: "jules-15604167912077228041-853dd3d1" },
+    { headRef: "claudette" },
     { headRef: "dependabot/npm_and_yarn/x-1", author: "dependabot[bot]" },
   ]) {
-    assert.match(writebackRefusal({ ...ORIGIN, ...over }) ?? "", /writes seal state only to a kaal\/\* branch/);
+    assert.match(
+      writebackRefusal({ ...ORIGIN, ...over }) ?? "",
+      /writes seal state only to a claude\/\* or kaal\/\* branch/,
+    );
   }
 
+  // Where CI may not write, nothing is sealed and the Changes must arrive sealed.
   const repo = mainAndBranch();
   authored(repo, "feature", "26/10/01/01");
   const before = tree(repo);
-  assert.throws(() => seal(repo, { origin: { ...ORIGIN, headRepo: "someone/KAAL" } }), /must arrive sealed/);
-  assert.deepEqual(tree(repo), before);
+  for (const origin of [
+    { ...ORIGIN, headRepo: "someone/KAAL" },
+    { ...ORIGIN, headRef: "main" },
+  ]) {
+    assert.throws(() => seal(repo, { origin }), /must arrive sealed/);
+    assert.deepEqual(tree(repo), before);
+  }
+  // ...and one that arrives sealed is verified without a write, from anywhere.
+  sealChange(repo, "feature/26/10/01/01");
+  commit(repo, "arrived sealed");
+  assert.equal(seal(repo, { origin: { ...ORIGIN, headRepo: "someone/KAAL" } }).status, "sealed");
   // A pull request that carries no Change needs no write, from anywhere.
   const plain = mainAndBranch();
   write(plain, "skills/x.txt", "ordinary\n");
   commit(plain, "ordinary");
   assert.equal(seal(plain, { origin: { ...ORIGIN, headRepo: "someone/KAAL" } }).status, "sealed");
+});
+
+test("a pull request is admitted into a kaal/* flight and into main, and nowhere else", () => {
+  assert.equal(admission("main", "main"), "main");
+  assert.equal(admission("kaal/seal-changes", "main"), "flight");
+  assert.equal(admission("kaal/hotfix/x", "main"), "flight");
+  for (const base of ["claude/work", "jules-1", "kaal", "xkaal/x", "far", ""]) {
+    assert.equal(admission(base, "main"), undefined, base);
+  }
+});
+
+test("claude/* into a kaal/* flight is sealed by CI; the flight into main is verified, never rewritten", () => {
+  const repo = mainAndBranch();
+  git(repo, "branch", "-m", "kaal/flight");
+  git(repo, "checkout", "-q", "-b", "claude/work");
+  authored(repo, "feature", "26/10/01/01");
+
+  // Admission into the flight: the Change enters the lineage and CI seals it, with the guard's base the flight.
+  const agent = { ...ORIGIN, headRef: "claude/work" };
+  assert.equal(admission("kaal/flight", "main"), "flight");
+  assert.deepEqual(unsealedOccurrences("kaal/flight", repo), ["feature/26/10/01/01"]);
+  assert.deepEqual(sealPullRequest({ base: "kaal/flight", repo, draft: false, origin: agent }).status, "sealed");
+  commitSealState(repo);
+  assert.deepEqual(unsealedOccurrences("kaal/flight", repo), []);
+  assert.deepEqual(kaalSealErrors(repo), []);
+  assert.deepEqual(sealGuardErrors("kaal/flight", repo, MAIN), []);
+
+  // The flight takes it, as the merge of the pull request does.
+  git(repo, "checkout", "-q", "kaal/flight");
+  git(repo, "merge", "-q", "--no-ff", "--no-edit", "claude/work");
+
+  // Admission into main: a flight head, already sealed, is verified and nothing is written or pushed.
+  assert.equal(admission("main", "main"), "main");
+  const flight = { ...ORIGIN, headRef: "kaal/flight" };
+  assert.deepEqual(unsealedOccurrences("main", repo), []);
+  const before = tree(repo);
+  assert.deepEqual(sealPullRequest({ base: "main", repo, draft: false, origin: flight }), {
+    status: "sealed",
+    units: [],
+    occurrences: [],
+  });
+  assert.deepEqual(tree(repo), before);
+  git(repo, "add", "-A");
+  assert.equal(git(repo, "status", "--porcelain"), "");
+  assert.deepEqual(kaalSealErrors(repo), []);
+  assert.deepEqual(sealGuardErrors("main", repo, MAIN), []);
+});
+
+test("a Change that reaches a flight unsealed from a head CI may not write is refused, not sealed", () => {
+  const repo = mainAndBranch();
+  git(repo, "branch", "-m", "kaal/flight");
+  git(repo, "checkout", "-q", "-b", "someone/work");
+  authored(repo, "feature", "26/10/01/01");
+  const before = tree(repo);
+  assert.throws(
+    () =>
+      sealPullRequest({
+        base: "kaal/flight",
+        repo,
+        draft: false,
+        origin: { ...ORIGIN, headRef: "work", headRepo: "someone/KAAL" },
+      }),
+    /must arrive sealed/,
+  );
+  assert.deepEqual(tree(repo), before);
 });
 
 test("a candidate that modifies the sealing machinery cannot use it as authority", () => {
@@ -311,22 +396,32 @@ test("the workflow's trust boundary: main's workflow and code, the change only a
   const steps: Step[] = wf.jobs["seal-change"].steps;
   const index = (match: (s: Step) => boolean) => steps.findIndex(match);
 
-  // pull_request_target, into main only; never a trigger that runs the change's own workflow.
-  assert.deepEqual(Object.keys(wf.on), ["pull_request_target"]);
-  assert.deepEqual(wf.on.pull_request_target.branches, ["main"]);
+  // workflow_run, which GitHub always takes from the default branch: never a trigger that runs
+  // a workflow the change or a flight branch carries, and never scoped to main alone.
+  assert.deepEqual(Object.keys(wf.on), ["workflow_run"]);
+  assert.deepEqual(wf.on.workflow_run.workflows, ["request-seal-change"]);
   assert.deepEqual(wf.permissions, { contents: "read" });
-  assert.deepEqual(wf.jobs["seal-change"].permissions, { contents: "read", statuses: "write" });
+  assert.deepEqual(wf.jobs["seal-change"].permissions, {
+    contents: "read",
+    "pull-requests": "read",
+    statuses: "write",
+  });
 
-  // Two checkouts, neither keeping a credential: main's code, and the change as data.
+  // Two checkouts, neither keeping a credential: the default branch's code, and the change as data.
   const checkouts = steps.filter((s) => s.uses?.startsWith("actions/checkout@"));
   assert.equal(checkouts.length, 2);
   for (const s of checkouts) assert.equal(s.with?.["persist-credentials"], false);
-  assert.equal(checkouts[0].with?.ref, undefined);
+  assert.equal(checkouts[0].with?.ref, "${{ github.event.repository.default_branch }}");
   assert.equal(checkouts[0].with?.path, "trusted");
   assert.equal(checkouts[1].with?.path, "change");
-  assert.equal(checkouts[1].with?.ref, "${{ github.event.pull_request.head.sha }}");
+  assert.equal(checkouts[1].with?.ref, "refs/pull/${{ env.PR_NUMBER }}/head");
 
-  // Every npm command runs from main's checkout; the change's checkout is only ever an argument.
+  // Only the pull request's number comes from the trigger, and it must be digits.
+  const resolve = steps.find((s) => s.id === "pr")!;
+  assert.match(resolve.run!, /\^pr=\(\[0-9\]\+\)\$/);
+  assert.match(resolve.run!, /head\.sha.*REQUEST_SHA/);
+
+  // Every npm command runs from the default branch's checkout; the change's checkout is only ever an argument.
   for (const s of steps.filter((s) => /\bnpm\b/.test(s.run ?? ""))) {
     assert.ok(s["working-directory"] === "trusted" || /\bcd (\.\.\/)?trusted\b/.test(s.run!), s.run);
   }
@@ -348,25 +443,49 @@ test("the workflow's trust boundary: main's workflow and code, the change only a
   assert.doesNotMatch(steps[push].run!, /--force(?!-with-lease)/);
   assert.equal(steps[mint].with?.["permission-contents"], "write");
 
-  // A draft reads and writes nothing of the change, and the status step always reports.
+  // Nothing of the change is read unless the pull request is admitted and is not a draft.
   const touchesChange = steps.filter(
     (s) => s.with?.path === "change" || s["working-directory"] === "change" || /\.\.\/change/.test(s.run ?? ""),
   );
   assert.ok(touchesChange.length >= 5);
   for (const s of touchesChange) {
     assert.ok(
-      s.if === "github.event.pull_request.draft == false" || s.if?.startsWith("steps.stage.outputs.staged"),
+      s.if === "steps.sealable.outputs.sealable == 'true'" || s.if?.startsWith("steps.stage.outputs.staged"),
       s.run ?? s.uses,
     );
   }
-  assert.equal(steps.at(-1)?.if, "always()");
+  assert.equal(
+    steps.find((s) => s.id === "sealable")?.if,
+    "steps.admission.outputs.admitted == 'true' && env.DRAFT == 'false'",
+  );
+  // The status step always reports, for every admitted pull request.
+  assert.equal(steps.at(-1)?.if, "always() && steps.admission.outputs.admitted == 'true'");
 });
 
 test("the workflow runs no change code: no PR-authored text in script position, only environment variables", () => {
-  const wf = workflow("seal-change.yml");
   const text = fs.readFileSync(path.join(WORKFLOWS, "seal-change.yml"), "utf8");
-  for (const step of wf.jobs["seal-change"].steps as Step[]) {
-    assert.doesNotMatch(step.run ?? "", /\$\{\{\s*github\.event\.pull_request\.(head\.ref|title|body|user)/);
+  for (const step of workflow("seal-change.yml").jobs["seal-change"].steps as Step[]) {
+    assert.doesNotMatch(step.run ?? "", /\$\{\{\s*(github\.event\.|steps\.pr\.outputs|env\.)/);
   }
-  assert.doesNotMatch(text, /pull_request:\s*$/m);
+  assert.doesNotMatch(text, /pull_request_target|pull_request:\s*$/m);
+});
+
+test("the trigger is unprivileged: no secret, no write, no checkout, and it passes on only a number", () => {
+  const wf = workflow("request-seal-change.yml");
+  assert.deepEqual(Object.keys(wf.on), ["pull_request"]);
+  assert.deepEqual(wf.on.pull_request.types, [
+    "opened",
+    "reopened",
+    "synchronize",
+    "edited",
+    "ready_for_review",
+    "converted_to_draft",
+  ]);
+  assert.deepEqual(wf.permissions, {});
+  assert.equal(wf["run-name"], "pr=${{ github.event.pull_request.number }}");
+  const text = fs.readFileSync(path.join(WORKFLOWS, "request-seal-change.yml"), "utf8");
+  assert.doesNotMatch(text, /secrets\.|vars\.|actions\/checkout|GITHUB_TOKEN|github\.token/);
+  for (const step of wf.jobs["request-seal-change"].steps as Step[]) {
+    assert.doesNotMatch(step.run ?? "", /\$\{\{(?!\s*github\.event\.pull_request\.number\s*\}\})/);
+  }
 });
