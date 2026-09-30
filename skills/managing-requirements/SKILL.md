@@ -9,10 +9,10 @@ A Requirement is durable meaning: a Markdown file stating, for Humans and agents
 
 ```
 ---
-id: git-independence
+id: works-offline
 ---
 
-KAAL semantics are independent of Git.
+The system works without a network connection.
 ```
 
 The `id` is the Requirement's identity. It is portable: lowercase kebab-case (`a-z`, `0-9`, single hyphens), never a Windows reserved device name such as `con` or `nul`, and equal to the file's name without `.md`. It derives from no version control, hosting or location: moving the file, or the directory, or the repository, changes neither identity nor meaning. An id is never reused for different meaning. A Requirement that later replaces another is a new Requirement with a new id; this skill keeps no relation between them.
