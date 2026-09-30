@@ -17,66 +17,17 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
-  # A push to a branch with an open pull request is covered by that pull
-  # request's run, so it is skipped here. Push runs are named push-test-<where>,
-  # never test-<where>, so they cannot satisfy or muddy the required checks.
-  pr-open:
-    name: pr-open
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      open: ${{ steps.find.outputs.open }}
-    steps:
-      - id: find
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          REPO: ${{ github.repository }}
-          OWNER: ${{ github.repository_owner }}
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          # A failed lookup is treated as no open PR: an occasional duplicate
-          # run is better than a branch with no push feedback.
-          open=false
-          if [ "$EVENT" = push ]; then
-            if n=$(gh api -X GET "repos/$REPO/pulls" -f state=open -f head="$OWNER:$BRANCH" --jq length); then
-              if [ "$n" -gt 0 ]; then open=true; fi
-            else
-              echo "::warning::open-PR lookup failed; running push tests"
-            fi
-          fi
-          echo "open=$open" >> "$GITHUB_OUTPUT"
-
-  # A PR opened after a push run passed the lookup above: the pull_request run
-  # cancels the still-running push runs of that branch and commit. It only ever
-  # cancels push runs, never itself, so it cannot displace a required check (a
-  # concurrency group could: a newer run replaces a pending one). Best effort.
-  cancel-push:
-    name: cancel-push
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-    steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          BRANCH: ${{ github.event.pull_request.head.ref }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          ids=$(gh api -X GET "repos/$REPO/actions/workflows/test.yml/runs" \
-            -f event=push -f branch="$BRANCH" -f head_sha="$SHA" \
-            --jq '.workflow_runs[] | select(.status != "completed") | .id') || ids=
-          for id in $ids; do gh run cancel "$id" -R "$REPO" || true; done
-
+  # One job per <where>, no orchestration jobs: the checks on a pull request
+  # are exactly the ones that assert something, never skipped or cancelled
+  # helpers. A push to a branch with an open pull request is covered by that
+  # pull request's run, so its push-test-<where> job finishes at once after
+  # its first step, without running the suite. Push runs are named
+  # push-test-<where>, never test-<where>, so they cannot satisfy or muddy the
+  # required checks.
   test:
-    needs: pr-open
-    if: needs.pr-open.outputs.open != 'true'
     name: ${{ github.event_name == 'push' && 'push-test' || 'test' }}-${{ matrix.where }}
     strategy:
       fail-fast: false
@@ -88,16 +39,45 @@ jobs:
             os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
+      - id: covered
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          # A failed lookup is treated as no open PR: an occasional duplicate
+          # run is better than a branch with no push feedback.
+          run=true
+          if n=$(gh api -X GET "repos/$REPO/pulls" -f state=open -f head="$OWNER:$BRANCH" --jq length); then
+            if [ "$n" -gt 0 ]; then
+              run=false
+              echo "::notice::Covered by the pull request run; push tests not needed."
+            fi
+          else
+            echo "::warning::open-PR lookup failed; running push tests"
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
       # Check out the way Git for Windows does by default, on every OS, so
       # line-ending conversion is always exercised and never assumed away.
-      - run: git config --global core.autocrlf true
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - if: steps.covered.outputs.run != 'false'
+        run: git config --global core.autocrlf true
+      - if: steps.covered.outputs.run != 'false'
+        uses: actions/checkout@v7
+      - if: steps.covered.outputs.run != 'false'
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run testing:run -- change/regression-testing/26/09/30/01/test/regression.md
-      - run: npm run typecheck
-      - run: npm run format:check
+      - if: steps.covered.outputs.run != 'false'
+        run: npm ci
+      - if: steps.covered.outputs.run != 'false'
+        run: npm test
+      - if: steps.covered.outputs.run != 'false'
+        run: npm run testing:run -- change/regression-testing/26/09/30/01/test/regression.md
+      - if: steps.covered.outputs.run != 'false'
+        run: npm run typecheck
+      - if: steps.covered.outputs.run != 'false'
+        run: npm run format:check

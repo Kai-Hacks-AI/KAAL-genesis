@@ -11,6 +11,7 @@ import {
   changeSealState,
   changeSealStateChanges,
   checkChanges,
+  sealChange,
   sealChanges,
 } from "./change-seals.js";
 import { diffData, scratchRepo, tree } from "./test-data.js";
@@ -237,4 +238,30 @@ test("sealing may commit exactly what sealing Changes produces, and nothing else
 
 test("KAAL's Changes are valid and their seals intact", () => {
   assert.deepEqual(changeErrors(REPO), []);
+});
+
+test("Change Sealing seals the named Change as main sealing would, and leaves the others open", () => {
+  const named = scratchRepo("history");
+  assert.deepEqual(sealChange(named, "change/26/09/30/01"), ["change/change/26/09/30/01"]);
+  assert.deepEqual(checkChanges(named), []);
+  const all = scratchRepo("history");
+  sealChanges(all);
+  // Same bytes for the same Change: the seal does not say who sealed it.
+  const file = "change/change/26/09/30/01/seal.json";
+  assert.equal(tree(named)[file], tree(all)[file]);
+  // Main sealing then seals what remains, chaining onto it.
+  assert.deepEqual(sealChanges(named), ["change/change/26/09/30/02", "change/testing/26/09/30/01"]);
+  assert.deepEqual(tree(named), tree(all));
+});
+
+test("Change Sealing refuses what it was not asked for and writes nothing", () => {
+  const repo = scratchRepo("history");
+  const before = tree(repo);
+  assert.throws(() => sealChange(repo), /name at least one Change/);
+  assert.throws(() => sealChange(repo, "change/26/09/30/99"), /not a Change/);
+  assert.throws(() => sealChange(repo, "change/26/09/30/02"), /would also seal change\/change\/26\/09\/30\/01/);
+  fs.writeFileSync(path.join(repo, "change/stray.txt"), "stray\n");
+  assert.throws(() => sealChange(repo, "change/26/09/30/01"), /refusing to seal Changes/);
+  fs.rmSync(path.join(repo, "change/stray.txt"));
+  assert.deepEqual(tree(repo), before);
 });
