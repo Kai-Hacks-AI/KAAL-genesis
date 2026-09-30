@@ -140,18 +140,35 @@ export function readPlanSuites(root: string, plan: string): { plan?: Plan; suite
 /** The TAP summary count Node's test runner reports under `name`. */
 const count = (tap: string, name: string): number => Number(new RegExp(`^# ${name} (\\d+)$`, "m").exec(tap)?.[1] ?? 0);
 
+/** Node options that load code before a Case runs, such as a TypeScript loader. */
+const LOADERS = ["--import", "--require", "-r", "--loader", "--experimental-loader"];
+
+/**
+ * The loader options among Node options `argv`, each with its value, whether
+ * given as one argument (`--import=x`) or two (`--import x`). Every other
+ * option, and so every test runner option and its value, is left out.
+ */
+export function loaderArgs(argv: string[]): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (LOADERS.includes(arg) && i + 1 < argv.length) kept.push(arg, argv[++i]);
+    else if (LOADERS.some((loader) => arg.startsWith(`${loader}=`))) kept.push(arg);
+  }
+  return kept;
+}
+
 /**
  * Executes one Case in its own Node process, in the candidate as its working
- * directory, under the same Node and loaders this process runs under, but
- * never its test runner options. It
+ * directory, under the same Node and loaders this process runs under, and
+ * none of its other options. It
  * passed only if the process succeeded and every test it reported ran and
  * passed. Its tests report to it even when this process runs inside a test
  * runner.
  */
 export function runCase(file: string, candidate: string): { passed: boolean; output: string } {
   const { NODE_TEST_CONTEXT: _, ...env } = process.env;
-  const node = process.execArgv.filter((arg) => !arg.startsWith("--test"));
-  const result = spawnSync(process.execPath, [...node, "--test-reporter=tap", file], {
+  const result = spawnSync(process.execPath, [...loaderArgs(process.execArgv), "--test-reporter=tap", file], {
     cwd: candidate,
     env,
     encoding: "utf8",

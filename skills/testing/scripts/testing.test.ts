@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateData, planData, rootData } from "./test-data.js";
-import { readPlan, readPlanSuites, report, runPlan } from "./testing.js";
+import { loaderArgs, readPlan, readPlanSuites, report, runPlan } from "./testing.js";
 
 const RUN = fileURLToPath(new URL("./run.ts", import.meta.url));
 const outcomes = (run: ReturnType<typeof runPlan>) =>
@@ -105,6 +105,33 @@ test("a Plan's body is its concern, and frontmatter it does not own is left to t
     plan: { concern: "Nothing collected yet.", suites: [] },
     errors: [],
   });
+});
+
+test("a Case runs under the runner's loaders, never its other options, however each is given", () => {
+  const argv = [
+    "--require",
+    "preflight.cjs",
+    "--test-reporter",
+    "tap",
+    "--import",
+    "file:///loader.mjs",
+    "--enable-source-maps",
+    "--test-reporter=spec",
+    "--test-name-pattern",
+    "x",
+    "--import=./other.mjs",
+    "-r",
+    "hook.cjs",
+  ];
+  assert.deepEqual(loaderArgs(argv), [
+    "--require",
+    "preflight.cjs",
+    "--import",
+    "file:///loader.mjs",
+    "--import=./other.mjs",
+    "-r",
+    "hook.cjs",
+  ]);
 });
 
 test("run.ts prints the Run and exits 0 only when the Plan holds", () => {
