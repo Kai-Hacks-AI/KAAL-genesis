@@ -17,8 +17,37 @@ permissions:
   contents: read
 
 jobs:
+  # A push to a branch with an open pull request is covered by that pull
+  # request's run, so it is skipped here. Push runs are named push-test-<where>,
+  # never test-<where>, so they cannot satisfy or muddy the required checks.
+  pr-open:
+    name: pr-open
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      open: ${{ steps.find.outputs.open }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          open=false
+          if [ "$EVENT" = push ]; then
+            n=$(gh api -X GET "repos/$REPO/pulls" -f state=open -f head="$OWNER:$BRANCH" --jq length)
+            [ "$n" -gt 0 ] && open=true
+          fi
+          echo "open=$open" >> "$GITHUB_OUTPUT"
+
   test:
-    name: test-${{ matrix.where }}
+    needs: pr-open
+    if: needs.pr-open.outputs.open != 'true'
+    name: ${{ github.event_name == 'push' && 'push-test' || 'test' }}-${{ matrix.where }}
     strategy:
       fail-fast: false
       matrix:
