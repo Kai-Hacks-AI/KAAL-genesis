@@ -7,12 +7,14 @@ import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import {
   changeChains,
   changeErrors,
+  changeNonFiles,
   changeRewrites,
   changeSealingOutputErrors,
   changeSealState,
   changeSealStateChanges,
   checkChanges,
   sealChanges,
+  treeEntries,
 } from "./change-seals.js";
 import { nulEntries } from "./brain-seals.js";
 import { changeRepoData, diffData, scratchRepo, tree } from "./test-data.js";
@@ -211,6 +213,13 @@ test("the guard reads NUL-delimited paths, so no file name a Change owns escapes
     "change/change/26/09/30/01/ta\tb.txt: rewrites Change change/change/26/09/30/01, already born on the target (M)",
     "change/change/26/09/30/02/caf\u00e9.txt: rewrites Change change/change/26/09/30/02, already born on the target (M)",
     "change/change/26/09/30/02/new\nline.txt: rewrites Change change/change/26/09/30/02, already born on the target (A)",
+  ]);
+});
+
+test("the guard refuses what Git holds in a Change but a checkout would not present as a file", () => {
+  assert.deepEqual(changeNonFiles(treeEntries(diffData("change-tree"))), [
+    "change/change/26/10/01/01/sub: a Change owns only files and directories, not Git mode 160000",
+    "change/change/26/10/01/01/link: a Change owns only files and directories, not Git mode 120000",
   ]);
 });
 

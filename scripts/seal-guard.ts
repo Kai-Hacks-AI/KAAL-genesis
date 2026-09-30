@@ -4,6 +4,7 @@ import { ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.j
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { HEADS_FILE, LOCK_FILE } from "../skills/using-seals/scripts/seals.js";
 import { nulEntries } from "./brain-seals.js";
+import { treeEntries } from "./change-seals.js";
 import { kaalGuardErrors } from "./kaal-seals.js";
 
 // Refuses a change that touches seal state compared with <base>, or rewrites
@@ -37,8 +38,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const target = execFileSync("git", ["-C", repo, "ls-tree", "-r", "-z", "--name-only", base, "--", CHANGE_ROOT], {
       encoding: "utf8",
     });
+    const candidate = execFileSync("git", ["-C", repo, "ls-tree", "-r", "-z", "HEAD", "--", CHANGE_ROOT], {
+      encoding: "utf8",
+    });
     // NUL-delimited, so Git never quotes a path: a Change may own any file name.
-    const errors = kaalGuardErrors(nulEntries(diff), target.split("\0").filter(Boolean));
+    const errors = kaalGuardErrors(nulEntries(diff), target.split("\0").filter(Boolean), treeEntries(candidate));
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;

@@ -11,10 +11,12 @@ import {
 } from "./brain-seals.js";
 import {
   changeErrors,
+  changeNonFiles,
   changeRewrites,
   changeSealingOutputErrors,
   changeSealStateChanges,
   sealChanges,
+  type TreeEntry,
 } from "./change-seals.js";
 
 /**
@@ -45,11 +47,12 @@ export function kaalSealStateChanges(nameStatus: string | Entry[]): string[] {
 
 /**
  * Everything the guard refuses in a candidate, given every file its target
- * holds: seal state written, and any Change already born on the target
- * rewritten.
+ * holds and the candidate's own Change tree: seal state written, any Change
+ * already born on the target rewritten, and anything in a Change that Git
+ * holds but a checkout would not present as a file.
  */
-export function kaalGuardErrors(nameStatus: string | Entry[], target: string[]): string[] {
-  return [...kaalSealStateChanges(nameStatus), ...changeRewrites(nameStatus, target)];
+export function kaalGuardErrors(nameStatus: string | Entry[], target: string[], candidate: TreeEntry[] = []): string[] {
+  return [...kaalSealStateChanges(nameStatus), ...changeRewrites(nameStatus, target), ...changeNonFiles(candidate)];
 }
 
 /** One error per staged entry that sealing, of BRAIN or of Changes, could not have produced. */

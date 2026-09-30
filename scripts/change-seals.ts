@@ -129,6 +129,34 @@ export function changeRewrites(nameStatus: string | Entry[], target: string[]): 
   });
 }
 
+/** One entry of `git ls-tree -r -z` output: its mode and path. */
+export type TreeEntry = { mode: string; file: string };
+
+/** Each entry of NUL-delimited `git ls-tree -r -z` output, whose paths Git never quotes. */
+export function treeEntries(output: string): TreeEntry[] {
+  return output
+    .split("\0")
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.indexOf("\t");
+      return { mode: line.slice(0, line.indexOf(" ")), file: line.slice(tab + 1) };
+    });
+}
+
+/**
+ * A Change owns only files and directories, and seals vouch only for the
+ * bytes of files. Git can hold other entries a checkout does not turn into
+ * those bytes: a gitlink checks out as an empty directory, and a symlink as a
+ * plain file where symlinks are off, so neither managing-change nor a seal
+ * would see it. Takes the candidate's Change tree (`git ls-tree -r -z`) and
+ * returns one error per entry under the Change root that is not a file.
+ */
+export function changeNonFiles(tree: TreeEntry[]): string[] {
+  return tree
+    .filter(({ mode, file }) => file.startsWith(`${CHANGE_ROOT}/`) && mode !== "100644" && mode !== "100755")
+    .map(({ mode, file }) => `${file}: a Change owns only files and directories, not Git mode ${mode}`);
+}
+
 /**
  * What sealing on main may commit for Changes: a seal added to each newly
  * sealed Change, and the heads added or updated; nothing else. Takes staged
