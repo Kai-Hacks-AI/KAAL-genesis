@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { birthChange } from "./birth.js";
 import { identity, readChanges } from "./changes.js";
 import { changeData, MALFORMED_OCCURRENCES, scratchChanges, tree, UNPORTABLE_LINEAGES } from "./test-data.js";
@@ -74,36 +74,79 @@ test("refuses to birth through a symlink, writing nothing through it", () => {
   assert.deepEqual(fs.readdirSync(outside), []);
 });
 
-test("a birth that fails partway removes the directories it created", (t) => {
-  const root = scratchChanges("valid");
-  const before = tree(root);
+/**
+ * Fault injection: creating the directory at `rel` beneath `root` fails. A
+ * recursive creation passing through it first creates the levels above it, as
+ * a real one does before it meets the failure.
+ */
+function failMkdirAt(t: TestContext, root: string, rel: string): void {
   const mkdir = fs.mkdirSync;
-  // Fault injection: creating the occurrence itself fails after its levels were created.
+  const target = path.resolve(root, rel);
   t.mock.method(fs, "mkdirSync", (dir: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
-    if (!options?.recursive) throw new Error("mkdir failed on purpose");
+    const at = path.resolve(String(dir));
+    if (at === target || (options?.recursive && at.startsWith(target + path.sep))) {
+      if (options?.recursive) mkdir(path.dirname(target), options);
+      throw new Error("mkdir failed on purpose");
+    }
     return mkdir(dir, options);
   });
-  assert.throws(() => birthChange({ root, lineage: "other", occurrence: "26/09/30/01" }), /mkdir failed on purpose/);
-  t.mock.restoreAll();
-  assert.deepEqual(tree(root), before);
+}
+
+test("a birth that fails at any level removes every directory it created", (t) => {
+  for (const rel of ["other", "other/26", "other/26/09", "other/26/09/30", "other/26/09/30/01"]) {
+    const root = scratchChanges("valid");
+    const before = tree(root);
+    failMkdirAt(t, root, rel);
+    assert.throws(
+      () => birthChange({ root, lineage: "other", occurrence: "26/09/30/01" }),
+      /mkdir failed on purpose/,
+      rel,
+    );
+    t.mock.restoreAll();
+    assert.deepEqual(tree(root), before, rel);
+  }
 });
 
 test("a birth that loses a race for the same occurrence refuses, leaving the Change born beside it", (t) => {
   const root = scratchChanges("valid");
   const mkdir = fs.mkdirSync;
+  const occurrence = path.resolve(root, "other/26/09/30/01");
   // Fault injection: another birth creates the same occurrence, and gives it
   // material, between this birth creating its levels and creating the occurrence.
   t.mock.method(fs, "mkdirSync", (dir: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
-    if (options?.recursive) return mkdir(dir, options);
+    if (path.resolve(String(dir)) !== occurrence) return mkdir(dir, options);
     t.mock.restoreAll();
     birthChange({ root, lineage: "other", occurrence: "26/09/30/01" });
-    fs.writeFileSync(path.join(String(dir), "owned.txt"), "theirs\n");
+    fs.writeFileSync(path.join(occurrence, "owned.txt"), "theirs\n");
     return mkdir(dir, options);
   });
   assert.throws(() => birthChange({ root, lineage: "other", occurrence: "26/09/30/01" }), /already exists/);
   t.mock.restoreAll();
   assert.equal(tree(root)["other/26/09/30/01/owned.txt"], "theirs\n");
   assert.deepEqual(validate(root), []);
+});
+
+test("a birth that shares its levels with a Change born meanwhile beside it still births, leaving both", (t) => {
+  const root = scratchChanges("valid");
+  const mkdir = fs.mkdirSync;
+  const lineage = path.resolve(root, "other");
+  // Fault injection: another birth, of a sibling occurrence, creates the same
+  // levels between this birth finding them missing and creating them.
+  t.mock.method(fs, "mkdirSync", (dir: fs.PathLike, options?: fs.MakeDirectoryOptions) => {
+    if (path.resolve(String(dir)) === lineage) {
+      t.mock.restoreAll();
+      birthChange({ root, lineage: "other", occurrence: "26/09/30/02" });
+    }
+    return mkdir(dir, options);
+  });
+  birthChange({ root, lineage: "other", occurrence: "26/09/30/01" });
+  t.mock.restoreAll();
+  assert.deepEqual(
+    readChanges(root)
+      .changes.map(identity)
+      .filter((id) => id.startsWith("other/")),
+    ["other/26/09/30/01", "other/26/09/30/02"],
+  );
 });
 
 test("traversal is deterministic: lineages by name, each lineage's occurrences in sorted order, whatever order they were born in", () => {

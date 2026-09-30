@@ -21,20 +21,17 @@ function rejectSymlinks(root: string, dir: string): void {
 }
 
 /**
- * Removes the levels a failed birth created, from the occurrence's parent up
- * to `created`, the first level it created. Never recursive: a level another
- * birth has since filled, even with a Change of the same identity, is left as
- * it is, and so is every level above it.
+ * Removes the directories a failed birth created, deepest first. Never
+ * recursive: a directory another birth has since filled, even with a Change
+ * of the same identity, is left as it is, and so is every directory above it.
  */
-function removeCreated(dir: string, created: string): void {
-  const top = path.resolve(created);
-  for (let level = path.resolve(path.dirname(dir)); ; level = path.dirname(level)) {
+function removeCreated(created: string[]): void {
+  for (const dir of [...created].reverse()) {
     try {
-      fs.rmdirSync(level);
+      fs.rmdirSync(dir);
     } catch {
       return;
     }
-    if (level === top) return;
   }
 }
 
@@ -43,9 +40,10 @@ function removeCreated(dir: string, created: string): void {
  * What the Change will hold is not birth's concern. Refuses an unportable
  * lineage, a malformed occurrence and a symlinked path before writing
  * anything, and refuses an occurrence that already exists: a Change is never
- * born again, so an earlier Change is never written over. If birth fails
- * partway, the directories it created are removed while they are still
- * empty. Returns the occurrence's directory.
+ * born again, so an earlier Change is never written over. Creates each missing
+ * directory on the way one at a time, so if birth fails at any of them, the
+ * ones it created are known and removed while they are still empty. Returns
+ * the occurrence's directory.
  */
 export function birthChange(input: Birth): string {
   const root = input.root ?? ROOT;
@@ -53,12 +51,23 @@ export function birthChange(input: Birth): string {
   if (error) throw new Error(error);
   const dir = path.join(root, input.lineage, ...input.occurrence.split("/"));
   rejectSymlinks(root, dir);
-  const created = fs.mkdirSync(path.dirname(dir), { recursive: true });
+  const missing: string[] = [];
+  for (let level = path.dirname(dir); !fs.existsSync(level); level = path.dirname(level)) missing.unshift(level);
+  const created: string[] = [];
   try {
-    // Not recursive: an existing occurrence, even an empty one, is refused.
+    for (const level of missing) {
+      try {
+        fs.mkdirSync(level);
+        created.push(level);
+      } catch (e) {
+        // Another birth created the same level meanwhile: it is shared, not ours.
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      }
+    }
+    // An existing occurrence, even an empty one, is refused.
     fs.mkdirSync(dir);
   } catch (e) {
-    if (created) removeCreated(dir, created);
+    removeCreated(created);
     if ((e as NodeJS.ErrnoException).code === "EEXIST") {
       throw new Error(`${input.lineage}/${input.occurrence}: already exists; a Change is never born again`);
     }
