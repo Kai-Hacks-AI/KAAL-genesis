@@ -3,6 +3,7 @@ import path from "node:path";
 import { portableNameError } from "../skills/using-brain/scripts/brain.js";
 import type { Member } from "../skills/testing/scripts/suite.js";
 import { planError, planErrors } from "./plans.js";
+import { projectedCases } from "./projection.js";
 
 /**
  * KAAL's testing links, read from the repository's files alone: which
@@ -111,29 +112,25 @@ function scan(
   cases: Case[];
   stray: number[];
   tested: Tested[];
+  defectsOf: string[][];
   strayTests: number[];
   suites: string[][];
   straySuites: number[];
 } {
   const cases: Case[] = [];
   const tested: Tested[] = [];
+  const defectsOf: string[][] = [];
   const suites: string[][] = [];
   const owned = new Set<number>();
   const ownedTests = new Set<number>();
   const ownedSuites = new Set<number>();
   const lines = source.split(/\r?\n/);
   const text = lines.join("\n");
-  for (const m of text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)) {
-    let title: string;
-    try {
-      title = JSON.parse(`"${m[1]}"`) as string;
-    } catch {
-      continue; // an escape JSON does not know: a title that cannot be read, like one built at run time
-    }
+  for (const { title, index } of caseStarts(text)) {
     const places: string[] = [];
     const defects: string[] = [];
     const joined: string[] = [];
-    let line = text.slice(0, m.index).split("\n").length - 2;
+    let line = text.slice(0, index).split("\n").length - 2;
     for (; line >= 0; line--) {
       const why = LINK.exec(lines[line]!);
       const tests = TESTS.exec(lines[line]!);
@@ -151,12 +148,28 @@ function scan(
     }
     cases.push({ file, title, places });
     suites.push(joined);
+    defectsOf.push(defects);
     if (defects.length) tested.push({ file, title, defects });
   }
   const stray = lines.flatMap((line, i) => (LINK_LIKE.test(line) && !owned.has(i) ? [i + 1] : []));
   const strayTests = lines.flatMap((line, i) => (TESTS_LIKE.test(line) && !ownedTests.has(i) ? [i + 1] : []));
   const straySuites = lines.flatMap((line, i) => (SUITE_LIKE.test(line) && !ownedSuites.has(i) ? [i + 1] : []));
-  return { cases, stray, tested, strayTests, suites, straySuites };
+  return { cases, stray, tested, defectsOf, strayTests, suites, straySuites };
+}
+
+/**
+ * Where each case `text` states begins, with its title, in order: a `test(`
+ * at the start of a line, titled by a plain string literal. Only cases whose
+ * title can be read are found; KAAL reads where its cases are this one way.
+ */
+export function caseStarts(text: string): { title: string; index: number }[] {
+  return [...text.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)].flatMap((m) => {
+    try {
+      return [{ title: JSON.parse(`"${m[1]}"`) as string, index: m.index }];
+    } catch {
+      return []; // an escape JSON does not know: a title that cannot be read, like one built at run time
+    }
+  });
 }
 
 /** The cases a test file states, each with the places it points at. */
@@ -191,12 +204,14 @@ export function testArgs(repo: string): string[] {
 
 /**
  * The case files a repository's own `npm test` runs, by posix path relative to
- * it. KAAL names every case file `*.test.ts`, so only such arguments count:
- * anything else the script names, such as a module it preloads, is not a case.
+ * it, or, given `held`, those its `npm test` would run of the evidence held
+ * there at their paths. KAAL names every case file `*.test.ts`, so only such
+ * arguments count: anything else the script names, such as a module it
+ * preloads, is not a case.
  */
-export function caseFiles(repo: string): string[] {
+export function caseFiles(repo: string, held: string = repo): string[] {
   const globs = testArgs(repo).filter((arg) => arg.endsWith(".test.ts"));
-  return [...new Set(globs.flatMap((glob) => fs.globSync(glob, { cwd: repo })))]
+  return [...new Set(globs.flatMap((glob) => fs.globSync(glob, { cwd: held })))]
     .map((file) => file.split(path.sep).join("/"))
     .sort();
 }
@@ -214,13 +229,26 @@ export function repoCases(repo: string): Case[] {
 
 /**
  * Every case a repository runs, in the order its cases are read, with the
+ * defects it says it tests, none where it says none: read as every other link
+ * of a case is read, so each case is told apart from another at its address.
+ */
+export function caseDefects(repo: string): Tested[] {
+  return caseFiles(repo).flatMap((file) => {
+    const { cases, defectsOf } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
+    return cases.map(({ title }, i) => ({ file, title, defects: defectsOf[i]! }));
+  });
+}
+
+/**
+ * Every case a repository runs, in the order its cases are read, with the
  * suites it says it belongs to through `// Suite: <place>` lines among the
  * links directly above it, read as every other link of a case is read. A suite
- * never lists its cases, so this is how KAAL finds a suite's cases.
+ * never lists its cases, so this is how KAAL finds a suite's cases. Given
+ * `held`, the cases are those held there, as `repo` finds cases.
  */
-export function caseSuites(repo: string): Member[] {
-  return caseFiles(repo).flatMap((file) => {
-    const { cases, suites } = scan(file, fs.readFileSync(path.join(repo, file), "utf8"));
+export function caseSuites(repo: string, held: string = repo): Member[] {
+  return caseFiles(repo, held).flatMap((file) => {
+    const { cases, suites } = scan(file, fs.readFileSync(path.join(held, file), "utf8"));
     return cases.map(({ title }, i) => ({ file, title, suites: suites[i]! }));
   });
 }
@@ -373,12 +401,19 @@ export function linkErrors(repo: string): string[] {
   // Suites, the plans they serve, and those plans are read as KAAL reads its plans, whose errors runs of plans refuse
   // too: every suite is stated in its own place, and one no case belongs to yet is still that suite.
   errors.push(...planErrors(repo));
-  const proven = new Set(repoCases(repo).flatMap((c) => c.places));
+  // What shows a commitment is every case the state has: its own, and the evidence its regression projects, which it
+  // need not carry in its own testing too.
+  let projecting: Case[] = [];
+  try {
+    projecting = projectedCases(repo).flatMap(({ source, cases }) => (source.change ? cases : []));
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
+  }
+  const shown = [...repoCases(repo), ...projecting];
+  const proven = new Set(shown.flatMap((c) => c.places));
   // A skill's cases prove its own SKILL.md, so a place naming each skill's is shown only if every skill has one.
   const ownProof = new Set(
-    repoCases(repo)
-      .filter((c) => ownedBySkill(c.file))
-      .map((c) => c.file.split("/").slice(0, 2).join("/")),
+    shown.filter((c) => ownedBySkill(c.file)).map((c) => c.file.split("/").slice(0, 2).join("/")),
   );
   for (const { place, shownBy } of entries) {
     if (!place || unplaced.has(place) || !shownBy?.includes("its cases")) continue;

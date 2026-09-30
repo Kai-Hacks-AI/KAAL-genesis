@@ -1,0 +1,11 @@
+{
+  "unit": "genesis/26/09/26/01",
+  "previous": "33a54a5dd438dcd765b94b6bbc17a245646b53eb3052873f27599b4ca17ee039",
+  "files": [
+    {
+      "path": "nodes/b.md",
+      "sha256": "ba9781108952d5e088bf7db22d858925b8a9b30ebe280b439677a5b2bfe5bf73"
+    }
+  ],
+  "seal": "12f824a2601c47c0b1465739c72d1ee6d83536726cf8cb0a41eec37a7da2b1d8"
+}

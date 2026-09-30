@@ -1,0 +1,11 @@
+{
+  "unit": "two",
+  "previous": null,
+  "files": [
+    {
+      "path": "c.txt",
+      "sha256": "ae9a6306a205417afddd14316cc1d0d5e04a98f1be10865dce643925ee070ce2"
+    }
+  ],
+  "seal": "a88cac66019f64a6f26a0f855e03568c5503a2c58503bffdb9b1ff55c0a5e417"
+}

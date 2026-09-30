@@ -1,0 +1,11 @@
+{
+  "unit": "one/nested",
+  "previous": null,
+  "files": [
+    {
+      "path": "b.txt",
+      "sha256": "f2c82decdd7181cf98945929a62598db7e6b477e11f6e0eb0ae97020eff151ad"
+    }
+  ],
+  "seal": "a11acb18d5925cd2601999646f8a0e4f4ea3ee6067248235851c4bfcc0392239"
+}

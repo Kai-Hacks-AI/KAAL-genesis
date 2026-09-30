@@ -1,0 +1,63 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { ideaErrors, readIdeas } from "../skills/managing-ideas/scripts/ideas.js";
+import { kaal } from "./test-data.js";
+
+/** The subject of this file's cases about KAAL itself. */
+const KAAL = kaal();
+const IDEAS = path.join(KAAL, "ideas");
+const MODULAR = path.join(IDEAS, "modular-kaal", "idea.md");
+
+// Why: brain/learning/genesis/26/09/27/04/nodes/managing-ideas.md
+test("KAAL keeps complete Ideas in ideas/, beginning with the modular-KAAL possibility without adopting it", () => {
+  assert.ok(fs.lstatSync(IDEAS, { throwIfNoEntry: false })?.isDirectory(), "ideas/ is missing");
+  assert.deepEqual(ideaErrors(IDEAS), []);
+  assert.deepEqual(readIdeas(IDEAS), [
+    {
+      name: "addiction",
+      idea: "ADDICTION, remembered as a possible development and testing progression: Analysis, Design, Data, Implementation (red), Coding, Testing (red → green check), Improve, Optimize, Next",
+    },
+    {
+      name: "composable-capabilities",
+      idea: "KAAL could be assembled from independently birthable capability packages, with Genesis composing a selected configuration of required dependencies and optional integrations and establishing that configuration's initial sealed Regression R0",
+    },
+    {
+      name: "how-are-we-doing",
+      idea: "KAAL's work could stay observable to the Human, be challenged by agents other than the one producing it, and turn the observations that matter into durable experience that informs its next goals, remembered provisionally as HOW ARE WE DOING?",
+    },
+    {
+      name: "less-is-more",
+      idea: "LESS IS MORE, remembered as a possible guiding principle: Let Experience Support Simple Implementations So More Optimization Reaches Enhancements",
+    },
+    {
+      name: "modular-kaal",
+      idea: "KAAL can become modular through packages whose dependencies close the selected capability composition",
+    },
+    {
+      name: "plan",
+      idea: "KAAL's planning could be one loop of deciding what deserves priority, the intended capability order and dependencies, how Now adapts toward Next, and planning becoming current action, remembered provisionally as PLAN — Prioritize, Launch, Adaption, Now",
+    },
+    {
+      name: "release-management",
+      idea: "KAAL's protected main could become its release boundary, where a kaal/<name> line whose next Regression is demonstrated through FAR is sealed, released and versioned",
+    },
+    {
+      name: "review",
+      idea: "KAAL could need an account of what may end adversarial review of a candidate, and of how patterns in review findings should affect the way the candidate is being repaired or proven, remembered as Review, a problem not yet a capability",
+    },
+    {
+      name: "we-can-go-far",
+      idea: "KAAL's forward planning and testing loop could connect with a backward loop of worked evidence, learning and refactoring, through which the Owner gets enhanced by holistic experience reviews, remembered provisionally as TOGETHER WE CAN GO FAR",
+    },
+  ]);
+  const record = fs.readFileSync(MODULAR, "utf8");
+  for (const meaning of [
+    "Package dependencies could provide the dependency mechanism.",
+    "capability meaning remains in KAAL and BRAIN",
+    "birth inherits active understanding",
+    "does not commit KAAL",
+  ])
+    assert.match(record, new RegExp(meaning));
+});

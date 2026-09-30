@@ -318,6 +318,8 @@ function regressionInputs(repo: string): Map<string, Entry> {
   for (const entry of listed(ACCEPTANCE)) if (entry.name !== "AGENTS.md") add(`${ACCEPTANCE}/${entry.name}`);
   for (const file of caseFiles(repo)) add(file);
   for (const [file, at] of dataOf(repo)) add(file, at);
+  // The evidence the regression projects, each change's as it was admitted, is the regression's own.
+  for (const entry of listed(CHANGE)) if (entry.isDirectory()) add(`${CHANGE}/${entry.name}/${HELD_EVIDENCE}`);
   // How it judges is part of the regression too: what its install puts in place, and the checker's own code.
   for (const file of judgeFiles(repo)) add(file);
   return entries;
@@ -453,10 +455,13 @@ const REPORTER = new URL("./regression-reporter.ts", import.meta.url).href;
 /**
  * Whether `file`, a posix path, is test data, which travels with the cases: a
  * test-data directory or loader, or any file but code where cases are kept
- * (under `scripts/` or `skills/<skill>/scripts/`), such as a fixture beside them.
+ * (under `scripts/` or `skills/<skill>/scripts/`), such as a fixture beside them,
+ * outside the evidence held under `change/`.
  */
 function isData(file: string, directory: boolean): boolean {
   const parts = file.split("/");
+  // The evidence a regression projects is held under change/, never the state's own test data.
+  if (parts[0] === CHANGE) return false;
   if (parts.includes("test-data") || parts.at(-1) === "test-data.ts") return true;
   const inCases = parts[0] === "scripts" || (parts[0] === "skills" && parts[2] === "scripts");
   return !directory && inCases && !/\.(ts|js|mjs|cjs|mts|cts)$/.test(file);
@@ -472,10 +477,10 @@ export function keptAsData(directory: string): boolean {
 }
 
 /** The test data and test-data loaders of a repository, outside its dependencies and Git's own files. */
-function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
+export function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
     const rel = dir ? `${dir}/${name}` : name;
-    if (UNLOOKED.includes(rel)) return [];
+    if (UNLOOKED.includes(rel) || rel === CHANGE) return [];
     const directory = fs.lstatSync(at).isDirectory();
     if (isData(rel, directory)) return [[rel, at]];
     return directory ? dataOf(at, rel) : [];
@@ -484,15 +489,15 @@ function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
 
 /**
  * A copy of `state` to run its own cases in, with its test data and sharing
- * its dependencies, so nothing its cases write, beside them or anywhere under
- * the state, reaches the state they are judging.
+ * its dependencies, or those of `dependencies`, so nothing its cases write,
+ * beside them or anywhere under the state, reaches the state they are judging.
  */
-export function snapshot(state: string): string {
-  return scratchCopy(state, true);
+export function snapshot(state: string, dependencies: string = state): string {
+  return scratchCopy(state, true, dependencies);
 }
 
 /** A scratch copy of a checkout to run cases in, sharing its dependencies, with only the permissions its identity records; without its test data unless `data`. */
-function scratchCopy(repo: string, data: boolean): string {
+function scratchCopy(repo: string, data: boolean, dependencies: string = repo): string {
   const code = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-regression-")), "repo");
   fs.cpSync(repo, code, {
     recursive: true,
@@ -503,9 +508,9 @@ function scratchCopy(repo: string, data: boolean): string {
     },
   });
   recordedModes(code);
-  if (fs.existsSync(path.join(repo, "node_modules")))
+  if (fs.existsSync(path.join(dependencies, "node_modules")))
     // Absolute: a relative target would resolve against the copy, not the checkout.
-    fs.symlinkSync(path.resolve(repo, "node_modules"), path.join(code, "node_modules"), "junction");
+    fs.symlinkSync(path.resolve(dependencies, "node_modules"), path.join(code, "node_modules"), "junction");
   return code;
 }
 
@@ -513,6 +518,9 @@ function scratchCopy(repo: string, data: boolean): string {
 /** How a run hands the cases it reaches the test data their plan provides: a directory, by its absolute path. */
 export const PLAN_DATA = "KAAL_PLAN_DATA";
 export const TESTED_STATE = "KAAL_TESTED_STATE";
+/** Where a regression keeps the evidence it projects: under `change/<name>/test/`, each change's own. */
+export const CHANGE = "change";
+export const HELD_EVIDENCE = "test";
 export const TESTING_STATE = "KAAL_TESTING_STATE";
 
 /**
@@ -576,6 +584,8 @@ export function execute(
     stdio: "ignore",
   });
   const lines = fs.readFileSync(out, "utf8").split("\n").filter(Boolean);
+  // What the runner reported is read: the directory made to hold it is not kept.
+  fs.rmSync(path.dirname(out), { recursive: true, force: true });
   // A runner that could not start, was stopped, or did not report to its end has not said what every case did.
   if (run.error || run.signal || lines.at(-1) !== JSON.stringify({ end: true }))
     throw new Error(
@@ -607,9 +617,29 @@ export function runTrusted(
   candidate: string,
   only?: (file: string) => boolean,
   skip?: (file: string) => string[],
+  held: string = trusted,
 ): Result[] {
   const code = scratchCopy(candidate, false);
-  const files = caseFiles(trusted).filter((file) => !only || only(file));
+  // The copies the cases run in and are handed are the run's own: none is kept once it has reported.
+  let tested: string | undefined;
+  try {
+    return replay(trusted, candidate, code, held, only, skip, (state) => (tested = state));
+  } finally {
+    for (const copy of [code, tested]) if (copy) fs.rmSync(path.dirname(copy), { recursive: true, force: true });
+  }
+}
+
+/** The replay `runTrusted` makes in `code`, from the cases and data `held` holds at their paths. */
+function replay(
+  trusted: string,
+  candidate: string,
+  code: string,
+  held: string,
+  only: ((file: string) => boolean) | undefined,
+  skip: ((file: string) => string[]) | undefined,
+  handing: (state: string) => void,
+): Result[] {
+  const files = caseFiles(trusted, held).filter((file) => !only || only(file));
   // Only the accepted regression's cases are replayed, so none of the candidate's own is left for a case that reads
   // the cases, such as the check of the regression's links, to find and judge against the accepted plan.
   // A path that climbs out of the copy names none of its files, so nothing is removed for it.
@@ -643,11 +673,15 @@ export function runTrusted(
   ) as { scripts?: Record<string, string> };
   fs.rmSync(manifest, { recursive: true, force: true });
   fs.writeFileSync(manifest, `${JSON.stringify({ ...own, scripts: { ...own.scripts, test } }, null, 2)}\n`);
-  for (const rel of [...files, ...plan, ...dataOf(trusted).map(([rel]) => rel)]) {
+  for (const [rel, from] of [
+    ...files.map((f) => [f, held] as const),
+    ...plan.map((f) => [f, trusted] as const),
+    ...dataOf(held).map(([rel]) => [rel, held] as const),
+  ]) {
     const to = within(code, rel);
     fs.rmSync(to, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    fs.cpSync(path.join(trusted, rel), to, { recursive: true, verbatimSymlinks: true });
+    fs.cpSync(path.join(from, rel), to, { recursive: true, verbatimSymlinks: true });
     // Only the permissions the identity records reach the cases: whatever else the copy kept, they cannot see.
     recordedModes(to);
   }
@@ -656,6 +690,7 @@ export function runTrusted(
   // gives any state to cases: its files, with only the permissions its identity records, without Git's, in a copy of
   // its own, so no case sees more of it than the regression judges, or writes into it.
   const tested = scratchCopy(candidate, true);
+  handing(tested);
   const handed = plannedData(trusted, code);
   // A title is skipped in every file a run executes, so each file with cases to skip is run on its own, where its
   // titles, each unique there, name only its own cases.
@@ -738,7 +773,11 @@ function within(code: string, rel: string): string {
 export function runCandidate(candidate: string, files = caseFiles(candidate)): Result[] {
   if (!files.length) return [];
   const code = scratchCopy(candidate, true);
-  return execute(code, files, code, false, plannedData(candidate, code));
+  try {
+    return execute(code, files, code, false, plannedData(candidate, code));
+  } finally {
+    fs.rmSync(path.dirname(code), { recursive: true, force: true });
+  }
 }
 
 /**
