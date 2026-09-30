@@ -35,8 +35,6 @@ export function parse(text: string, file: string): Requirement | string {
     return `${file}: frontmatter is not valid YAML`;
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return `${file}: frontmatter must be a mapping`;
-  const extra = Object.keys(data).filter((key) => key !== "id");
-  if (extra.length) return `${file}: frontmatter may hold only id, not ${extra.join(", ")}`;
   const id = (data as { id?: unknown }).id;
   if (typeof id !== "string") return `${file}: id is required`;
   const error = idError(id);
@@ -48,11 +46,12 @@ export function parse(text: string, file: string): Requirement | string {
 }
 
 /**
- * Every Requirement directly in each root, and everything that is not one: a
- * root holds Requirement files and nothing else, never a symlink or a
- * subdirectory, and an id is defined once across all the roots given. A missing
- * root holds no Requirements. Where the roots are, and what they sit inside, is
- * the caller's: nothing here reads beyond the files given.
+ * Every Requirement in each root, and everything that claims to be one. The
+ * candidates are the `*.md` entries directly in a root: each must be a regular
+ * file holding a Requirement. Anything else in or beside a root is the
+ * caller's and is neither read nor refused. An id is defined once across all
+ * the roots given. A missing root holds no Requirements. Where the roots are,
+ * and what they sit inside, is the caller's.
  */
 export function readRequirements(roots: string[]): { requirements: Requirement[]; errors: string[] } {
   const requirements: Requirement[] = [];
@@ -66,9 +65,10 @@ export function readRequirements(roots: string[]): { requirements: Requirement[]
     }
     const names = fs.readdirSync(root).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     for (const name of names) {
+      if (!name.endsWith(".md")) continue;
       const file = path.join(root, name);
-      if (!fs.lstatSync(file).isFile() || !name.endsWith(".md")) {
-        errors.push(`${file}: not a Requirement file`);
+      if (!fs.lstatSync(file).isFile()) {
+        errors.push(`${file}: a Requirement must be a regular file`);
         continue;
       }
       const result = parse(fs.readFileSync(file, "utf8"), file);

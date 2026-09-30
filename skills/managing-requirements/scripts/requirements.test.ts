@@ -47,30 +47,57 @@ test("validation refuses what is not a Requirement", () => {
     ["---\nid: [\n---\nx\n", /not valid YAML/],
     ["---\n- a\n---\nx\n", /mapping/],
     ["---\n---\nx\n", /frontmatter/],
-    ["---\nid: a\nstatus: open\n---\nx\n", /only id, not status/],
     ["---\nid: 1\n---\nx\n", /id is required/],
     ["---\nid: A\n---\nx\n", /kebab-case/],
     ["---\nid: other\n---\nx\n", /file name must be other\.md/],
     ["---\nid: a\n---\n  \n", /meaning/],
   ];
   for (const [text, message] of cases) assert.match(String(parse(text, "a.md")), message, text);
+  // Metadata this skill does not own is neither read nor refused.
+  assert.deepEqual(parse("---\nid: a\nsupersedes: b\nanything: 1\n---\nx\n", "a.md"), {
+    id: "a",
+    meaning: "x",
+    file: "a.md",
+  });
   assert.deepEqual(parse("---\nid: a\n---\n\nIt holds.\n", "a.md"), { id: "a", meaning: "It holds.", file: "a.md" });
 });
 
-test("a root holds Requirements and nothing else, and an id is defined once across roots", () => {
+test("only the *.md files directly in a root are candidates, and an id is defined once across roots", () => {
   const [one, two] = [scratch(), scratch()];
   createRequirement(one, "a", "x");
   createRequirement(two, "a", "y");
+  // Nearby material that creates no discovery ambiguity is not refused.
   fs.writeFileSync(path.join(one, "notes.txt"), "");
   fs.mkdirSync(path.join(one, "sub"));
+  fs.writeFileSync(path.join(one, "sub", "b.md"), "not a Requirement");
+  const ignored = readRequirements([one]);
+  assert.deepEqual(ignored.errors, []);
+  assert.deepEqual(
+    ignored.requirements.map((r) => r.id),
+    ["a"],
+  );
+  // A candidate that is not a regular file, or not a Requirement, is refused.
   fs.symlinkSync(path.join(two, "a.md"), path.join(one, "link.md"));
+  fs.writeFileSync(path.join(one, "README.md"), "No frontmatter.");
   const { errors } = readRequirements([one, two, path.join(one, "missing")]);
-  assert.equal(errors.length, 4);
-  assert.match(errors.join("\n"), /notes\.txt: not a Requirement file/);
-  assert.match(errors.join("\n"), /sub: not a Requirement file/);
-  assert.match(errors.join("\n"), /link\.md: not a Requirement file/);
+  assert.equal(errors.length, 3);
+  assert.match(errors.join("\n"), /link\.md: a Requirement must be a regular file/);
+  assert.match(errors.join("\n"), /README\.md: missing YAML frontmatter/);
   assert.match(errors.join("\n"), /id "a" is already defined/);
   assert.deepEqual(readRequirements([path.join(one, "missing")]), { requirements: [], errors: [] });
+});
+
+test("extra frontmatter does not stop a Requirement resolving, but its own id must be valid", () => {
+  const dir = scratch();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "a.md"), "---\nid: a\nsupersedes: b\nstatus: whatever\n---\n\nIt holds.\n");
+  fs.writeFileSync(path.join(dir, "b.md"), "---\nid_: b\nsupersedes: a\n---\n\nTypo in the owned field.\n");
+  const { requirements, errors } = readRequirements([dir]);
+  assert.deepEqual(
+    requirements.map((r) => r.id),
+    ["a"],
+  );
+  assert.match(errors.join("\n"), /b\.md: id is required/);
 });
 
 test("references resolve by id across roots, many to many, and an unknown id is an error", () => {
