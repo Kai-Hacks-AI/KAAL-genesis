@@ -14,12 +14,15 @@
 # once this workflow is on main, and to none before.
 #
 # A pull_request_target run belongs to main's latest commit, so the
-# result is published as the seal commit status on the pull request's
+# result is published as the check-seals commit status on the pull request's
 # head commit, where required checks look. Push runs only on main, the
 # default branch, and is limited by the trigger rather than a job condition:
 # a skipped job still reports a check, and a skipped check counts as passing,
-# so a change's own branch must never produce a seal run at all.
-name: seal
+# so a change's own branch must never produce a check-seals run at all.
+#
+# Verifies seals and writes nothing; the workflow that writes them on main is
+# sealing.yml, named seal.
+name: check-seals
 
 on:
   push:
@@ -30,8 +33,8 @@ permissions:
   contents: read
 
 jobs:
-  seal:
-    name: seal
+  check-seals:
+    name: check-seals
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,7 +45,7 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - if: github.event_name == 'pull_request_target'
-        run: gh api "$STATUS_URL" -f state=pending -f context=seal -f target_url="$RUN_URL" -f description="Checking KAAL's seals"
+        run: gh api "$STATUS_URL" -f state=pending -f context=check-seals -f target_url="$RUN_URL" -f description="Checking KAAL's seals"
       - run: git config --global core.autocrlf true
       # The pushed commit on push; main's latest commit on a pull request.
       - uses: actions/checkout@v7
@@ -73,4 +76,4 @@ jobs:
         run: npm run seals:guard -- "origin/${{ github.base_ref }}" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
         working-directory: trusted
       - if: always() && github.event_name == 'pull_request_target'
-        run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=seal -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken or the change touches seal state' }}"
+        run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=check-seals -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken or the change touches seal state' }}"
