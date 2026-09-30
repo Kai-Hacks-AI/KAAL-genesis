@@ -1,0 +1,15 @@
+{
+  "unit": "change/bootstrap/26/09/30/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "test/feature.md",
+      "sha256": "5c3bff0f41da827fa447349aac93d6fb882e4aeed94cb205c9b147366bfce4a6"
+    },
+    {
+      "path": "test/regression.md",
+      "sha256": "28774af5e7fef3e75dfb5959d3c17b7dc785e1a546ba79f471857aeacb3ccc4d"
+    }
+  ],
+  "seal": "caab3fbbca7ace3dba78ce76d7894befa51b60702c17ecb614c6df9255175ddd"
+}
