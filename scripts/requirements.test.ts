@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { birthChange } from "../skills/managing-change/scripts/birth.js";
+import { resolve } from "../skills/managing-requirements/scripts/requirements.js";
 import { createRequirement } from "../skills/managing-requirements/scripts/create.js";
 import { kaalRequirements, REQUIREMENT_DIR, requirementRoots } from "./requirements.js";
 
@@ -11,12 +12,12 @@ import { kaalRequirements, REQUIREMENT_DIR, requirementRoots } from "./requireme
 // introduces inside its one occurrence. Why: brain/learning/requirements/26/09/30/01/nodes/managing-requirements.md
 const repo = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-requirements-"));
 
-test("KAAL's own Requirements are valid and include its independence from Git and GitHub", () => {
+test("KAAL's own Requirements are valid and each resolves by its id", () => {
   const { requirements, errors } = kaalRequirements();
   assert.deepEqual(errors, []);
-  const ids = requirements.map((r) => r.id);
-  assert.ok(ids.includes("git-independence"));
-  assert.ok(ids.includes("github-independence"));
+  const ids = ["git-independence", "github-independence", "linux-support", "windows-support"];
+  assert.deepEqual(resolve(requirements, ids).errors, []);
+  assert.deepEqual(requirements.map((r) => r.id).sort(), [...ids].sort());
 });
 
 test("Requirements sit inside the Change occurrence, which gains no identity of their own", () => {
