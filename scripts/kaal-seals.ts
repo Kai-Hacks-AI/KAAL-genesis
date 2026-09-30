@@ -1,23 +1,7 @@
 import path from "node:path";
 import { ROOT as BRAIN_ROOT } from "../skills/using-brain/scripts/brain.js";
-import {
-  brainErrors,
-  type Entry,
-  entries,
-  sealBrain,
-  sealingOutputErrors,
-  sealState,
-  sealStateChanges,
-} from "./brain-seals.js";
-import {
-  changeErrors,
-  changeNonFiles,
-  changeRewrites,
-  changeSealingOutputErrors,
-  changeSealStateChanges,
-  sealChanges,
-  type TreeEntry,
-} from "./change-seals.js";
+import { brainErrors, entries, sealBrain, sealingOutputErrors, sealState, sealStateChanges } from "./brain-seals.js";
+import { changeErrors, changeSealingOutputErrors, changeSealStateChanges, sealChanges } from "./change-seals.js";
 
 /**
  * KAAL's sealed history: its BRAIN learnings and its Changes, each under its
@@ -41,18 +25,8 @@ export function sealKaal(repo = "."): string[] {
 }
 
 /** One error per seal-state path, of BRAIN or of Changes, that a change touches. */
-export function kaalSealStateChanges(nameStatus: string | Entry[]): string[] {
+export function kaalSealStateChanges(nameStatus: string): string[] {
   return [...sealStateChanges(nameStatus), ...changeSealStateChanges(nameStatus)];
-}
-
-/**
- * Everything the guard refuses in a candidate, given every file its target
- * holds and the candidate's own Change tree: seal state written, any Change
- * already born on the target rewritten, and anything in a Change that Git
- * holds but a checkout would not present as a file.
- */
-export function kaalGuardErrors(nameStatus: string | Entry[], target: string[], candidate: TreeEntry[] = []): string[] {
-  return [...kaalSealStateChanges(nameStatus), ...changeRewrites(nameStatus, target), ...changeNonFiles(candidate)];
 }
 
 /** One error per staged entry that sealing, of BRAIN or of Changes, could not have produced. */

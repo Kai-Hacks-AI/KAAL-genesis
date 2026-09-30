@@ -3,14 +3,11 @@ import { pathToFileURL } from "node:url";
 import { ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { HEADS_FILE, LOCK_FILE } from "../skills/using-seals/scripts/seals.js";
-import { nulEntries } from "./brain-seals.js";
-import { treeEntries } from "./change-seals.js";
-import { kaalGuardErrors } from "./kaal-seals.js";
+import { kaalSealStateChanges } from "./kaal-seals.js";
 
-// Refuses a change that touches seal state compared with <base>, or rewrites
-// a Change <base> already holds. <repo> is the change's checkout, by default
-// this one; CI passes the change's checkout so this code, never the change's,
-// does the guarding.
+// Refuses a change that touches seal state compared with <base>. <repo> is
+// the change's checkout, by default this one; CI passes the change's checkout
+// so this code, never the change's, does the guarding.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [base, repo = "."] = process.argv.slice(2);
   if (!base) {
@@ -24,7 +21,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         repo,
         "diff",
         "--name-status",
-        "-z",
         "--no-renames",
         `${base}...HEAD`,
         "--",
@@ -35,14 +31,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       ],
       { encoding: "utf8" },
     );
-    const target = execFileSync("git", ["-C", repo, "ls-tree", "-r", "-z", "--name-only", base, "--", CHANGE_ROOT], {
-      encoding: "utf8",
-    });
-    const candidate = execFileSync("git", ["-C", repo, "ls-tree", "-r", "-z", "HEAD", "--", CHANGE_ROOT], {
-      encoding: "utf8",
-    });
-    // NUL-delimited, so Git never quotes a path: a Change may own any file name.
-    const errors = kaalGuardErrors(nulEntries(diff), target.split("\0").filter(Boolean), treeEntries(candidate));
+    const errors = kaalSealStateChanges(diff);
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;

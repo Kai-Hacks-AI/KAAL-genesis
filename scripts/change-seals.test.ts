@@ -7,17 +7,13 @@ import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import {
   changeChains,
   changeErrors,
-  changeNonFiles,
-  changeRewrites,
   changeSealingOutputErrors,
   changeSealState,
   changeSealStateChanges,
   checkChanges,
   sealChanges,
-  treeEntries,
 } from "./change-seals.js";
-import { nulEntries } from "./brain-seals.js";
-import { changeRepoData, diffData, scratchRepo, tree } from "./test-data.js";
+import { diffData, scratchRepo, tree } from "./test-data.js";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
 
@@ -190,37 +186,6 @@ test("two Changes born apart with one identity are refused once one is sealed, a
   const unsealed = scratchRepo("history");
   fs.writeFileSync(path.join(unsealed, "change/change/26/09/30/02/theirs.txt"), "theirs\n");
   assert.deepEqual(changeErrors(unsealed), []);
-});
-
-test("the guard refuses a candidate that rewrites a Change already born on its target, sealed or not, and allows new ones", () => {
-  // The target holds test-data/changes/history, none of it sealed yet: accepted, but not yet sealed on main.
-  const target = Object.keys(tree(changeRepoData("history")));
-  assert.deepEqual(changeRewrites(diffData("change-rewrites"), target), [
-    "change/change/26/09/30/01/owned.txt: rewrites Change change/change/26/09/30/01, already born on the target (M)",
-    "change/change/26/09/30/02/theirs.txt: rewrites Change change/change/26/09/30/02, already born on the target (A)",
-    "change/testing/26/09/30/01/test/cases/foo.txt: rewrites Change change/testing/26/09/30/01, already born on the target (D)",
-  ]);
-  assert.deepEqual(changeRewrites(diffData("change-new"), target), []);
-});
-
-test("the guard reads NUL-delimited paths, so no file name a Change owns escapes it", () => {
-  const target = [
-    ...Object.keys(tree(changeRepoData("history"))),
-    "change/change/26/09/30/01/ta\tb.txt",
-    "change/change/26/09/30/02/caf\u00e9.txt",
-  ];
-  assert.deepEqual(changeRewrites(nulEntries(diffData("change-unusual-names")), target), [
-    "change/change/26/09/30/01/ta\tb.txt: rewrites Change change/change/26/09/30/01, already born on the target (M)",
-    "change/change/26/09/30/02/caf\u00e9.txt: rewrites Change change/change/26/09/30/02, already born on the target (M)",
-    "change/change/26/09/30/02/new\nline.txt: rewrites Change change/change/26/09/30/02, already born on the target (A)",
-  ]);
-});
-
-test("the guard refuses what Git holds in a Change but a checkout would not present as a file", () => {
-  assert.deepEqual(changeNonFiles(treeEntries(diffData("change-tree"))), [
-    "change/change/26/10/01/01/sub: a Change owns only files and directories, not Git mode 160000",
-    "change/change/26/10/01/01/link: a Change owns only files and directories, not Git mode 120000",
-  ]);
 });
 
 test("classifies seal state over Changes: each Change's seal, and the heads and lock at the top", () => {

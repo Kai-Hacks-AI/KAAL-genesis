@@ -105,15 +105,8 @@ export function sealState(file: string, root = ROOT): SealState | undefined {
   return unit.length === 5 && unit.slice(1).every((part) => LEARNING.test(part)) ? "unit-seal" : "misplaced-seal";
 }
 
-/** One entry of `git diff --name-status --no-renames`: its status letter and path. */
-export type Entry = { status: string; file: string };
-
-/**
- * Each entry of `git diff --name-status --no-renames` output, or the entries
- * themselves when already parsed (see nulEntries).
- */
-export function entries(nameStatus: string | Entry[]): Entry[] {
-  if (typeof nameStatus !== "string") return nameStatus;
+/** Each entry of `git diff --name-status --no-renames` output: its status letter and path. */
+export function entries(nameStatus: string): { status: string; file: string }[] {
   return nameStatus
     .split(/\r?\n/)
     .filter(Boolean)
@@ -124,25 +117,13 @@ export function entries(nameStatus: string | Entry[]): Entry[] {
 }
 
 /**
- * Each entry of NUL-delimited `git diff --name-status -z --no-renames`
- * output. Git quotes a path holding a tab, a newline, a quote, a backslash or,
- * by default, any non-ASCII character in line output, but never in this one.
- */
-export function nulEntries(output: string): Entry[] {
-  const fields = output.split("\0");
-  const parsed: Entry[] = [];
-  for (let i = 0; i + 1 < fields.length; i += 2) parsed.push({ status: fields[i], file: fields[i + 1] });
-  return parsed;
-}
-
-/**
  * Seal state is written only by sealing on main, never by a change: a change
  * that adds, modifies or deletes a seal, the chain heads or the lock would let
  * it rewrite sealed history, which file-based seals alone cannot detect.
  * Takes `git diff --name-status --no-renames` output and returns one error per
  * seal-state path it touches.
  */
-export function sealStateChanges(nameStatus: string | Entry[], root = ROOT): string[] {
+export function sealStateChanges(nameStatus: string, root = ROOT): string[] {
   return entries(nameStatus)
     .filter(({ file }) => sealState(file, root))
     .map(({ status, file }) => `${file}: seal state may only be written by sealing on main (${status})`);

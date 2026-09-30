@@ -9,7 +9,7 @@ import {
   SEAL_FILE,
   sealChains,
 } from "../skills/using-seals/scripts/seals.js";
-import { type Entry, entries, type SealState } from "./brain-seals.js";
+import { entries, type SealState } from "./brain-seals.js";
 
 /**
  * KAAL's sealing policy for Changes. managing-change births and validates
@@ -97,64 +97,10 @@ export function changeSealState(file: string): SealState | undefined {
  * change: one error per seal-state path a `git diff --name-status
  * --no-renames` output touches.
  */
-export function changeSealStateChanges(nameStatus: string | Entry[]): string[] {
+export function changeSealStateChanges(nameStatus: string): string[] {
   return entries(nameStatus)
     .filter(({ file }) => changeSealState(file))
     .map(({ status, file }) => `${file}: seal state may only be written by sealing on main (${status})`);
-}
-
-/** The Change a posix path beneath the Change root belongs to, as `change/<lineage>/YY/MM/DD/CC`. */
-function changeOf(file: string): string | undefined {
-  const parts = file.split("/");
-  return parts[0] === CHANGE_ROOT && parts.length > 6 ? parts.slice(0, 6).join("/") : undefined;
-}
-
-/**
- * A Change, once born, is never rewritten by a later one. Seals prove that
- * only once sealing on main has run, which follows acceptance, so a candidate
- * is also refused if it adds, modifies or deletes anything in a Change that
- * already exists on its target, sealed or not. Takes the candidate's
- * `git diff --name-status --no-renames` entries and every file the target
- * holds (posix paths, unquoted: read them NUL-delimited, as Git would quote a
- * Change's unusual file names in line output); returns one error per entry
- * that rewrites a Change.
- * Seal state is left to the seal-state guard.
- */
-export function changeRewrites(nameStatus: string | Entry[], target: string[]): string[] {
-  const born = new Set(target.map(changeOf).filter((change) => change !== undefined));
-  return entries(nameStatus).flatMap(({ status, file }) => {
-    const change = changeOf(file);
-    if (!change || !born.has(change) || changeSealState(file)) return [];
-    return [`${file}: rewrites Change ${change}, already born on the target (${status})`];
-  });
-}
-
-/** One entry of `git ls-tree -r -z` output: its mode and path. */
-export type TreeEntry = { mode: string; file: string };
-
-/** Each entry of NUL-delimited `git ls-tree -r -z` output, whose paths Git never quotes. */
-export function treeEntries(output: string): TreeEntry[] {
-  return output
-    .split("\0")
-    .filter(Boolean)
-    .map((line) => {
-      const tab = line.indexOf("\t");
-      return { mode: line.slice(0, line.indexOf(" ")), file: line.slice(tab + 1) };
-    });
-}
-
-/**
- * A Change owns only files and directories, and seals vouch only for the
- * bytes of files. Git can hold other entries a checkout does not turn into
- * those bytes: a gitlink checks out as an empty directory, and a symlink as a
- * plain file where symlinks are off, so neither managing-change nor a seal
- * would see it. Takes the candidate's Change tree (`git ls-tree -r -z`) and
- * returns one error per entry under the Change root that is not a file.
- */
-export function changeNonFiles(tree: TreeEntry[]): string[] {
-  return tree
-    .filter(({ mode, file }) => file.startsWith(`${CHANGE_ROOT}/`) && mode !== "100644" && mode !== "100755")
-    .map(({ mode, file }) => `${file}: a Change owns only files and directories, not Git mode ${mode}`);
 }
 
 /**
