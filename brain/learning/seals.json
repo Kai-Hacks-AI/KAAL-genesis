@@ -11,5 +11,11 @@
       "genesis/26/09/25/01"
     ],
     "seal": "ccbdb92d3e9ba8abcd69cb7391e4f2267ad97b324018d43500ad2a9ccb56c6f3"
+  },
+  "review": {
+    "units": [
+      "review/26/09/30/01"
+    ],
+    "seal": "2e6c81a38b534b9a8cb0ec7bb6d795e6a5796cf00ea8c7f2bf35b77ecbfa1ac0"
   }
 }
