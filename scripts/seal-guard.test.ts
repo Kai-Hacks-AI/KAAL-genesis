@@ -4,7 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { sealGuardErrors } from "./seal-guard.js";
+import { sealChange, sealChanges } from "./change-seals.js";
 import { sealKaal } from "./kaal-seals.js";
+import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import { brainData, scratchRepo } from "./test-data.js";
 
 function git(repo: string, ...args: string[]): string {
@@ -125,4 +127,134 @@ test("candidate-authored seal state on a lineage that never incorporated main is
 
 test("the accepted reference must exist: an unresolvable one refuses rather than allows", () => {
   assert.throws(() => sealGuardErrors("lineage", propagation(), "refs/heads/nope"));
+});
+
+/**
+ * Change Sealing's transition, as #111 has it: accepted main holds sealed
+ * Changes; an evolution branch births a Change of a new lineage with
+ * its material and (in `sealed`) seals it before reaching main.
+ */
+function evolution() {
+  const repo = scratchRepo("history");
+  sealChanges(repo);
+  git(repo, "init", "-q", "-b", "main");
+  commit(repo, "accepted main, sealed");
+  git(repo, "checkout", "-q", "-b", "evolution");
+  const dir = birthChange({ root: path.join(repo, "change"), lineage: "far", occurrence: "26/09/25/01" });
+  fs.writeFileSync(path.join(dir, "feature.md"), "# Feature\n");
+  commit(repo, "a Change");
+  return repo;
+}
+
+const sealed = () => {
+  const repo = evolution();
+  sealChange(repo, "far/26/09/25/01");
+  return repo;
+};
+const CHANGE_SEAL = "change/far/26/09/25/01/seal.json";
+const refused = (repo: string) => sealGuardErrors("main", repo, MAIN);
+
+test("Change Sealing: a sealed Change is allowed through the guard, whole or split over commits", () => {
+  const whole = sealed();
+  commit(whole, "seal");
+  assert.deepEqual(refused(whole), []);
+  assert.deepEqual(sealGuardErrors("main", whole), []);
+  // As #111 committed it: the unit's seal first, the chain head in a later commit.
+  const split = sealed();
+  git(split, "add", CHANGE_SEAL);
+  git(split, "commit", "-q", "-m", "seal");
+  commit(split, "heads");
+  assert.deepEqual(refused(split), []);
+});
+
+test("Change Sealing: chains onto sealed history and a later Change chains onto it", () => {
+  const repo = evolution();
+  sealChange(repo, "far/26/09/25/01");
+  commit(repo, "seal");
+  const dir = birthChange({ root: path.join(repo, "change"), lineage: "far", occurrence: "26/09/25/02" });
+  fs.writeFileSync(path.join(dir, "feature.md"), "# Feature\n");
+  commit(repo, "another Change");
+  sealChange(repo, "far/26/09/25/02");
+  commit(repo, "seal it");
+  assert.deepEqual(refused(repo), []);
+  // and a Change of an existing sealed lineage, appended after its history
+  const later = evolution();
+  const d = birthChange({ root: path.join(later, "change"), lineage: "change", occurrence: "26/10/01/01" });
+  fs.writeFileSync(path.join(d, "owned.txt"), "later\n");
+  commit(later, "later Change");
+  sealChange(later, "change/26/10/01/01");
+  commit(later, "seal");
+  assert.deepEqual(refused(later), []);
+});
+
+test("the same seal state is refused once anything beside sealing touched it", () => {
+  const cases: [string, (repo: string) => void][] = [
+    [
+      "a seal with a forged hash",
+      (r) =>
+        edit(
+          r,
+          CHANGE_SEAL,
+          fs.readFileSync(path.join(r, CHANGE_SEAL), "utf8").replace(/[0-9a-f]{64}/, "0".repeat(64)),
+        ),
+    ],
+    ["the Change's material altered after sealing", (r) => edit(r, "change/far/26/09/25/01/feature.md", "# Changed\n")],
+  ];
+  for (const [name, sabotage] of cases) {
+    const repo = sealed();
+    commit(repo, "seal");
+    sabotage(repo);
+    assert.ok(refused(repo).length > 0, name);
+  }
+});
+
+test("Change Sealing: seal.json without the chain head, or the head without the seal, is refused", () => {
+  const seal = sealed();
+  git(seal, "add", CHANGE_SEAL);
+  git(seal, "commit", "-q", "-m", "seal only");
+  git(seal, "checkout", "-q", "main", "--", "seals.json");
+  assert.ok(refused(seal).length > 0);
+  const heads = sealed();
+  git(heads, "add", "seals.json");
+  git(heads, "commit", "-q", "-m", "heads only");
+  git(heads, "clean", "-fdq");
+  assert.ok(refused(heads).length > 0);
+});
+
+test("Change Sealing does not authorise rewriting sealed history, the lock, BRAIN or stray seals", () => {
+  const rewrite: [string, (repo: string) => void][] = [
+    ["a sealed Change's seal modified", (r) => edit(r, "change/change/26/09/30/01/seal.json")],
+    [
+      "a sealed Change's seal deleted",
+      (r) => {
+        fs.rmSync(path.join(r, "change/change/26/09/30/01/seal.json"));
+        commit(r, "delete");
+      },
+    ],
+    ["the lock", (r) => edit(r, "seals.json.lock", "lock\n")],
+    ["a BRAIN seal", (r) => edit(r, "brain/learning/genesis/26/10/01/01/seal.json")],
+    ["a misplaced seal", (r) => edit(r, "change/far/26/09/25/01/nested/seal.json", "{}\n")],
+    [
+      "a chain dropped from the heads",
+      (r) => {
+        const f = path.join(r, "seals.json");
+        const h = JSON.parse(fs.readFileSync(f, "utf8"));
+        delete h.testing;
+        edit(r, "seals.json", JSON.stringify(h, null, 2) + "\n");
+      },
+    ],
+  ];
+  for (const [name, sabotage] of rewrite) {
+    const repo = sealed();
+    commit(repo, "seal");
+    sabotage(repo);
+    assert.ok(refused(repo).length > 0, name);
+  }
+});
+
+test("authored seal state, byte-for-byte unrelated to any sealing, is refused where no Change is sealed", () => {
+  const repo = evolution();
+  edit(repo, CHANGE_SEAL, "forged\n");
+  edit(repo, "seals.json", "{}\n");
+  assert.ok(refused(repo).length > 0);
 });

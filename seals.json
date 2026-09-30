@@ -1,4 +1,10 @@
 {
+  "bootstrap": {
+    "units": [
+      "change/bootstrap/26/09/30/01"
+    ],
+    "seal": "caab3fbbca7ace3dba78ce76d7894befa51b60702c17ecb614c6df9255175ddd"
+  },
   "far": {
     "units": [
       "change/far/26/09/25/01"
