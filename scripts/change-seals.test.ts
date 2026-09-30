@@ -14,6 +14,7 @@ import {
   checkChanges,
   sealChanges,
 } from "./change-seals.js";
+import { nulEntries } from "./brain-seals.js";
 import { changeRepoData, diffData, scratchRepo, tree } from "./test-data.js";
 
 const REPO = fileURLToPath(new URL("../", import.meta.url));
@@ -198,6 +199,19 @@ test("the guard refuses a candidate that rewrites a Change already born on its t
     "change/testing/26/09/30/01/test/cases/foo.txt: rewrites Change change/testing/26/09/30/01, already born on the target (D)",
   ]);
   assert.deepEqual(changeRewrites(diffData("change-new"), target), []);
+});
+
+test("the guard reads NUL-delimited paths, so no file name a Change owns escapes it", () => {
+  const target = [
+    ...Object.keys(tree(changeRepoData("history"))),
+    "change/change/26/09/30/01/ta\tb.txt",
+    "change/change/26/09/30/02/caf\u00e9.txt",
+  ];
+  assert.deepEqual(changeRewrites(nulEntries(diffData("change-unusual-names")), target), [
+    "change/change/26/09/30/01/ta\tb.txt: rewrites Change change/change/26/09/30/01, already born on the target (M)",
+    "change/change/26/09/30/02/caf\u00e9.txt: rewrites Change change/change/26/09/30/02, already born on the target (M)",
+    "change/change/26/09/30/02/new\nline.txt: rewrites Change change/change/26/09/30/02, already born on the target (A)",
+  ]);
 });
 
 test("classifies seal state over Changes: each Change's seal, and the heads and lock at the top", () => {

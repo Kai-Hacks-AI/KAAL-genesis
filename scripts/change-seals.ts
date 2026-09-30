@@ -9,7 +9,7 @@ import {
   SEAL_FILE,
   sealChains,
 } from "../skills/using-seals/scripts/seals.js";
-import { entries, type SealState } from "./brain-seals.js";
+import { type Entry, entries, type SealState } from "./brain-seals.js";
 
 /**
  * KAAL's sealing policy for Changes. managing-change births and validates
@@ -97,7 +97,7 @@ export function changeSealState(file: string): SealState | undefined {
  * change: one error per seal-state path a `git diff --name-status
  * --no-renames` output touches.
  */
-export function changeSealStateChanges(nameStatus: string): string[] {
+export function changeSealStateChanges(nameStatus: string | Entry[]): string[] {
   return entries(nameStatus)
     .filter(({ file }) => changeSealState(file))
     .map(({ status, file }) => `${file}: seal state may only be written by sealing on main (${status})`);
@@ -114,11 +114,13 @@ function changeOf(file: string): string | undefined {
  * only once sealing on main has run, which follows acceptance, so a candidate
  * is also refused if it adds, modifies or deletes anything in a Change that
  * already exists on its target, sealed or not. Takes the candidate's
- * `git diff --name-status --no-renames` output and every file the target
- * holds (posix paths); returns one error per entry that rewrites a Change.
+ * `git diff --name-status --no-renames` entries and every file the target
+ * holds (posix paths, unquoted: read them NUL-delimited, as Git would quote a
+ * Change's unusual file names in line output); returns one error per entry
+ * that rewrites a Change.
  * Seal state is left to the seal-state guard.
  */
-export function changeRewrites(nameStatus: string, target: string[]): string[] {
+export function changeRewrites(nameStatus: string | Entry[], target: string[]): string[] {
   const born = new Set(target.map(changeOf).filter((change) => change !== undefined));
   return entries(nameStatus).flatMap(({ status, file }) => {
     const change = changeOf(file);

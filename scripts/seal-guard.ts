@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { HEADS_FILE, LOCK_FILE } from "../skills/using-seals/scripts/seals.js";
+import { nulEntries } from "./brain-seals.js";
 import { kaalGuardErrors } from "./kaal-seals.js";
 
 // Refuses a change that touches seal state compared with <base>, or rewrites
@@ -22,6 +23,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         repo,
         "diff",
         "--name-status",
+        "-z",
         "--no-renames",
         `${base}...HEAD`,
         "--",
@@ -32,10 +34,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       ],
       { encoding: "utf8" },
     );
-    const target = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", base, "--", CHANGE_ROOT], {
+    const target = execFileSync("git", ["-C", repo, "ls-tree", "-r", "-z", "--name-only", base, "--", CHANGE_ROOT], {
       encoding: "utf8",
     });
-    const errors = kaalGuardErrors(diff, target.split(/\r?\n/).filter(Boolean));
+    // NUL-delimited, so Git never quotes a path: a Change may own any file name.
+    const errors = kaalGuardErrors(nulEntries(diff), target.split("\0").filter(Boolean));
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;

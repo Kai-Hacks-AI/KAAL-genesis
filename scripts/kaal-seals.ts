@@ -1,6 +1,14 @@
 import path from "node:path";
 import { ROOT as BRAIN_ROOT } from "../skills/using-brain/scripts/brain.js";
-import { brainErrors, entries, sealBrain, sealingOutputErrors, sealState, sealStateChanges } from "./brain-seals.js";
+import {
+  brainErrors,
+  type Entry,
+  entries,
+  sealBrain,
+  sealingOutputErrors,
+  sealState,
+  sealStateChanges,
+} from "./brain-seals.js";
 import {
   changeErrors,
   changeRewrites,
@@ -31,7 +39,7 @@ export function sealKaal(repo = "."): string[] {
 }
 
 /** One error per seal-state path, of BRAIN or of Changes, that a change touches. */
-export function kaalSealStateChanges(nameStatus: string): string[] {
+export function kaalSealStateChanges(nameStatus: string | Entry[]): string[] {
   return [...sealStateChanges(nameStatus), ...changeSealStateChanges(nameStatus)];
 }
 
@@ -40,7 +48,7 @@ export function kaalSealStateChanges(nameStatus: string): string[] {
  * holds: seal state written, and any Change already born on the target
  * rewritten.
  */
-export function kaalGuardErrors(nameStatus: string, target: string[]): string[] {
+export function kaalGuardErrors(nameStatus: string | Entry[], target: string[]): string[] {
   return [...kaalSealStateChanges(nameStatus), ...changeRewrites(nameStatus, target)];
 }
 
