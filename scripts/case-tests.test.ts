@@ -7,7 +7,7 @@ import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import { createDefect } from "../skills/managing-defects/scripts/create.js";
 import { createRequirement } from "../skills/managing-requirements/scripts/create.js";
 import { casesTesting } from "../skills/testing/scripts/case-tests.js";
-import { casesTestingDefect, casesTestingRequirement, kaalCaseTests, suitePlaces, TEST_DIR } from "./case-tests.js";
+import { casesTestingDefect, casesTestingRequirement, casePlaces, kaalCaseTests, TEST_DIR } from "./case-tests.js";
 import { DEFECT_DIR } from "./defects.js";
 import { REQUIREMENT_DIR } from "./requirements.js";
 
@@ -136,19 +136,37 @@ test("supersession is never followed: a Case tests the Requirement it names and 
   assert.deepEqual(casesTestingRequirement(cases, "r2"), []);
 });
 
-test("Suites are found beneath each Change's test directory, and a Case in nested Suites is one Case", () => {
+test("Cases are found beneath each Change's test directory directly, whether or not a Suite collects them", () => {
   const { dir, born } = repo({ "a.test.ts": "// @tests requirement r1\n" });
-  const nested = path.join(born, TEST_DIR, "suite", "inner");
-  fs.mkdirSync(nested);
-  fs.writeFileSync(path.join(nested, "suite.json"), JSON.stringify({ concern: "Inner." }));
-  fs.writeFileSync(path.join(nested, "b.test.ts"), `// @tests defect d1\n${CODE}`);
-  assert.deepEqual(suitePlaces(dir), [PLACE, `${PLACE}/inner`]);
+  const test = path.join(born, TEST_DIR);
+  // Inside a Suite's subdirectory, with no suite.json of its own.
+  fs.mkdirSync(path.join(test, "suite", "inner"));
+  fs.writeFileSync(path.join(test, "suite", "inner", "b.test.mjs"), `// @tests defect d1\n${CODE}`);
+  // Outside any Suite, with no suite.json anywhere near it.
+  fs.mkdirSync(path.join(test, "loose", "deep"), { recursive: true });
+  fs.writeFileSync(path.join(test, "loose", "deep", "c.test.cts"), `// @tests requirement r2\n${CODE}`);
+  fs.writeFileSync(path.join(test, "d.test.js"), `// @tests requirement nope\n${CODE}`);
+  fs.writeFileSync(path.join(test, "not-a-case.ts"), "// @tests requirement nope2\n");
+  const base = "change/x/26/09/30/01/test";
+  assert.deepEqual(casePlaces(dir), [
+    `${base}/d.test.js`,
+    `${base}/loose/deep/c.test.cts`,
+    `${base}/suite/a.test.ts`,
+    `${base}/suite/inner/b.test.mjs`,
+  ]);
   const { cases, errors } = kaalCaseTests(dir);
-  assert.deepEqual(errors, []);
-  assert.deepEqual(
-    cases.map((c) => c.case),
-    [`${PLACE}/a.test.ts`, `${PLACE}/inner/b.test.ts`],
-  );
+  assert.deepEqual(errors, [`${base}/d.test.js: tests requirement "nope", which names no requirement`]);
+  assert.deepEqual(casesTestingRequirement(cases, "r2"), [`${base}/loose/deep/c.test.cts`]);
+  assert.deepEqual(casesTestingDefect(cases, "d1"), [`${base}/suite/inner/b.test.mjs`]);
+  assert.deepEqual(casesTestingRequirement(cases, "r1"), [`${PLACE}/a.test.ts`]);
+});
+
+test("a broken Suite does not hide its Cases' references, and no Suite is needed to see them", () => {
+  const { dir, born } = repo({ "a.test.ts": "// @tests requirement missing\n" });
+  fs.rmSync(path.join(born, TEST_DIR, "suite", "suite.json"));
+  assert.deepEqual(kaalCaseTests(dir).errors, [
+    `${PLACE}/a.test.ts: tests requirement "missing", which names no requirement`,
+  ]);
 });
 
 test("Cases without references are unaffected: they test nothing KAAL knows of and raise no error", () => {

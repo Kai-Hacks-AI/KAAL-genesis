@@ -1,11 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
-import type { Suite } from "./testing.js";
 
 /** One thing a Case tests: the `kind` of existing meaning, and its `id`. Testing knows neither what kinds exist nor whether an id names anything. */
 export type Tests = { kind: string; id: string };
 
-/** A Case, as a posix path relative to the testing root, and what it tests, in the order it states it. */
+/** A Case, named by the caller (in KAAL, a posix path from the repository root), and what it tests, in the order it states it. */
 export type CaseTests = { case: string; tests: Tests[] };
 
 /** The marker of a reference, in a Case's header: `// @tests <kind> <id>`. */
@@ -54,23 +52,6 @@ export function readCaseTests(file: string, name = file): { tests: Tests[]; erro
     return { tests: [], errors: [`${name}: unreadable case (${e instanceof Error ? e.message : String(e)})`] };
   }
   return parseTests(text, name);
-}
-
-/**
- * What each Case of `suite` tests, read beneath the testing root `root`, in
- * the Suite's order, with every way a reference is broken. The references are
- * the Cases' own: the Suite and its Plan state none.
- */
-export function readSuiteTests(root: string, suite: Suite): { cases: CaseTests[]; errors: string[] } {
-  const cases: CaseTests[] = [];
-  const errors: string[] = [];
-  for (const file of suite.cases) {
-    const at = `${suite.place}/${file}`;
-    const read = readCaseTests(path.join(root, ...at.split("/")), at);
-    cases.push({ case: at, tests: read.tests });
-    errors.push(...read.errors);
-  }
-  return { cases, errors };
 }
 
 /**

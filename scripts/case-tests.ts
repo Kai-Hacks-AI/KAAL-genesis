@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { readChanges, ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
-import { casesTesting, readSuiteTests, type CaseTests } from "../skills/testing/scripts/case-tests.js";
-import { SUITE_FILE, readSuite } from "../skills/testing/scripts/testing.js";
+import { casesTesting, readCaseTests, type CaseTests } from "../skills/testing/scripts/case-tests.js";
+import { CASE } from "../skills/testing/scripts/testing.js";
 import { kaalDefects } from "./defects.js";
 import { kaalRequirements } from "./requirements.js";
 
@@ -12,7 +12,9 @@ import { kaalRequirements } from "./requirements.js";
  * the Case-side reference, `// @tests <kind> <id>`, and knows neither
  * managing-requirements nor managing-defects; those know nothing of Testing.
  * This decides which kinds a Case of KAAL may test, `requirement` and
- * `defect`, and that each id must name one that exists. The reference belongs
+ * `defect`, and that each id must name one that exists. A Case is found as a
+ * file of a Change's `test/`, whether or not any Suite collects it: what a
+ * Case tests does not wait on where Suites lie. The reference belongs
  * to the Case: a Requirement or a Defect never names its Cases, and Cases
  * testing one are found by reading the Cases.
  */
@@ -23,17 +25,16 @@ export const TEST_DIR = "test";
 /** What a Case of KAAL may test. */
 export const KINDS = ["requirement", "defect"] as const;
 
-/** Every Suite place, relative to `repo`, beneath each Change's `test/`: each directory holding `suite.json`, in traversal order. */
-export function suitePlaces(repo = "."): string[] {
+/** Every Case file beneath each Change's `test/`, as posix paths from `repo`, in traversal order. No Suite is consulted. */
+export function casePlaces(repo = "."): string[] {
   const places: string[] = [];
   for (const change of readChanges(path.join(repo, CHANGE_ROOT)).changes) {
-    const base = [CHANGE_ROOT, change.lineage, ...change.occurrence.split("/"), TEST_DIR];
-    const dir = path.join(repo, ...base);
+    const dir = path.join(repo, CHANGE_ROOT, change.lineage, ...change.occurrence.split("/"), TEST_DIR);
     if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
     const found = fs
       .readdirSync(dir, { recursive: true, withFileTypes: true })
-      .filter((e) => e.isFile() && e.name === SUITE_FILE)
-      .map((e) => path.relative(repo, e.parentPath).split(path.sep).join("/"))
+      .filter((e) => e.isFile() && CASE.test(e.name))
+      .map((e) => path.relative(repo, path.join(e.parentPath, e.name)).split(path.sep).join("/"))
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     places.push(...found);
   }
@@ -41,10 +42,10 @@ export function suitePlaces(repo = "."): string[] {
 }
 
 /**
- * The Cases of KAAL's Suites with what each tests, and everything that stops a
- * reference being one: a malformed or repeated reference, a kind KAAL does not
- * test, and an id that names no Requirement or Defect. A Case in several
- * Suites, being beneath them all, is one Case.
+ * The Cases beneath KAAL's Changes' `test/` with what each tests, and
+ * everything that stops a reference being one: a malformed or repeated
+ * reference, a kind KAAL does not test, and an id that names no Requirement or
+ * Defect.
  */
 export function kaalCaseTests(repo = "."): { cases: CaseTests[]; errors: string[] } {
   const requirements = kaalRequirements(repo);
@@ -53,24 +54,21 @@ export function kaalCaseTests(repo = "."): { cases: CaseTests[]; errors: string[
     requirement: new Set(requirements.requirements.map((r) => r.id)),
     defect: new Set(defects.defects.map((d) => d.id)),
   };
-  const cases = new Map<string, CaseTests>();
+  const cases: CaseTests[] = [];
   const errors: string[] = [...requirements.errors, ...defects.errors];
-  for (const place of suitePlaces(repo)) {
-    const { suite, errors: invalid } = readSuite(repo, place);
-    errors.push(...invalid);
-    if (!suite) continue;
-    const read = readSuiteTests(repo, suite);
+  for (const place of casePlaces(repo)) {
+    const read = readCaseTests(path.join(repo, ...place.split("/")), place);
+    cases.push({ case: place, tests: read.tests });
     errors.push(...read.errors);
-    for (const c of read.cases) if (!cases.has(c.case)) cases.set(c.case, c);
   }
-  for (const c of cases.values()) {
+  for (const c of cases) {
     for (const { kind, id } of c.tests) {
       if (!Object.hasOwn(known, kind))
         errors.push(`${c.case}: tests ${kind} "${id}", but a Case may test only ${KINDS.join(" or ")}`);
       else if (!known[kind].has(id)) errors.push(`${c.case}: tests ${kind} "${id}", which names no ${kind}`);
     }
   }
-  return { cases: [...cases.values()], errors };
+  return { cases, errors };
 }
 
 /** The Cases of KAAL's Suites that test the Requirement `id`. */

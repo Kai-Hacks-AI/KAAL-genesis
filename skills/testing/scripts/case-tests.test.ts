@@ -3,8 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { casesTesting, parseTests, readCaseTests, readSuiteTests, type CaseTests } from "./case-tests.js";
-import { readSuite } from "./testing.js";
+import { casesTesting, parseTests, readCaseTests, type CaseTests } from "./case-tests.js";
 
 const CODE = 'import test from "node:test";\ntest("passes", () => {});\n';
 
@@ -78,31 +77,6 @@ test("reads a Case from its file, and says when it cannot", () => {
   const missing = readCaseTests(path.join(dir, "none.test.ts"), "none.test.ts");
   assert.deepEqual(missing.tests, []);
   assert.match(missing.errors[0], /^none\.test\.ts: unreadable case \(/);
-});
-
-test("a Suite's Cases each state their own references; the Suite and its files state none", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "case-tests-"));
-  const dir = path.join(root, "suite");
-  fs.mkdirSync(path.join(dir, "nested"), { recursive: true });
-  fs.writeFileSync(path.join(dir, "suite.json"), JSON.stringify({ concern: "Scratch." }));
-  fs.writeFileSync(path.join(dir, "a.test.ts"), `// @tests requirement a\n// @tests defect d\n${CODE}`);
-  fs.writeFileSync(path.join(dir, "nested", "b.test.ts"), `// @tests requirement a\n${CODE}`);
-  fs.writeFileSync(path.join(dir, "c.test.ts"), `// @tests requirement a\n// @tests requirement a\n${CODE}`);
-  const { suite } = readSuite(root, "suite");
-  const { cases, errors } = readSuiteTests(root, suite!);
-  assert.deepEqual(cases, [
-    {
-      case: "suite/a.test.ts",
-      tests: [
-        { kind: "requirement", id: "a" },
-        { kind: "defect", id: "d" },
-      ],
-    },
-    { case: "suite/c.test.ts", tests: [{ kind: "requirement", id: "a" }] },
-    { case: "suite/nested/b.test.ts", tests: [{ kind: "requirement", id: "a" }] },
-  ]);
-  assert.deepEqual(errors, ['suite/c.test.ts:2: tests requirement "a" twice']);
-  assert.equal(fs.readFileSync(path.join(dir, "suite.json"), "utf8"), JSON.stringify({ concern: "Scratch." }));
 });
 
 test("the Cases testing something are computed from the Cases alone, with many Cases for one identity", () => {
