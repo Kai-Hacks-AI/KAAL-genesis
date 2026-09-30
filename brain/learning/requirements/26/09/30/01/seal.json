@@ -1,0 +1,11 @@
+{
+  "unit": "requirements/26/09/30/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/managing-requirements.md",
+      "sha256": "e681eda914d1d2e366c27433533fe883cdc4b116ad04766b9838b4a0c3ec5ff6"
+    }
+  ],
+  "seal": "ffe95c12326320747bafcc6c55d9b5d6e8039710e47fe4736b7546b6ec0e3d0c"
+}
