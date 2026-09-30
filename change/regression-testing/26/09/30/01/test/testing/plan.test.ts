@@ -10,18 +10,18 @@ import test from "node:test";
 
 const RUN = path.resolve("skills/testing/scripts/run.ts");
 
-/** A testing root holding `plan.json`, which collects one Suite holding `cases`. */
+/** A testing root holding `plan.md`, which collects one Suite holding `cases`. */
 function testingRoot(cases: Record<string, string>): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "regression-testing-"));
   fs.mkdirSync(path.join(root, "suite"));
-  fs.writeFileSync(path.join(root, "plan.json"), JSON.stringify({ concern: "Scratch.", suites: ["suite"] }));
+  fs.writeFileSync(path.join(root, "plan.md"), "---\nsuites:\n  - suite\n---\n\nScratch.\n");
   fs.writeFileSync(path.join(root, "suite", "suite.json"), JSON.stringify({ concern: "Scratch." }));
   for (const [name, body] of Object.entries(cases)) fs.writeFileSync(path.join(root, "suite", name), body);
   return root;
 }
 
 const run = (root: string) =>
-  spawnSync(process.execPath, [...process.execArgv, RUN, "plan.json"], { cwd: root, encoding: "utf8" });
+  spawnSync(process.execPath, [...process.execArgv, RUN, "plan.md"], { cwd: root, encoding: "utf8" });
 
 const PASSES = 'import test from "node:test";\ntest("passes", () => {});\n';
 const FAILS = 'import test from "node:test";\ntest("fails", () => { throw new Error("no"); });\n';

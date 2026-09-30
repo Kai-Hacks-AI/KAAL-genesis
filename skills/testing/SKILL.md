@@ -7,7 +7,7 @@ description: Collect Suites of executable Cases into a Plan and run the Plan aga
 
 Testing establishes whether stated protection holds for a candidate. It knows three things, from the outside in, and leaves a fourth, Strategy, to the using system:
 
-A **Plan** states a testing purpose and collects the Suites that serve it. It is a JSON file with exactly two fields: `concern`, a non-empty sentence saying what the Plan protects, and `suites`, a list of the Suites it collects, each a relative posix path to a Suite directory beneath the testing root, each at most once. A Plan may collect no Suite yet. Where a Plan lives, and who adds to it, is the using system's decision.
+A **Plan** states a testing purpose and collects the Suites that serve it. It is Markdown: YAML frontmatter, then a body. The body, which must not be empty, states what the Plan protects and why, for the people and agents who author and review it. The frontmatter's `suites` lists the Suites it collects, each a relative posix path to a Suite directory beneath the testing root, each at most once. A Plan may collect no Suite yet. Testing owns only `suites` and the body: every other frontmatter key belongs to the using system, and Testing never reads it. Where a Plan lives, and who adds to it, is the using system's decision.
 
 A **Suite** is a directory holding `suite.json`, whose one field, `concern`, states the coherent testing concern its Cases serve. The concern, not the current Cases, gives a Suite its meaning. Every Case file anywhere beneath the directory belongs to the Suite; there is no other membership. A Suite with no Case is refused, since it protects nothing.
 

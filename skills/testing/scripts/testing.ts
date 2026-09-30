@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import YAML from "yaml";
 
 /** The file that makes a directory a Suite and states its concern. */
 export const SUITE_FILE = "suite.json";
@@ -8,7 +9,7 @@ export const SUITE_FILE = "suite.json";
 /** A Case is a file whose `node:test` tests Node runs when it executes it: `*.test.js`, `*.test.ts` and their module variants. */
 export const CASE = /\.test\.[cm]?[jt]s$/;
 
-/** A Plan: the protection it states, and the Suites it collects, as posix paths relative to the testing root. */
+/** A Plan: the protection it states (its body), and the Suites it collects, as posix paths relative to the testing root. */
 export type Plan = { concern: string; suites: string[] };
 
 /** A Suite: its place relative to the testing root, its concern, and its Cases as posix paths relative to it. */
@@ -58,29 +59,46 @@ function readJson(file: string): { value?: unknown; error?: string } {
   }
 }
 
-/** The Plan at `file`, with every way it is not one. */
+/** A Plan's YAML frontmatter, then its body. */
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+
+/**
+ * The Plan at `file`, with every way it is not one: Markdown whose YAML
+ * frontmatter lists its `suites` and whose body states its concern. Every
+ * other frontmatter key belongs to the using system and is never read.
+ */
 export function readPlan(file: string): { plan?: Plan; errors: string[] } {
-  const { value, error } = readJson(file);
-  if (error) return { errors: [`${file}: unreadable plan (${error})`] };
-  if (!isObject(value)) return { errors: [`${file}: a plan must be an object`] };
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (e) {
+    return { errors: [`${file}: unreadable plan (${e instanceof Error ? e.message : String(e)})`] };
+  }
+  const match = FRONTMATTER.exec(text);
+  if (!match) return { errors: [`${file}: a plan must begin with YAML frontmatter`] };
+  let data: unknown;
+  try {
+    data = YAML.parse(match[1]);
+  } catch (e) {
+    return { errors: [`${file}: unreadable frontmatter (${e instanceof Error ? e.message : String(e)})`] };
+  }
+  if (!isObject(data)) return { errors: [`${file}: frontmatter must be a mapping`] };
   const errors: string[] = [];
-  const extra = Object.keys(value).filter((key) => key !== "concern" && key !== "suites");
-  if (extra.length) errors.push(`${file}: unknown ${extra.map((key) => `"${key}"`).join(", ")}`);
-  const concern = concernError(value);
-  if (concern) errors.push(`${file}: ${concern}`);
-  if (!Array.isArray(value.suites)) errors.push(`${file}: suites must be a list`);
+  const concern = text.slice(match[0].length).trim();
+  if (!concern) errors.push(`${file}: the body must state the plan's concern`);
+  if (!Array.isArray(data.suites)) errors.push(`${file}: suites must be a list`);
   else {
-    for (const place of value.suites) {
+    for (const place of data.suites) {
       const invalid = placeError(place);
       if (invalid) errors.push(`${file}: ${invalid}`);
     }
     const seen = new Set<unknown>();
-    for (const place of value.suites) {
+    for (const place of data.suites) {
       if (seen.has(place)) errors.push(`${file}: suite "${place}" is collected twice`);
       seen.add(place);
     }
   }
-  return errors.length ? { errors } : { plan: value as Plan, errors };
+  return errors.length ? { errors } : { plan: { concern, suites: data.suites as string[] }, errors };
 }
 
 /** The Suite at `place` beneath `root`: its concern and its Cases, in sorted order. */
