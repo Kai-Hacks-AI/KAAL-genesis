@@ -21,6 +21,8 @@
     "ideas:check": "tsx skills/managing-ideas/scripts/check.ts ideas",
     "requirements:record": "tsx skills/managing-requirements/scripts/record.ts requirements",
     "requirements:check": "tsx skills/managing-requirements/scripts/check.ts requirements",
+    "change:birth": "tsx scripts/birth-change.ts change",
+    "change:check": "tsx scripts/check-changes.ts change",
     "seal": "tsx scripts/seal.ts",
     "seals:check": "tsx scripts/check-seals.ts",
     "seals:guard": "tsx scripts/seal-guard.ts",

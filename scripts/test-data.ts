@@ -312,3 +312,16 @@ export function escapingState(): string {
     fs.cpSync(path.join(DATA, "runs", name), path.join(parent, name), { recursive: true });
   return path.join(parent, "escaping");
 }
+
+/**
+ * A scratch Change tree: empty and not yet created when no name is given, or
+ * a copy of one from test-data/change: `born`, a lineage whose first Change
+ * already owns `test/scripts/foo.test.ts`; `malformed`, one with something out
+ * of place at each level a Change tree has; `uninterpreted`, one whose only
+ * Change owns material that is invalid by every other capability's rules.
+ */
+export function scratchChange(name?: "born" | "malformed" | "uninterpreted"): string {
+  const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-change-")), "change");
+  if (name) fs.cpSync(path.join(DATA, "change", name), root, { recursive: true });
+  return root;
+}
