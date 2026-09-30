@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { birthErrors, checkSkills, standardErrors } from "./skills.js";
-import { skill, SKILLS, stuckSkill } from "./test-data.js";
+import { linkedSkill, skill, SKILLS, stuckSkill } from "./test-data.js";
 
 const LONG = "a".repeat(65);
 
@@ -97,15 +98,14 @@ test(
   },
 );
 
-test(
-  "the scratch copy keeps symlinks as they are, never pointing back into the skill",
-  { skip: process.platform === "win32" },
-  () => {
-    assert.deepEqual(birthErrors(skill("linked")), [
-      "linked: running scripts/init.ts failed (exit code 1); run it to see why",
-    ]);
-  },
-);
+test("the scratch copy keeps symlinks as they are, never pointing back into the skill", () => {
+  const dir = linkedSkill();
+  try {
+    assert.deepEqual(birthErrors(dir), ["linked: running scripts/init.ts failed (exit code 1); run it to see why"]);
+  } finally {
+    fs.rmSync(path.dirname(dir), { recursive: true, force: true });
+  }
+});
 
 test("an init that fails is reported with how to see why", () => {
   assert.deepEqual(birthErrors(skill("failing")), [
