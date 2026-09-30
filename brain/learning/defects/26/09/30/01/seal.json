@@ -1,0 +1,11 @@
+{
+  "unit": "defects/26/09/30/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/managing-defects.md",
+      "sha256": "4528b23cc4c2eeb298faa86d67099fb8f1ab70735f2869f69e32bcef50cb9242"
+    }
+  ],
+  "seal": "83e96076445c7143cf94d829246b988f378d58500f5533d9ffe0c85d7835b842"
+}
