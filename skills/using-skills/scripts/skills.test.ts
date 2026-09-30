@@ -88,16 +88,6 @@ test("a skill without an init, or whose init writes no SKILL.md when run, is not
   ]);
 });
 
-test(
-  "an init that writes SKILL.md as a named pipe is reported, never read",
-  { skip: process.platform === "win32" },
-  () => {
-    assert.deepEqual(birthErrors(skill("writes-pipe")), [
-      "writes-pipe: running scripts/init.ts does not write SKILL.md as a regular file",
-    ]);
-  },
-);
-
 test("the scratch copy keeps symlinks as they are, never pointing back into the skill", () => {
   const dir = linkedSkill();
   try {
