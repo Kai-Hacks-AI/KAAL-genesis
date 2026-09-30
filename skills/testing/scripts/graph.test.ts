@@ -123,7 +123,10 @@ const digest = (dir: string): Record<string, string> =>
     (fs.readdirSync(dir, { recursive: true, withFileTypes: true }) as fs.Dirent[])
       .filter((entry) => entry.isFile())
       .map((entry) => path.join(entry.parentPath, entry.name))
-      .map((file) => [path.relative(dir, file), createHash("sha256").update(fs.readFileSync(file)).digest("hex")]),
+      .map((file) => [
+        path.relative(dir, file).split(path.sep).join("/"),
+        createHash("sha256").update(fs.readFileSync(file)).digest("hex"),
+      ]),
   );
 
 test("children are born later, each naming what already exists, and no parent is ever written to", () => {
