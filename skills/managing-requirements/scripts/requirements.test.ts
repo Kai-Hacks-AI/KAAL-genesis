@@ -117,11 +117,9 @@ test("references resolve by id across roots, many to many, and an unknown id is 
 
 test("the scripts create, validate and read through the command line", () => {
   const scripts = fileURLToPath(new URL(".", import.meta.url));
+  // No shell: arguments reach the script exactly as given on every platform.
   const run = (script: string, ...args: string[]) =>
-    spawnSync("npx", ["tsx", path.join(scripts, script), ...args], {
-      encoding: "utf8",
-      shell: process.platform === "win32",
-    });
+    spawnSync(process.execPath, ["--import", "tsx", path.join(scripts, script), ...args], { encoding: "utf8" });
   const dir = scratch();
   assert.equal(run("create.ts", dir, "a", "It holds.").status, 0);
   assert.equal(run("validate.ts", dir).status, 0);
@@ -130,4 +128,26 @@ test("the scripts create, validate and read through the command line", () => {
   assert.equal(read.stdout, "a\n\nIt holds.\n\n");
   assert.equal(run("read.ts", "--root", dir, "nope").status, 1);
   assert.equal(run("validate.ts").status, 2);
+});
+
+test("every portable id round-trips through create and read, even one YAML would read as a number or boolean", () => {
+  const dir = scratch();
+  for (const id of ["007", "123", "1e3", "0x1f", "true", "false", "null", "yes", "a-b"]) {
+    createRequirement(dir, id, "It holds.");
+    const { requirements, errors } = readRequirements([dir]);
+    assert.deepEqual(errors, [], id);
+    assert.equal(resolve(requirements, [id]).found[0]?.id, id);
+  }
+});
+
+test("a byte order mark, and the same root supplied twice, change nothing; a duplicated id resolves to none", () => {
+  const dir = scratch();
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "a.md"), "\uFEFF" + render("a", "It holds."));
+  assert.deepEqual(readRequirements([dir, dir, path.join(dir, ".")]).errors, []);
+  const other = scratch();
+  createRequirement(other, "a", "Different.");
+  const { requirements, errors } = readRequirements([dir, other]);
+  assert.equal(errors.length, 1);
+  assert.deepEqual(resolve(requirements, ["a"]).errors, ["a: no such Requirement"]);
 });

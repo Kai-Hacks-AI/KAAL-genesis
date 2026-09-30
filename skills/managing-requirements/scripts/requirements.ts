@@ -21,12 +21,12 @@ export function idError(id: string): string | undefined {
 
 /** The text of a Requirement file: frontmatter holding only its id, then its meaning. */
 export function render(id: string, meaning: string): string {
-  return `---\nid: ${id}\n---\n\n${meaning.trim()}\n`;
+  return `---\n${YAML.stringify({ id }).trimEnd()}\n---\n\n${meaning.trim()}\n`;
 }
 
 /** Parses one Requirement file, or says why it is not one. `file` is only used to name errors. */
 export function parse(text: string, file: string): Requirement | string {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/.exec(text);
+  const match = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/.exec(text);
   if (!match) return `${file}: missing YAML frontmatter`;
   let data: unknown;
   try {
@@ -56,6 +56,7 @@ export function parse(text: string, file: string): Requirement | string {
 export function readRequirements(roots: string[]): { requirements: Requirement[]; errors: string[] } {
   const requirements: Requirement[] = [];
   const errors: string[] = [];
+  const visited = new Set<string>();
   for (const root of roots) {
     const stat = fs.lstatSync(root, { throwIfNoEntry: false });
     if (!stat) continue;
@@ -63,6 +64,10 @@ export function readRequirements(roots: string[]): { requirements: Requirement[]
       errors.push(`${root}: not a directory`);
       continue;
     }
+    // The same directory supplied twice is one root, not a duplicate of itself.
+    const real = fs.realpathSync(root);
+    if (visited.has(real)) continue;
+    visited.add(real);
     const names = fs.readdirSync(root).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     for (const name of names) {
       if (!name.endsWith(".md")) continue;
@@ -77,12 +82,16 @@ export function readRequirements(roots: string[]): { requirements: Requirement[]
     }
   }
   const seen = new Map<string, string>();
+  const duplicated = new Set<string>();
   for (const { id, file } of requirements) {
     const first = seen.get(id);
-    if (first) errors.push(`${file}: id "${id}" is already defined by ${first}`);
-    else seen.set(id, file);
+    if (first) {
+      errors.push(`${file}: id "${id}" is already defined by ${first}`);
+      duplicated.add(id);
+    } else seen.set(id, file);
   }
-  return { requirements, errors };
+  // An id defined twice names no single Requirement, so it resolves to none.
+  return { requirements: requirements.filter((r) => !duplicated.has(r.id)), errors };
 }
 
 /** Resolves references to Requirements: the ones found, and one error per id that names none. */
