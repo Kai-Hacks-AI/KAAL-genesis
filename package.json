@@ -15,6 +15,7 @@
     "change:birth": "tsx skills/managing-change/scripts/birth.ts",
     "change:validate": "tsx skills/managing-change/scripts/validate.ts",
     "change:list": "tsx skills/managing-change/scripts/list.ts",
+    "testing:run": "tsx skills/testing/scripts/run.ts",
     "agents:create": "tsx skills/using-agents/scripts/create-agents.ts",
     "skills:check": "tsx skills/using-skills/scripts/check.ts skills",
     "seal": "tsx scripts/seal.ts",
