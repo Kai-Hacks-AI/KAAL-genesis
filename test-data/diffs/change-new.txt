@@ -1,0 +1,2 @@
+A	change/change/26/10/01/01/owned.txt
+M	skills/managing-change/scripts/birth.ts

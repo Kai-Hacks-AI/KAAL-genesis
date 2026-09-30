@@ -106,7 +106,7 @@ export function sealState(file: string, root = ROOT): SealState | undefined {
 }
 
 /** Each entry of `git diff --name-status --no-renames` output: its status letter and path. */
-function entries(nameStatus: string): { status: string; file: string }[] {
+export function entries(nameStatus: string): { status: string; file: string }[] {
   return nameStatus
     .split(/\r?\n/)
     .filter(Boolean)
