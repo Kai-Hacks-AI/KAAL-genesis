@@ -24,7 +24,7 @@ A second run of the check left a directory in the temporary directory.
 
 A Defect is only the observation. It records no state, such as open, fixed or blocking, no cause and no repair, and names nothing that tests, repairs or refers to it. What a Defect means for some work, whether that work must wait for it or may leave it be, is decided by that work, which refers to the Defect and never changes it. What was observed stays observed.
 
-The \`id\` is the Defect's identity. It is portable: lowercase kebab-case (\`a-z\`, \`0-9\`, single hyphens), never a Windows reserved device name such as \`con\` or \`nul\`, at most 64 characters so that \`<id>.md\` is always a portable file name, and equal to the file's name without \`.md\`. It derives from no version control, hosting or location: moving the file, or the directory, or the repository, changes neither identity nor observation. An id is never reused for a different observation. A later observation of the same failure is a new Defect with a new id; this skill keeps no relation between them.
+The \`id\` is the Defect's identity. It is portable: lowercase kebab-case (\`a-z\`, \`0-9\`, single hyphens), never a Windows reserved device name such as \`con\` or \`nul\`, at most 64 characters so that \`<id>.md\` is always a portable file name, and equal to the file's name without \`.md\`. It derives from no version control, hosting or location: moving the file, or the directory, or the repository, changes neither identity nor observation. An id is never reused for a different observation.
 
 Other material references a Defect by its \`id\`: the reference belongs to the referrer, which may name any number of Defects, and any number of referrers may name the same one. A Defect never names what refers to it.
 
