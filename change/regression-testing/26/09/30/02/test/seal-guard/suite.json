@@ -1,0 +1,6 @@
+{
+  "concern": "The seal guard refuses seal state a change authors, and admits only seal state exactly as accepted main holds it.",
+  "cases": [
+    "scripts/seal-guard.test.ts"
+  ]
+}

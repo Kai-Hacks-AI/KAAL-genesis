@@ -1,0 +1,38 @@
+# Guards main: a pull request into main must come from a `kaal/*` branch of
+# this repository, or from Dependabot. Anything else, such as an unnamed
+# agent branch or a fork, fails branch-guard-linux.
+#
+# Runs as pull_request_target, like seal.yml: GitHub takes the workflow from
+# main, never from the change, so a change cannot weaken the guard that judges
+# it. Nothing is checked out and no change code runs; the branch name and the
+# author reach the script only as environment variables, never as script text.
+# The trigger, not a job condition, limits it to pull requests into main: a
+# skipped job still reports a check, and a skipped check counts as passing.
+name: branch-guard
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  branch-guard:
+    name: branch-guard-linux
+    runs-on: ubuntu-latest
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
+      THIS_REPO: ${{ github.repository }}
+    steps:
+      - run: |
+          if [ "$AUTHOR" = "dependabot[bot]" ] && [ "$HEAD_REPO" = "$THIS_REPO" ] && [[ "$HEAD_REF" == dependabot/* ]]; then
+            echo "Dependabot branch $HEAD_REF is allowed into main."
+          elif [ "$HEAD_REPO" = "$THIS_REPO" ] && [[ "$HEAD_REF" == kaal/* ]]; then
+            echo "Branch $HEAD_REF is allowed into main."
+          else
+            echo "::error::Pull requests into main must come from a kaal/* branch of $THIS_REPO or from Dependabot; this one comes from $HEAD_REPO:$HEAD_REF."
+            exit 1
+          fi

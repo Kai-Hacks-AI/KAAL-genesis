@@ -1,0 +1,12 @@
+{
+  "concern": "Skills follow the Agent Skills standard and are born from their own init.",
+  "cases": ["skills/using-skills/scripts/skills.test.ts"],
+  "conditions": [
+    {
+      "case": "skills/using-skills/scripts/skills.test.ts",
+      "test": "an init that writes SKILL.md as a named pipe is reported, never read",
+      "notOn": ["win32"],
+      "because": "It guards the POSIX hazard that reading a SKILL.md written as a FIFO blocks the check. On Windows no init can write SKILL.md as a FIFO, so there is no such hazard; the portable claim that a SKILL.md which is not a regular file is reported and never read holds there too and is shown on every platform by the case for an init that writes SKILL.md as a directory. linux-support and windows-support stay satisfied."
+    }
+  ]
+}

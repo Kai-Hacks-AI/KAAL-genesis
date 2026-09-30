@@ -1,4 +1,6 @@
 // Loads named test data from ../test-data so test cases hold no data themselves.
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,4 +17,16 @@ export function skill(name: string): string {
 /** An example skill whose init never finishes, kept apart so checking every example skill stays fast. */
 export function stuckSkill(name: string): string {
   return path.join(DATA, "stuck", name);
+}
+
+/**
+ * A copy of the "linked" skill with its symlink created at run time because
+ * a symlink cannot be committed portably.
+ */
+export function linkedSkill(): string {
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "skill-"));
+  const dir = path.join(scratch, "linked");
+  fs.cpSync(skill("linked"), dir, { recursive: true });
+  fs.symlinkSync("../SKILL.md", path.join(dir, "scripts", "template"));
+  return dir;
 }

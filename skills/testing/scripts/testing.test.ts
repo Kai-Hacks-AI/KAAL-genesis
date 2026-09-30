@@ -4,22 +4,59 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateData, planData, rootData } from "./test-data.js";
-import { loaderArgs, readPlan, readPlanSuites, report, runPlan } from "./testing.js";
+import { loaderArgs, PLATFORMS, readPlan, readPlanSuites, report, runPlan } from "./testing.js";
 
 const RUN = fileURLToPath(new URL("./run.ts", import.meta.url));
 const outcomes = (run: ReturnType<typeof runPlan>) =>
   run.observations.map((o) => `${o.passed ? "pass" : "fail"} ${o.case}`);
 
-test("a Plan collects its Suites, and each Suite every Case beneath it, in sorted order", () => {
+test("a Suite without cases names its own directory: every Case beneath it, in sorted order", () => {
   const { suites, errors } = readPlanSuites(rootData("fails"), "plan.md");
   assert.deepEqual(errors, []);
   assert.deepEqual(suites, [
     {
       place: "suites/mixed",
       concern: "Cases that prove nothing or fail.",
-      cases: ["fails.test.ts", "no-test.test.ts", "skips.test.ts"],
+      cases: ["suites/mixed/fails.test.ts", "suites/mixed/no-test.test.ts", "suites/mixed/skips.test.ts"],
+      conditions: [],
     },
-    { place: "suites/marked", concern: "The candidate carries its marker.", cases: ["marked.test.ts"] },
+    {
+      place: "suites/marked",
+      concern: "The candidate carries its marker.",
+      cases: ["suites/marked/marked.test.ts"],
+      conditions: [],
+    },
+  ]);
+});
+
+test("a Suite's cases collect Cases where they already live, and one Case may serve many Suites", () => {
+  const { suites, errors } = readPlanSuites(rootData("explicit"), "plan.md");
+  assert.deepEqual(errors, []);
+  assert.deepEqual(
+    suites.map((suite) => [suite.place, suite.cases]),
+    [
+      ["suites/owners", ["owners/b/owned.test.ts", "owners/a/deeper/two.test.ts", "owners/a/one.test.ts"]],
+      ["suites/shared", ["owners/b/owned.test.ts"]],
+    ],
+  );
+  const run = runPlan("plan.md", rootData("explicit"), candidateData("marked"));
+  assert.deepEqual(outcomes(run), [
+    "pass owners/b/owned.test.ts",
+    "pass owners/a/deeper/two.test.ts",
+    "pass owners/a/one.test.ts",
+    "pass owners/b/owned.test.ts",
+  ]);
+  assert.equal(run.holds, true);
+});
+
+test("refuses cases that are not a list, not beneath the root, not a Case, missing or named twice", () => {
+  assert.deepEqual(readPlanSuites(rootData("broken-cases"), "plan.md").errors, [
+    'suites/twice/suite.json: case "owners/one.test.ts" is named twice',
+    'suites/places/suite.json: case "../outside" must be a relative posix path beneath the root',
+    'suites/places/suite.json: case "owners/notes.md" is neither a Case file nor a directory',
+    'suites/places/suite.json: case "owners/missing.test.ts" is neither a Case file nor a directory',
+    "suites/places/suite.json: a case must be a non-empty path",
+    "suites/empty/suite.json: cases must be a list",
   ]);
 });
 
@@ -69,8 +106,8 @@ test("refuses a broken Plan or Suite before running any Case", () => {
   assert.deepEqual(readPlanSuites(rootData("broken"), "plan.md").errors, [
     `suites/no-file/suite.json: unreadable suite (ENOENT: no such file or directory, open '${path.join(rootData("broken"), "suites", "no-file", "suite.json")}')`,
     "suites/no-case: holds no Case",
-    'suites/bad/suite.json: unknown "cases"',
     "suites/bad/suite.json: concern must be a non-empty string",
+    'suites/bad/suite.json: case "a.test.ts" is neither a Case file nor a directory',
     "suites/missing: not a directory",
   ]);
   assert.throws(() => runPlan("plan.md", rootData("broken")), /^Error: refusing to run plan\.md:\n/);
@@ -131,6 +168,34 @@ test("a Case runs under the runner's loaders, never its other options, however e
     "--import=./other.mjs",
     "-r",
     "hook.cjs",
+  ]);
+});
+
+test("a skipped test proves nothing unless its Suite declares it not applicable here, and a declaration must name a test its Case reports", () => {
+  const run = runPlan("plan.md", rootData("conditioned"));
+  assert.deepEqual(
+    run.observations.map((o) => [o.case, o.passed, o.notApplicable]),
+    [
+      ["suites/declared/skips.test.ts", true, ["does not apply # here"]],
+      ["suites/elsewhere/skips.test.ts", false, []],
+      ["suites/stale/applies.test.ts", false, []],
+    ],
+  );
+  assert.equal(run.holds, false);
+  assert.match(report(run), /\npass suites\/declared\/skips\.test\.ts \(1 not applicable\)\nfail /);
+});
+
+test("refuses conditions that are not a list, not objects, not on a Case of the Suite, twice for a test, on unknown platforms or without a reason", () => {
+  assert.deepEqual(readPlanSuites(rootData("broken-conditions"), "plan.md").errors, [
+    'suites/broken/suite.json: test "t" of "suites/broken/a.test.ts" has two conditions',
+    'suites/broken/suite.json: unknown "why" in a condition',
+    'suites/broken/suite.json: condition names "suites/other/a.test.ts", not a Case of this Suite',
+    "suites/broken/suite.json: a condition's test must be a non-empty name",
+    `suites/broken/suite.json: a condition's notOn must list platforms among ${PLATFORMS.join(", ")}`,
+    "suites/broken/suite.json: a condition must say because why",
+    `suites/broken/suite.json: a condition's notOn must list platforms among ${PLATFORMS.join(", ")}`,
+    "suites/broken/suite.json: a condition must be an object",
+    "suites/listless/suite.json: conditions must be a list",
   ]);
 });
 

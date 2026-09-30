@@ -1,0 +1,7 @@
+{
+  "concern": "KAAL seals its Changes exactly as it seals BRAIN, in one composition with BRAIN.",
+  "cases": [
+    "scripts/change-seals.test.ts",
+    "scripts/kaal-seals.test.ts"
+  ]
+}

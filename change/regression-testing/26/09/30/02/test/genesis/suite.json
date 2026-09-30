@@ -1,0 +1,6 @@
+{
+  "concern": "KAAL's Genesis births exactly KAAL, all or nothing, as committed.",
+  "cases": [
+    "scripts/genesis.test.ts"
+  ]
+}

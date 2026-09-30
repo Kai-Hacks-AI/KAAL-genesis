@@ -1,0 +1,11 @@
+{
+  "concern": "A condition naming a test its Case no longer reports.",
+  "conditions": [
+    {
+      "case": "suites/stale/applies.test.ts",
+      "test": "renamed away",
+      "notOn": ["aix", "android", "cygwin", "darwin", "freebsd", "haiku", "linux", "netbsd", "openbsd", "sunos", "win32"],
+      "because": "It named a test that was since renamed."
+    }
+  ]
+}

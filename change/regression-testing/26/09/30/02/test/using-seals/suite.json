@@ -1,0 +1,6 @@
+{
+  "concern": "Seals: a closed unit cannot change unnoticed, and sealing and checking chains behave as specified.",
+  "cases": [
+    "skills/using-seals/scripts/seals.test.ts"
+  ]
+}

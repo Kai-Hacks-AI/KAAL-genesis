@@ -1,0 +1,9 @@
+{
+  "requirements": {
+    "units": [
+      "change/requirements/26/09/30/01",
+      "change/requirements/26/09/30/02"
+    ],
+    "seal": "3f3a3aef20b14646aaaf058d83bdf78d128cc79a0e9009c1674b2d5a6b08a3db"
+  }
+}
