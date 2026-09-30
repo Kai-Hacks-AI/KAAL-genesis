@@ -1,0 +1,15 @@
+{
+  "unit": "change/requirements/26/09/30/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "requirement/git-independence.md",
+      "sha256": "9acf75138a1f88e65ce1d54d41c7227971dd869c0bbcc2649232d162aa8a93a2"
+    },
+    {
+      "path": "requirement/github-independence.md",
+      "sha256": "18af3a6331436358fa1a1946bba4f79b1b84d2c9291f4eb7926f64b4b9b1adaf"
+    }
+  ],
+  "seal": "b7d30fed45f2792d1f674c2204dd71339d6113792eeb8304711fa0c9d4f9e674"
+}
