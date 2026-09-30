@@ -20,4 +20,4 @@ A commitment's meaning is stated once. A node never changes, so a commitment sta
 
 The skill explains how a test is written. This node records why and how KAAL uses it.
 
-This node supersedes the earlier one, under which the candidate's own testing became the next regression, held to keep each inherited case at its address alone, whatever it came to assert or read, and nothing but a new promise could bring a stronger case in. Testing now projects the accepted evidence itself, and admits a candidate's own beside it, as `requirements/protection-evolution/requirement.md` states.
+This node supersedes the earlier one, under which the candidate's own testing became the next regression, held to keep each inherited case at its address alone, whatever it came to assert or read, and nothing but a new promise could bring a stronger case in. Testing now projects the accepted evidence itself, and admits a candidate's own beside it, as `requirements/regression-projection/requirement.md` states.

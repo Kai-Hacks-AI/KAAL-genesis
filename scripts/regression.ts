@@ -455,10 +455,13 @@ const REPORTER = new URL("./regression-reporter.ts", import.meta.url).href;
 /**
  * Whether `file`, a posix path, is test data, which travels with the cases: a
  * test-data directory or loader, or any file but code where cases are kept
- * (under `scripts/` or `skills/<skill>/scripts/`), such as a fixture beside them.
+ * (under `scripts/` or `skills/<skill>/scripts/`), such as a fixture beside them,
+ * outside the evidence held under `change/`.
  */
 function isData(file: string, directory: boolean): boolean {
   const parts = file.split("/");
+  // The evidence a regression projects is held under change/, never the state's own test data.
+  if (parts[0] === CHANGE) return false;
   if (parts.includes("test-data") || parts.at(-1) === "test-data.ts") return true;
   const inCases = parts[0] === "scripts" || (parts[0] === "skills" && parts[2] === "scripts");
   return !directory && inCases && !/\.(ts|js|mjs|cjs|mts|cts)$/.test(file);
@@ -477,7 +480,7 @@ export function keptAsData(directory: string): boolean {
 export function dataOf(repo: string | Buffer, dir = ""): [string, Buffer][] {
   return entriesIn(repo).flatMap(({ name, at }): [string, Buffer][] => {
     const rel = dir ? `${dir}/${name}` : name;
-    if (UNLOOKED.includes(rel)) return [];
+    if (UNLOOKED.includes(rel) || rel === CHANGE) return [];
     const directory = fs.lstatSync(at).isDirectory();
     if (isData(rel, directory)) return [[rel, at]];
     return directory ? dataOf(at, rel) : [];

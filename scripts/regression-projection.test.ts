@@ -3,9 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { nextRegression, projection, regressionErrors, writeProjection } from "./next-regression.js";
-import { heldSkips, projectedCases, sources } from "./projection.js";
+import { heldErrors, heldRecord, heldSkips, NOT_ADMITTED, projectedCases, sources } from "./projection.js";
 import { regressionIdentity } from "./regression.js";
-import { layeredState, succeeding } from "./test-data.js";
+import { kaal, layeredState, succeeding } from "./test-data.js";
 
 /**
  * A synthetic regression, not KAAL's own, before it held any evidence: adding,
@@ -18,7 +18,7 @@ const base = () =>
     "feature/promised",
     "acceptance/protected",
     "next-regression/r0",
-    "protection-evolution/base",
+    "regression-projection/base",
   );
 /** Why `candidate` is refused over `accepted`, by the accepted regression's own judgement, as the checker judges it. */
 const judged = (accepted: string, candidate: string) =>
@@ -87,7 +87,7 @@ const excluding = (...cases: [string, string][]) =>
 /** The adding the accepted cases protect, broken. */
 const misadding = (state: string) => edited(state, "src/add.ts", (t) => t.replace("a + b", "a + b + 1"));
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("a regression's evidence is held apart from its testing, and a candidate carrying it unchanged is judged by it and projects it as it is", () => {
   const r0 = base();
   const r1 = derived(r0, succeeding(r0)).candidate;
@@ -100,7 +100,7 @@ test("a regression's evidence is held apart from its testing, and a candidate ca
   assert.deepEqual(projecting(r2), GENESIS_CASES);
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("a candidate rewriting an inherited case replaces nothing: the accepted case still judges it and every later candidate", () => {
   const r1 = holding();
   const weakened = (state: string) =>
@@ -123,7 +123,7 @@ test("a candidate rewriting an inherited case replaces nothing: the accepted cas
   );
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("a candidate removing an inherited case from its own testing gives nothing up: without an acceptance record it is still judged and projected", () => {
   const r1 = holding();
   const without = succeeding(r1);
@@ -141,7 +141,7 @@ test("a candidate removing an inherited case from its own testing gives nothing 
   );
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("evidence of a candidate's own for what is already promised enters beside the accepted evidence only where the accepted code holds it", () => {
   const r1 = holding();
   const more = written(
@@ -175,7 +175,7 @@ test("evidence of a candidate's own for what is already promised enters beside t
   assert.deepEqual(projecting(more), [...GENESIS_CASES, "more: scripts/more.test.ts: adds zero"].sort());
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("acceptance gives up one case of a file whose others it keeps, and the file is still projected as it was held, without it", () => {
   const r1 = holding();
   // Greeting someone by name comes to say hi: the case of it is given up, while the others of its file still judge.
@@ -215,7 +215,7 @@ test("acceptance gives up one case of a file whose others it keeps, and the file
   holds(judged(r1, unrecorded), `inherited case not excluded: change/genesis/test/${CASES}: "greets" failed`);
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("once every case a held file projects is given up, the file is no longer held, and once a change holds none, neither is its evidence", () => {
   const r1 = holding();
   const farewell = edited(succeeding(r1), "test/regression-plan.md", (t) =>
@@ -246,7 +246,7 @@ test("once every case a held file projects is given up, the file is no longer he
   );
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("a new promise enters with the evidence that demonstrates it, beside every inherited case, and never without it", () => {
   const r1 = holding();
   const waving = succeeding(r1);
@@ -275,22 +275,24 @@ test("a new promise enters with the evidence that demonstrates it, beside every 
     ),
     unheld.join("\n"),
   );
-  // Held by the change bringing it, beside everything inherited.
-  derived(r1, waving, "waving");
+  // Held by the change bringing it, beside everything inherited, with the candidate's own test data and never the
+  // evidence it holds for other changes.
+  const data = derived(r1, waving, "waving").held.find((h) => h.change === "waving")?.data ?? [];
+  assert.ok(data.includes("test-data") && !data.some((d) => d.startsWith("change/")), data.join("\n"));
   assert.deepEqual(judged(r1, waving), []);
   assert.deepEqual(projecting(waving), [...GENESIS_CASES, "waving: scripts/waves.test.ts: waves"].sort());
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("a case expecting what the accepted code did not do enters only as the test of a defect the candidate records", () => {
   const r1 = holding();
   const TRIMMED = "repair: scripts/trimmed.test.ts: greets a name given with space around it by the name alone";
   // It fails against the accepted code, and is admitted all the same, as the defect it tests is recorded.
-  const repaired = succeeding(r1, "protection-evolution/repaired");
+  const repaired = succeeding(r1, "regression-projection/repaired");
   assert.deepEqual(derived(r1, repaired, "repair").held.find((h) => h.change === "repair")?.skips, []);
   assert.ok(projecting(repaired).includes(TRIMMED));
   // Without the defect recorded, nothing but the candidate's own output judges it: it is not held at all.
-  const unrecorded = succeeding(r1, "protection-evolution/repaired");
+  const unrecorded = succeeding(r1, "regression-projection/repaired");
   fs.rmSync(path.join(unrecorded, "defects"), { recursive: true });
   const { held: without, notes } = derived(r1, unrecorded, "repair");
   assert.equal(
@@ -300,7 +302,7 @@ test("a case expecting what the accepted code did not do enters only as the test
   holds(notes, "scripts/trimmed.test.ts: none of its cases is admitted, so it is not held");
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("the same case at the same path is held apart by the change holding it: each is projected and replayed on its own", () => {
   const r1 = holding();
   const more = edited(succeeding(r1), CASES, (t) =>
@@ -334,7 +336,7 @@ test("the same case at the same path is held apart by the change holding it: eac
   );
 });
 
-// Why: requirements/protection-evolution/requirement.md
+// Why: requirements/regression-projection/requirement.md
 test("a candidate holds exactly the evidence projected for it: a held case weakened or dropped by hand is refused", () => {
   const r1 = holding();
   const tampered = edited(succeeding(r1), `change/genesis/test/${CASES}`, (t) =>
@@ -348,4 +350,43 @@ test("a candidate holds exactly the evidence projected for it: a held case weake
   const dropped = succeeding(r1);
   fs.rmSync(path.join(dropped, "change"), { recursive: true });
   holds(judged(r1, dropped), "change/genesis/test: the regression projects it, but the candidate does not hold it");
+});
+
+// Why: requirements/regression-projection/requirement.md
+test("held.md is derived, never an authority: it skips only what an acceptance record gives up, or what admission never projected", () => {
+  const r1 = holding();
+  assert.deepEqual(heldErrors(r1), []);
+  const skipping = (state: string, ...skips: { title: string; because: string }[]) =>
+    written(
+      state,
+      "change/genesis/test/held.md",
+      heldRecord(
+        "genesis",
+        skips.map((s) => ({ file: CASES, ...s })),
+      ),
+    );
+  const at = `change/genesis/test/held.md: ${CASES}`;
+  assert.deepEqual(heldErrors(skipping(succeeding(r1), { title: "adds", because: "given up by acceptance/none.md" })), [
+    `${at}: adds: acceptance/none.md gives up no such case, and only Acceptance removes protection`,
+  ]);
+  assert.deepEqual(heldErrors(skipping(succeeding(r1), { title: "adds", because: "it was flaky" })), [
+    `${at}: adds: skipped neither as given up by an acceptance record nor as never admitted`,
+  ]);
+  assert.deepEqual(heldErrors(skipping(succeeding(r1), { title: "subtracts", because: NOT_ADMITTED })), [
+    `${at}: subtracts: skips no case held here`,
+  ]);
+  const recorded = skipping(
+    written(succeeding(r1), "acceptance/adds-plainly.md", excluding([CASES, "adds"])),
+    { title: "adds", because: "given up by acceptance/adds-plainly.md" },
+    { title: "greets", because: NOT_ADMITTED },
+  );
+  assert.deepEqual(heldErrors(recorded), []);
+  // A candidate removing protection by editing held.md alone is refused, whatever else it holds.
+  const alone = skipping(succeeding(r1), { title: "adds", because: "given up by acceptance/none.md" });
+  holds(
+    judged(r1, alone),
+    `${at}: adds: acceptance/none.md gives up no such case, and only Acceptance removes protection`,
+  );
+  // KAAL's own held evidence answers to its acceptance records, and to admission, alone.
+  assert.deepEqual(heldErrors(kaal()), []);
 });

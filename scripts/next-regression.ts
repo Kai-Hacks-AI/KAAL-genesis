@@ -11,11 +11,14 @@ import { caseDefects, caseFiles, fileCases, PLAN, planEntries } from "./links.js
 import { type PlanRequirement, planError, planRequirements, readPlan } from "./plans.js";
 import {
   GENESIS,
+  givenUpBy,
   HELD,
   heldCases,
+  heldErrors,
   heldRecord,
   heldSkips,
   label,
+  NOT_ADMITTED,
   projectedCases,
   type Skip,
   skipped,
@@ -407,7 +410,7 @@ export function projection(
     for (const c of cases) {
       const record = givenUp(c.file, c.title);
       if (record && !skipped(skips, c.file, c.title))
-        skips.push({ file: c.file, title: c.title, because: `given up by ${record}` });
+        skips.push({ file: c.file, title: c.title, because: givenUpBy(record) });
     }
     // A file holding no case is kept, as the replay runs it, holding whatever tests it runs without naming.
     const files = caseFiles(accepted, source.root).filter((file) => {
@@ -513,8 +516,7 @@ export function projection(
       skips.push({
         file: c.file,
         title: c.title,
-        because:
-          "not admitted: it does not hold against the accepted code, and neither demonstrates a new promise nor tests a recorded defect, so nothing but the candidate's own output judges it",
+        because: NOT_ADMITTED,
       });
     });
     const files = admitting.filter((file) => cases.some((c) => c.file === file && !skipped(skips, c.file, c.title)));
@@ -604,7 +606,8 @@ export function projectionErrors(accepted: string, candidate: string, demonstrat
       `${CHANGE}: holds evidence of ${admitting.join(", ")} other than the regression projects; a candidate admits its own to one change only`,
     ];
   const derived = admitting.length ? projection(accepted, candidate, demonstrated, admitting[0]) : carried;
-  const errors = [...derived.errors];
+  // What the candidate's held evidence skips answers to Acceptance, or to admission, whatever the derivation says.
+  const errors = [...derived.errors, ...heldErrors(candidate)];
   for (const name of [...new Set([...derived.held.map((h) => h.change), ...own])].sort()) {
     const want = derived.held.find((h) => h.change === name);
     const where = `${CHANGE}/${name}/${HELD_EVIDENCE}`;

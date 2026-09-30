@@ -110,6 +110,13 @@ function accepts(place: string, bytes: Buffer): { accepted: Accepted[]; errors: 
   return { accepted, errors };
 }
 
+/** Every entry of every acceptance record `state` keeps, and why any cannot be read. */
+export function recordedExclusions(state: string): { accepted: Accepted[]; errors: string[] } {
+  const found = records(state);
+  const read = [...found.records].map(([place, bytes]) => accepts(place, bytes));
+  return { accepted: read.flatMap((r) => r.accepted), errors: [...found.errors, ...read.flatMap((r) => r.errors)] };
+}
+
 export function acceptedExclusions(accepted: string, candidate: string): { accepted: Accepted[]; errors: string[] } {
   const before = records(accepted);
   const after = records(candidate);
