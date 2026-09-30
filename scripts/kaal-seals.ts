@@ -35,13 +35,19 @@ export function sealKaal(repo = "."): string[] {
  * except a path `accepted` says already holds, in the change, exactly the state
  * accepted on main: that is main's own seal state, incorporated unchanged, not
  * written by the change. `accepted` is asked only about seal-state paths.
+ * `changeSealing`, where given, judges the seal state of Changes that remains
+ * (see changeSealingAuthorityErrors); BRAIN seal state is never its concern.
  */
-export function kaalSealStateChanges(nameStatus: string, accepted: (file: string) => boolean = () => false): string[] {
+export function kaalSealStateChanges(
+  nameStatus: string,
+  accepted: (file: string) => boolean = () => false,
+  changeSealing?: (touched: string) => string[],
+): string[] {
   const touched = entries(nameStatus)
     .filter(({ file }) => !((sealState(file) || changeSealState(file)) && accepted(file)))
     .map(({ status, file }) => `${status}\t${file}`)
     .join("\n");
-  return [...sealStateChanges(touched), ...changeSealStateChanges(touched)];
+  return [...sealStateChanges(touched), ...(changeSealing ?? changeSealStateChanges)(touched)];
 }
 
 /** One error per staged entry that sealing, of BRAIN or of Changes, could not have produced. */
