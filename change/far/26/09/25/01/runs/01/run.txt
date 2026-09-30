@@ -1,0 +1,4 @@
+plan plan.md
+candidate /tmp/claude-0/-home-user-KAAL/c5dadd4e-41ef-5b4a-8d71-ef13cee9faac/scratchpad/candidate
+conditions node v22.22.2 linux x64
+holds
