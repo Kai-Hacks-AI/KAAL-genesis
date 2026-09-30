@@ -1,0 +1,5 @@
+# Feature
+
+This Change makes Change Sealing CI's act, not the agent's. On a pull request into main that is ready for review, the `seal-change` workflow invokes the existing Change Sealing (`sealChange`) over exactly the Changes the pull request touches and has not sealed, commits only the seal state that wrote, and publishes the `seal-change` commit status, which is success only for a head whose Changes are all sealed. Forgetting `npm run seal:change` is no longer an agent decision.
+
+It composes; it does not seal. Which Changes are the pull request's, whether CI may write back, and what the status says are `scripts/pull-request-sealing.ts`; what sealing means and the bytes it writes remain `scripts/change-seals.ts`. A draft is investigatory: nothing is sealed, the status stays pending, and GitHub does not merge a draft. A fork or any branch other than `kaal/*` is never written to, and its Changes must arrive sealed. The sealing code runs from main's checkout and reads the pull request's checkout only as data.

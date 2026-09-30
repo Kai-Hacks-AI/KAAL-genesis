@@ -1,0 +1,161 @@
+# Change Sealing in CI: brain/learning/change/26/09/30/02/nodes/managing-change.md
+#
+# A pull request into main must carry its Changes sealed, and sealing them is
+# CI's act, not the agent's: this workflow invokes the existing Change Sealing
+# (scripts/change-seals.ts, through scripts/pull-request-sealing.ts), commits
+# only the seal state it wrote to the pull request's branch, and publishes the
+# seal-change commit status. seal-change is success only for a head whose
+# Changes are all sealed and verified, so requiring it keeps an unsealed
+# Change from merging. What sealing means, the bytes it writes and how they are
+# verified are not decided here: check-seals and the seal guard judge the
+# result exactly as they judge any change.
+#
+# A draft is investigatory: nothing is sealed and seal-change stays pending,
+# which blocks merging. A pull request that is ready has every Change it
+# touches sealed, or fails where one cannot be sealed: an invalid Change, a
+# broken seal, or a Change that would drag an unrelated one in.
+#
+# Runs as pull_request_target, like seal.yml and branch-guard.yml, and only for
+# pull requests into main: GitHub takes this workflow and the code that seals
+# from the pull request's base branch, never from the change, so a change
+# cannot replace the machinery that judges and seals it, and the sealing
+# App's secrets are never reachable from a workflow a lineage branch could
+# carry. The change is checked out as data, never run, and no credential is
+# kept in it. The App token is minted only after the sealed commit has passed
+# every check, and is used for one push: to a kaal/* branch of this
+# repository, and only if that branch is still exactly the head that was
+# sealed.
+#
+# Sealing on main (sealing.yml) stays the writer of everything else, BRAIN
+# included, and still seals what reaches main unsealed.
+name: seal-change
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+
+# Runs are queued, never cancelled: a newer push queues its own run, and a
+# push of seal state that finds the branch moved is refused, not forced.
+concurrency:
+  group: seal-change-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  seal-change:
+    name: seal-change
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      STATUS_URL: repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # The pull request reaches the scripts only as environment variables,
+      # never as script text.
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
+      THIS_REPO: ${{ github.repository }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      DRAFT: ${{ github.event.pull_request.draft }}
+    steps:
+      - run: gh api "$STATUS_URL" -f state=pending -f context=seal-change -f target_url="$RUN_URL" -f description="Sealing this pull request's Changes"
+      # main's own checkout: the code that seals, verifies and judges.
+      - uses: actions/checkout@v7
+        with:
+          path: trusted
+          persist-credentials: false
+      # The change, exactly the head that was reported, as data. Not a
+      # draft's: a draft is never sealed, so nothing of it is read.
+      - if: github.event.pull_request.draft == false
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: change
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: trusted/package-lock.json
+      - run: npm ci
+        working-directory: trusted
+      # Before sealing anything: the Changes are valid, every seal is intact,
+      # and the change wrote no seal state but what Change Sealing writes.
+      - if: github.event.pull_request.draft == false
+        run: npm run seals:check -- ../change
+        working-directory: trusted
+      - if: github.event.pull_request.draft == false
+        run: npm run seals:guard -- "origin/$BASE_REF" ../change "refs/remotes/origin/$DEFAULT_BRANCH"
+        working-directory: trusted
+      # The existing Change Sealing, over exactly the Changes this pull
+      # request touches and has not sealed.
+      - if: github.event.pull_request.draft == false
+        run: npm run -s seals:pull-request -- seal "origin/$BASE_REF" ../change
+        working-directory: trusted
+      - id: stage
+        if: github.event.pull_request.draft == false
+        working-directory: change
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Every Change is already sealed."
+            echo "staged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Refuse anything staged that sealing could not have produced.
+          (cd ../trusted && npm run -s seals:sealing-check -- ../change)
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "Seal Changes" -m "Change Sealing, run by CI over the Changes this pull request carries."
+          echo "staged=true" >> "$GITHUB_OUTPUT"
+      # The sealed commit, judged by the same checks as any change, before any
+      # credential exists.
+      - if: steps.stage.outputs.staged == 'true'
+        run: npm run seals:check -- ../change
+        working-directory: trusted
+      - if: steps.stage.outputs.staged == 'true'
+        run: npm run seals:guard -- "origin/$BASE_REF" ../change "refs/remotes/origin/$DEFAULT_BRANCH"
+        working-directory: trusted
+      # Minted only now, and only to write contents: the one credential that
+      # can write the branch exists for the push alone.
+      - id: app
+        if: steps.stage.outputs.staged == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.SEALING_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SEALING_APP_PRIVATE_KEY }}
+          permission-contents: write
+      # The lease names the head that was sealed: the push is refused, never
+      # forced, if the branch has moved since. The branch was admitted by
+      # sealPullRequest: a kaal/* branch of this repository.
+      - id: push
+        if: steps.stage.outputs.staged == 'true'
+        working-directory: change
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          git push --force-with-lease="refs/heads/${HEAD_REF}:${HEAD_SHA}" \
+            "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      # The push starts the checks again on the sealed head, which finds
+      # nothing to seal and reports success.
+      - if: always()
+        env:
+          OK: ${{ job.status == 'success' }}
+          PUSHED: ${{ steps.push.outputs.pushed == 'true' }}
+        run: |
+          if line="$(cd trusted && npm run -s seals:pull-request -- status)"; then
+            IFS=$'\t' read -r state description <<< "$line"
+          else
+            state=failure
+            description="seal-change could not run"
+          fi
+          gh api "$STATUS_URL" -f state="$state" -f context=seal-change -f target_url="$RUN_URL" -f description="$description"
