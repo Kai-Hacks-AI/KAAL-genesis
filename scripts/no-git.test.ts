@@ -56,7 +56,6 @@ test("verifies git is unreachable in the withoutGit wrapper", () => {
   });
 });
 
-// Requirement: git-independence
 test("Genesis runs without git in a non-git directory", () => {
   withoutGit(() => {
     const repo = scratchDir();
@@ -70,7 +69,6 @@ test("Genesis runs without git in a non-git directory", () => {
   });
 });
 
-// Requirement: git-independence
 test("Genesis cleans up when failing in a non-git directory", (t) => {
   withoutGit(() => {
     const repo = scratchDir();
@@ -96,7 +94,6 @@ test("Genesis cleans up when failing in a non-git directory", (t) => {
   });
 });
 
-// Requirement: git-independence
 test("BRAIN node creation, edge relationships, and validation work without git", () => {
   withoutGit(() => {
     const dir = scratchDir();
@@ -139,7 +136,6 @@ test("BRAIN node creation, edge relationships, and validation work without git",
   });
 });
 
-// Requirement: git-independence
 test("Managing Change birth, listing, and validation work without git", () => {
   withoutGit(() => {
     const repo = scratchDir();
@@ -162,7 +158,6 @@ test("Managing Change birth, listing, and validation work without git", () => {
   });
 });
 
-// Requirement: git-independence
 test("Sealing and seal verification (KAAL seals, BRAIN seals, Change seals) work without git", () => {
   withoutGit(() => {
     const repo = scratchDir();
@@ -187,7 +182,6 @@ test("Sealing and seal verification (KAAL seals, BRAIN seals, Change seals) work
   });
 });
 
-// Requirement: git-independence
 test("Using Skills checks skills without git", () => {
   withoutGit(() => {
     const skillsDir = path.join(REPO, "skills");
@@ -196,7 +190,6 @@ test("Using Skills checks skills without git", () => {
   });
 });
 
-// Requirement: git-independence
 test("Using Agents creates AGENTS.md without git", () => {
   withoutGit(() => {
     const dir = scratchDir();
@@ -206,8 +199,7 @@ test("Using Agents creates AGENTS.md without git", () => {
   });
 });
 
-// Requirement: git-independence
-test("Seal state and sealing output diff validation work purely on diff strings without git", () => {
+test("Seal-policy evaluation operates on supplied change diff material at the adapter boundary without invoking Git", () => {
   withoutGit(() => {
     assert.deepEqual(kaalSealStateChanges("M\tbrain/learning/genesis/26/09/25/01/seal.json"), [
       "brain/learning/genesis/26/09/25/01/seal.json: seal state may only be written by sealing on main (M)",
@@ -223,8 +215,7 @@ test("Seal state and sealing output diff validation work purely on diff strings 
   });
 });
 
-// Requirement: git-independence
-test("Full end-to-end KAAL lifecycle works completely without git in a non-git directory", () => {
+test("Core KAAL semantic composition (Genesis -> BRAIN -> Change -> sealing) operates over filesystem material without a Git repository", () => {
   withoutGit(() => {
     const repo = scratchDir();
 
