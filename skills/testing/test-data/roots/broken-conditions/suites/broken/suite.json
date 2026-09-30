@@ -1,0 +1,10 @@
+{
+  "concern": "Broken conditions.",
+  "conditions": [
+    { "case": "suites/broken/a.test.ts", "test": "t", "notOn": ["win32"], "because": "fine" },
+    { "case": "suites/broken/a.test.ts", "test": "t", "notOn": ["win32"], "because": "twice" },
+    { "case": "suites/other/a.test.ts", "test": "", "notOn": ["windows"], "because": " ", "why": "x" },
+    { "case": "suites/broken/a.test.ts", "test": "u", "notOn": [], "because": "none" },
+    "not an object"
+  ]
+}

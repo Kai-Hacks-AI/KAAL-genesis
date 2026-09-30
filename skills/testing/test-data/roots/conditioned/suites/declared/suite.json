@@ -1,0 +1,11 @@
+{
+  "concern": "A test declared not applicable here.",
+  "conditions": [
+    {
+      "case": "suites/declared/skips.test.ts",
+      "test": "does not apply # here",
+      "notOn": ["aix", "android", "cygwin", "darwin", "freebsd", "haiku", "linux", "netbsd", "openbsd", "sunos", "win32"],
+      "because": "It applies on no platform a Run is observed on."
+    }
+  ]
+}

@@ -23,6 +23,10 @@ Whether a Change's Regression Test Plan follows from the one it supersedes, with
 
 A Case reaches what it tests through its working directory, the candidate, and the candidate's public entry points, never through its own location, so a sealed Case can judge candidates written after it.
 
+## Conditions
+
+A skipped test proves nothing, so a Plan that meets one does not hold, and the skip is investigated: a defect in what is tested, a defect in the Case, a genuine condition, or an infrastructure blocker. Skips are judged against the Requirements that say where KAAL is supported, `linux-support` and `windows-support`: a capability either Requirement covers stays required there even when one of its tests cannot run. Only a genuine condition is declared, as a Condition in the Suite that collects the Case, with the platforms the test does not apply on and a `because` saying why that claim, not the capability, does not apply there. The Condition is the Suite's, sealed with its Change, never the owner's skip: a skip no Suite declares is never accepted, and a test that could run portably is repaired at its owner rather than declared.
+
 ## Where and when
 
 CI runs the Regression Test Plan with `npm run testing:run -- <plan>` on Linux and Windows, checked out with `core.autocrlf=true`, on every push and pull request.
