@@ -1,0 +1,15 @@
+{
+  "unit": "change/requirements/26/09/30/02",
+  "previous": "b7d30fed45f2792d1f674c2204dd71339d6113792eeb8304711fa0c9d4f9e674",
+  "files": [
+    {
+      "path": "requirement/linux-support.md",
+      "sha256": "fb01964b585de632e496ab4a1462ab488c0d3ca5e781fc33157520aee6b4f9a2"
+    },
+    {
+      "path": "requirement/windows-support.md",
+      "sha256": "678815b5739b5290703e2576184d3c1fa6d159f0c4d0d59f2b1283777cadd292"
+    }
+  ],
+  "seal": "3f3a3aef20b14646aaaf058d83bdf78d128cc79a0e9009c1674b2d5a6b08a3db"
+}
