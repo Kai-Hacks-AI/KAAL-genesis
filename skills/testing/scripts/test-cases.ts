@@ -5,15 +5,24 @@ import fs from "node:fs";
 export type Tests = { kind: string; id: string };
 
 /**
- * A Test Case: one top-level `node:test` call with a literal name, in the
- * Carrier (the `*.test.*` file) named `carrier` by the caller. Its identity is
- * the carrier and the name Node reports for it. `tests` is what it states it
+ * A Test Case: one top-level `node:test` call with a literal, non-empty name,
+ * in the Carrier (the `*.test.*` file) named `carrier` by the caller. Its
+ * identity is the carrier and the name Node reports for it. `tests` is what it states it
  * tests, in declaration order.
  */
 export type TestCase = { carrier: string; name: string; tests: Tests[] };
 
-/** A Test Case's identity: its carrier, then its name. */
-export const testCaseId = (tc: Pick<TestCase, "carrier" | "name">): string => `${tc.carrier}::${tc.name}`;
+/**
+ * A Test Case's identity as one line: the JSON array of its carrier and its
+ * name, with the line separators JSON leaves raw escaped too, so no name,
+ * whatever characters it holds, can split it across lines or be mistaken for
+ * where the carrier ends.
+ */
+export const testCaseId = (tc: Pick<TestCase, "carrier" | "name">): string =>
+  JSON.stringify([tc.carrier, tc.name]).replace(
+    /[\u0085\u2028\u2029]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
 
 /** The syntax tree, as far as the reader looks at it: nodes are objects with a `type`. */
 type Node = { type: string; loc?: { start: { line: number } } | null; [key: string]: unknown };
@@ -22,10 +31,24 @@ const isNode = (value: unknown): value is Node =>
 const nodes = (value: unknown): Node[] => (Array.isArray(value) ? value.filter(isNode) : isNode(value) ? [value] : []);
 const at = (node: Node): number => node.loc?.start.line ?? 0;
 
-/** What `node:test` exports that a Case is written with: how a local name is bound to it. */
-type Binding = "module" | "test" | "it" | "describe" | "suite";
-const EXPORTS = new Set<string>(["test", "it", "describe", "suite"]);
-const MODIFIERS = new Set(["skip", "only", "todo"]);
+/**
+ * What `node:test` offers that a Case is written with, as it classifies each
+ * export and each member of `test` and `it`. A `test` call defines a Test Case;
+ * an `other` call opens a context (a suite) that is not one; `ignored` defines
+ * neither. A test of this skill consults the running Node and fails on any
+ * export or member this does not classify, so one Node adds cannot go unread.
+ */
+export const NODE_TEST = {
+  test: ["test", "it", "skip", "only", "todo"],
+  other: ["describe", "suite"],
+  ignored: ["after", "afterEach", "assert", "before", "beforeEach", "default", "mock", "run", "snapshot"],
+} as const;
+
+/** How a local name is bound to `node:test`: to the module or its default export, or to one named export. */
+type Binding = "module" | "test" | "it" | "skip" | "only" | "todo" | "describe" | "suite";
+const EXPORTS = new Set<string>([...NODE_TEST.test, ...NODE_TEST.other]);
+/** What `describe` and `suite` offer as members: each opens a context. */
+const CONTEXT_MEMBERS = new Set(["skip", "only", "todo"]);
 
 const nameOf = (node: unknown): string | undefined =>
   isNode(node) && node.type === "Identifier"
@@ -91,43 +114,91 @@ function bindings(program: Node): Map<string, Binding> {
 }
 
 /**
- * What a call is, by its callee: `test` for a `node:test` test (`test(...)`,
- * `it(...)` and their `skip`, `only` and `todo` forms), `other` for what else
- * of `node:test` or its look-alikes opens a context (`describe`, `suite`, a
- * `t.test(...)` subtest), nothing for any other call.
+ * What a call is, by its callee, from how `node:test` is bound: `test` for a
+ * call that defines a Test Case (`test(...)`, `it(...)`, a named `skip`, `only`
+ * or `todo`, and the same reached through any chain of members of `test`, `it`
+ * or the module, such as `nt.test.todo(...)`), `other` for one that opens a
+ * context (`describe`, `suite`, their `skip`, `only` and `todo`, and a
+ * `t.test(...)` subtest), nothing for any other call. A chain is followed
+ * member by member through what `node:test` offers, and is nothing where it
+ * leaves it.
  */
 function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | undefined {
-  if (!isNode(callee)) return undefined;
-  if (callee.type === "Identifier") {
-    const binding = bound.get(callee.name as string);
-    return binding === "module" || binding === "test" || binding === "it"
-      ? "test"
-      : binding === "describe" || binding === "suite"
+  const chain: string[] = [];
+  let root: unknown = callee;
+  while (isNode(root) && root.type === "MemberExpression") {
+    const property = root.computed ? undefined : nameOf(root.property);
+    if (property === undefined) return undefined;
+    chain.unshift(property);
+    root = root.object;
+  }
+  if (!isNode(root) || root.type !== "Identifier") return undefined;
+  const binding = bound.get(root.name as string);
+  // Unbound, a chain ending in a `node:test` name is a subtest or nested suite opened through some context, such as `t.test(...)`.
+  if (binding === undefined) return chain.length && EXPORTS.has(chain[chain.length - 1]) ? "other" : undefined;
+  // Where the chain stands: at the module, `test` or `it` (which offer the same members); at a test to call; at a context; at one to call.
+  type At = "module" | "test" | "context" | "other";
+  const start: Record<Binding, At> = {
+    module: "module",
+    test: "module",
+    it: "module",
+    skip: "test",
+    only: "test",
+    todo: "test",
+    describe: "context",
+    suite: "context",
+  };
+  const step = (from: At, member: string): At | undefined =>
+    from === "module"
+      ? member === "test" || member === "it"
+        ? "module"
+        : member === "describe" || member === "suite"
+          ? "context"
+          : CONTEXT_MEMBERS.has(member)
+            ? "test"
+            : undefined
+      : from === "context" && CONTEXT_MEMBERS.has(member)
         ? "other"
         : undefined;
+  let at: At | undefined = start[binding];
+  for (const member of chain) {
+    at = step(at, member);
+    if (!at) return undefined;
   }
-  if (callee.type !== "MemberExpression" || callee.computed) return undefined;
-  const property = nameOf(callee.property);
-  const object = callee.object;
-  if (isNode(object) && object.type === "Identifier") {
-    const binding = bound.get(object.name as string);
-    if (binding === "describe" || binding === "suite") return property && MODIFIERS.has(property) ? "other" : undefined;
-    if (binding) {
-      if (property && MODIFIERS.has(property))
-        return binding === "module" || binding === "test" || binding === "it" ? "test" : undefined;
-      if (binding === "module" && (property === "test" || property === "it")) return "test";
-      if (binding === "module" && (property === "describe" || property === "suite")) return "other";
-    }
-  }
-  // A subtest or nested suite opened through some context, such as `t.test(...)`.
-  return property === "test" || property === "it" || property === "describe" || property === "suite"
-    ? "other"
-    : undefined;
+  return at === "module" || at === "test" ? "test" : "other";
 }
 
-/** The property named `tests` of an options object, if it has one. */
-const testsProperty = (options: Node): Node | undefined =>
-  nodes(options.properties).find((p) => p.type !== "SpreadElement" && !p.computed && nameOf(p.key) === "tests");
+/** The member of an options object, or of any object literal, that is a plain property named `tests`. */
+const isTests = (member: Node): boolean =>
+  member.type === "ObjectProperty" && !member.computed && nameOf(member.key) === "tests";
+
+/** Whether any member of the object literal is named `tests`, however it is written: property, method, accessor, computed or not. */
+const mentionsTests = (object: Node): boolean =>
+  nodes(object.properties).some((m) => m.type !== "SpreadElement" && nameOf(m.key) === "tests");
+
+/**
+ * Why an options object cannot be read for `tests`, or the one plain property
+ * that states it. An object literal's members are properties, methods or
+ * accessors, and spreads; only plain, non-computed properties are read, so any
+ * other member, which could define or override `tests`, and a second `tests`,
+ * are refused.
+ */
+function optionsTests(options: Node): { property?: Node; error?: string } {
+  let property: Node | undefined;
+  for (const member of nodes(options.properties)) {
+    if (member.type === "SpreadElement") return { error: "options must not spread, since that could carry tests" };
+    if (member.type !== "ObjectProperty" && member.type !== "ObjectMethod")
+      return { error: "options hold a member this skill does not read, which could carry tests" };
+    if (member.computed) return { error: "options must not compute keys, since that could carry tests" };
+    if (member.type === "ObjectMethod" && nameOf(member.key) === "tests")
+      return { error: "tests must be a plain property, not a method or accessor" };
+    if (isTests(member)) {
+      if (property) return { error: "tests is stated twice" };
+      property = member;
+    }
+  }
+  return { property };
+}
 
 /** What the `tests` option at `node` states, or why it is not a literal of `{ kind: ["id", ...] }`. */
 function readTests(node: Node, file: string): { tests: Tests[]; errors: string[] } {
@@ -198,48 +269,60 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   }
   const bound = bindings(program);
   const errors: string[] = [];
-  const top = new Map<Node, true>();
+  /** Each recognized top-level Test Case call, with the options object its `tests` may sit in, if it has one. */
+  const top = new Map<Node, Node | undefined>();
   const found: { name: string; tests: Tests[]; annotated: boolean; line: number }[] = [];
+  /** Top-level tests whose name Node reports by what they are, not by a literal: known only by running them. */
+  const unresolved: number[] = [];
   for (const statement of nodes(program.body)) {
-    const call = statement.type === "ExpressionStatement" ? statement.expression : undefined;
+    let call: unknown = statement.type === "ExpressionStatement" ? statement.expression : undefined;
+    while (isNode(call) && call.type === "AwaitExpression") call = call.argument;
     if (!isNode(call) || call.type !== "CallExpression" || role(call.callee, bound) !== "test") continue;
-    top.set(call, true);
     const args = nodes(call.arguments);
     const where = `${file}:${at(call)}`;
     // Options are the second argument, before the function; with a third they must be a literal object.
     const options =
       args.length >= 3 || (args.length === 2 && args[1].type === "ObjectExpression") ? args[1] : undefined;
+    top.set(call, options?.type === "ObjectExpression" ? options : undefined);
     if (args.length >= 3 && options?.type !== "ObjectExpression") {
       errors.push(`${where}: options must be an object literal`);
       continue;
     }
-    const hiding = options
-      ? nodes(options.properties).find((p) => p.type === "SpreadElement" || (p.type !== "ObjectMethod" && p.computed))
-      : undefined;
-    if (hiding) {
-      errors.push(`${where}: options must not spread or compute keys, since that could carry tests`);
+    const read = options ? optionsTests(options) : {};
+    if (read.error) {
+      errors.push(`${where}: ${read.error}`);
       continue;
     }
-    const property = options ? testsProperty(options) : undefined;
     const name = literal(args[0]);
-    if (property && name === undefined) {
-      errors.push(`${where}: a Test Case that states what it tests must have a literal name`);
+    const named = name !== undefined && name !== "";
+    if (read.property && !named) {
+      errors.push(`${where}: a Test Case that states what it tests must have a literal, non-empty name`);
       continue;
     }
-    if (name === undefined) continue;
-    const read = property ? readTests(property, file) : { tests: [], errors: [] };
-    errors.push(...read.errors);
-    found.push({ name, tests: read.tests, annotated: property !== undefined, line: at(call) });
+    if (!named) {
+      unresolved.push(at(call));
+      continue;
+    }
+    const parsed = read.property ? readTests(read.property, file) : { tests: [], errors: [] };
+    errors.push(...parsed.errors);
+    found.push({ name, tests: parsed.tests, annotated: read.property !== undefined, line: at(call) });
   }
-  // Every other call that looks like a `node:test` context and states what it tests is not a Test Case.
+  // Node reports a test without a literal, non-empty name as its function's name or `<anonymous>`, so such a
+  // name could be any other's: traced Test Cases need every top-level test named, or their identity is not known.
+  if (found.some((f) => f.annotated))
+    for (const line of unresolved)
+      errors.push(
+        `${file}:${line}: a Carrier with traced Test Cases must give every top-level test a literal, non-empty name`,
+      );
+  // Any other call that states `tests` in an object literal is not a Test Case, however it is written.
   (function walk(node: Node) {
     for (const value of Object.values(node))
       for (const child of nodes(value)) {
-        if (child.type === "CallExpression" && !top.has(child) && role(child.callee, bound) !== undefined)
+        if (child.type === "CallExpression")
           for (const arg of nodes(child.arguments))
-            if (arg.type === "ObjectExpression" && testsProperty(arg))
+            if (arg.type === "ObjectExpression" && mentionsTests(arg) && !(top.has(child) && top.get(child) === arg))
               errors.push(
-                `${file}:${at(child)}: tests belongs on a top-level Test Case, not on a nested or other call`,
+                `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call`,
               );
         walk(child);
       }

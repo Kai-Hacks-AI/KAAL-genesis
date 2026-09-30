@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parseTestCases, readTestCases, testCaseId, testCasesTesting, type TestCase } from "./test-cases.js";
+import { NODE_TEST, parseTestCases, readTestCases, testCaseId, testCasesTesting, type TestCase } from "./test-cases.js";
 
 const IMPORT = 'import test from "node:test";\n';
 const parse = (body: string, file = "a.test.ts") => parseTestCases(`${IMPORT}${body}`, file);
@@ -30,7 +30,7 @@ test("only options", { skip: false }, () => {});
     { carrier: "a.test.ts", name: "states nothing", tests: [] },
     { carrier: "a.test.ts", name: "only options", tests: [] },
   ]);
-  assert.equal(testCaseId(cases[0]), "a.test.ts::works offline");
+  assert.equal(testCaseId(cases[0]), '["a.test.ts","works offline"]');
 });
 
 test("a Test Case's identity is its carrier and its decoded literal name, however the call is written", () => {
@@ -106,12 +106,12 @@ test("the tests option is admitted by TypeScript and ignored by Node", { tests: 
 test("refuses tests where it is not on a top-level Test Case with a literal name", () => {
   const t = "{ tests: { requirement: ['r'] } }";
   assert.deepEqual(refused(`test(\`n \${1}\`, ${t}, () => {});`), [
-    "a Test Case that states what it tests must have a literal name",
+    "a Test Case that states what it tests must have a literal, non-empty name",
   ]);
   assert.deepEqual(refused(`const n = "x"; test(n, ${t}, () => {});`), [
-    "a Test Case that states what it tests must have a literal name",
+    "a Test Case that states what it tests must have a literal, non-empty name",
   ]);
-  const nested = ["tests belongs on a top-level Test Case, not on a nested or other call"];
+  const nested = ["tests belongs on the options of a top-level Test Case, not on another call"];
   assert.deepEqual(refused(`for (const k of [1]) { test("n", ${t}, () => {}); }`), nested);
   assert.deepEqual(refused(`function f() { test("n", ${t}, () => {}); }`), nested);
   assert.deepEqual(refused(`test("p", async (c) => { await c.test("n", ${t}, () => {}); });`), nested);
@@ -126,13 +126,13 @@ test("refuses tests where it is not on a top-level Test Case with a literal name
 test("refuses options that are not a literal object, or that could hide tests", () => {
   assert.deepEqual(refused('const o = {};\ntest("n", o, () => {});'), ["options must be an object literal"]);
   assert.deepEqual(refused('const o = {};\ntest("n", { ...o }, () => {});'), [
-    "options must not spread or compute keys, since that could carry tests",
+    "options must not spread, since that could carry tests",
   ]);
   assert.deepEqual(refused('const tests = {};\ntest("n", { tests }, () => {});'), [
     "tests must be an object literal of kinds, each a list of ids",
   ]);
   assert.deepEqual(refused('test("n", { ["tests"]: { requirement: ["r"] } }, () => {});'), [
-    "options must not spread or compute keys, since that could carry tests",
+    "options must not compute keys, since that could carry tests",
   ]);
 });
 
@@ -191,9 +191,13 @@ test("three", () => {});
 `).cases;
   const b = parseTestCases(`${IMPORT}test("one", { tests: { requirement: ["r"] } }, () => {});`, "b.test.ts").cases;
   const all: TestCase[] = [...a, ...b];
-  assert.deepEqual(testCasesTesting(all, "requirement", "r"), ["a.test.ts::one", "a.test.ts::two", "b.test.ts::one"]);
-  assert.deepEqual(testCasesTesting(all, "requirement", "q"), ["a.test.ts::two"]);
-  assert.deepEqual(testCasesTesting(all, "defect", "r"), ["a.test.ts::two"]);
+  assert.deepEqual(testCasesTesting(all, "requirement", "r"), [
+    testCaseId({ carrier: "a.test.ts", name: "one" }),
+    testCaseId({ carrier: "a.test.ts", name: "two" }),
+    testCaseId({ carrier: "b.test.ts", name: "one" }),
+  ]);
+  assert.deepEqual(testCasesTesting(all, "requirement", "q"), [testCaseId({ carrier: "a.test.ts", name: "two" })]);
+  assert.deepEqual(testCasesTesting(all, "defect", "r"), [testCaseId({ carrier: "a.test.ts", name: "two" })]);
   assert.deepEqual(testCasesTesting(all, "requirement", "none"), []);
   assert.deepEqual(testCasesTesting([], "requirement", "r"), []);
 });
@@ -228,4 +232,151 @@ test("Testing keeps no reverse registry, reads without executing or writing, and
     fs.readdirSync(scripts).filter((n) => /index|registry|reverse/i.test(n)),
     [],
   );
+});
+
+// Review round 1 of #121. Each finding below was reproduced first, then its class repaired.
+
+test("every export and member of the running node:test is classified, so none this skill cannot read goes unnoticed", async () => {
+  const module = await import("node:test");
+  const classified = new Set<string>([...NODE_TEST.test, ...NODE_TEST.other, ...NODE_TEST.ignored]);
+  const exports = Object.keys(module);
+  const members = [...Object.keys(module.test), ...Object.keys(module.it)];
+  assert.deepEqual(
+    [...new Set([...exports, ...members])].filter((name) => !classified.has(name)),
+    [],
+  );
+  assert.deepEqual(
+    Object.keys(module.describe).filter((name) => !["skip", "only", "todo"].includes(name)),
+    [],
+  );
+});
+
+test("every way node:test offers to define a Test Case is read: named exports, members, awaited, each binding", () => {
+  const forms: [string, string, string][] = [
+    ['import { skip } from "node:test";', "skip", "a.test.ts"],
+    ['import { only } from "node:test";', "only", "a.test.ts"],
+    ['import { todo } from "node:test";', "todo", "a.test.ts"],
+    ['import { skip as s } from "node:test";', "s", "a.test.ts"],
+    ['import { it } from "node:test";', "it", "a.test.ts"],
+    ['import { it } from "node:test";', "it.skip", "a.test.ts"],
+    ['import test from "node:test";', "test.only", "a.test.ts"],
+    ['import test from "node:test";', "test.test", "a.test.ts"],
+    ['import test from "node:test";', "test.it", "a.test.ts"],
+    ['import test from "node:test";', "test.skip", "a.test.ts"],
+    ['import * as nt from "node:test";', "nt.skip", "a.test.ts"],
+    ['import * as nt from "node:test";', "nt.it", "a.test.ts"],
+    ['import * as nt from "node:test";', "nt.test.todo", "a.test.ts"],
+    ['const { skip } = require("node:test");', "skip", "a.test.cjs"],
+    ['const { only: o, todo } = require("node:test");', "o", "a.test.cjs"],
+    ['const nt = require("node:test");', "nt.skip", "a.test.cjs"],
+    ['import test = require("node:test");', "test.todo", "a.test.cts"],
+  ];
+  for (const [head, callee, file] of forms)
+    for (const awaited of ["", "await "]) {
+      const { cases, errors } = parseTestCases(
+        `${head}\n${awaited}${callee}("n", { tests: { requirement: ["r"] } }, () => {});`,
+        file,
+      );
+      assert.deepEqual(
+        { form: `${awaited}${callee}`, errors, names: cases.map((c) => c.name) },
+        { form: `${awaited}${callee}`, errors: [], names: ["n"] },
+      );
+    }
+});
+
+test("describe and suite open contexts, which are not Test Cases, and their modifiers too", () => {
+  for (const callee of ["describe", "describe.skip", "suite", "suite.only"])
+    assert.deepEqual(
+      refused(
+        `import { describe, suite } from "node:test";\n${callee}("s", { tests: { requirement: ["r"] } }, () => {});`,
+      ),
+      ["tests belongs on the options of a top-level Test Case, not on another call"],
+    );
+});
+
+test("a call that states tests and is not a recognized Test Case is refused, never silently dropped", () => {
+  const moved = "tests belongs on the options of a top-level Test Case, not on another call";
+  assert.deepEqual(refused('const t = test;\nt("n", { tests: { requirement: ["r"] } }, () => {});'), [moved]);
+  assert.deepEqual(refused('helper("n", { tests: { requirement: ["r"] } });'), [moved]);
+  assert.deepEqual(refused('test({ tests: { requirement: ["r"] } }, () => {});'), [moved]);
+  assert.deepEqual(
+    refused('test("n", { tests: { requirement: ["r"] } }, () => {}, { tests: { requirement: ["q"] } });'),
+    [moved],
+  );
+  assert.deepEqual(refused('void test("n", { tests: { requirement: ["r"] } }, () => {});'), [moved]);
+  assert.deepEqual(parse('const t = test;\nt("n", { timeout: 1 }, () => {});').errors, []);
+});
+
+test("an options object is read only through plain properties: every other member that could carry tests is refused", () => {
+  const one = (options: string) => refused(`test("n", ${options}, () => {});`);
+  const plain = '{ requirement: ["r"] }';
+  assert.deepEqual(one(`{ tests: ${plain}, tests: ${plain} }`), ["tests is stated twice"]);
+  assert.deepEqual(one(`{ tests: ${plain}, "tests": { requirement: ["missing"] } }`), ["tests is stated twice"]);
+  assert.deepEqual(one(`{ tests: ${plain}, ["tests"]() {} }`), [
+    "options must not compute keys, since that could carry tests",
+  ]);
+  assert.deepEqual(one(`{ ["tests"]() {} }`), ["options must not compute keys, since that could carry tests"]);
+  assert.deepEqual(one(`{ [k]: 1 }`), ["options must not compute keys, since that could carry tests"]);
+  assert.deepEqual(one(`{ [k]() {} }`), ["options must not compute keys, since that could carry tests"]);
+  assert.deepEqual(one(`{ tests: ${plain}, tests() {} }`), [
+    "tests must be a plain property, not a method or accessor",
+  ]);
+  assert.deepEqual(one(`{ get tests() { return ${plain}; } }`), [
+    "tests must be a plain property, not a method or accessor",
+  ]);
+  assert.deepEqual(one(`{ set tests(v) {} }`), ["tests must be a plain property, not a method or accessor"]);
+  assert.deepEqual(one(`{ tests: ${plain}, ...o }`), ["options must not spread, since that could carry tests"]);
+  // Plain members other than tests, however written, are Node's and do not matter.
+  for (const fine of ["{ timeout: 1 }", "{ skip() {}, get x() { return 1; }, 1: 2, 'a-b': 3 }", "{ async f() {} }"])
+    assert.deepEqual(one(fine), []);
+});
+
+test("Node reports a test without a literal, non-empty name by its function or as <anonymous>, so traced Test Cases need every test named", () => {
+  const traced = 'test("traced", { tests: { requirement: ["r"] } }, () => {});\n';
+  const unnamed = "a Carrier with traced Test Cases must give every top-level test a literal, non-empty name";
+  assert.deepEqual(refused(`${traced}test("", () => {});`), [unnamed]);
+  assert.deepEqual(refused(`${traced}test("<anonymous>", () => {});\ntest("", () => {});`), [unnamed]);
+  assert.deepEqual(refused(`${traced}test(() => {});`), [unnamed]);
+  assert.deepEqual(refused(`${traced}test(name, () => {});`), [unnamed]);
+  assert.deepEqual(refused(`${traced}test(\`a \${x}\`, () => {});`), [unnamed]);
+  assert.deepEqual(refused('test("", { tests: { requirement: ["r"] } }, () => {});'), [
+    "a Test Case that states what it tests must have a literal, non-empty name",
+  ]);
+  // No traced Test Case, nothing to identify: such a Carrier is read as before, and names no empty Test Case.
+  const untraced = parse('test("", () => {});\ntest(() => {});\ntest(name, () => {});\ntest("named", () => {});');
+  assert.deepEqual(untraced.errors, []);
+  assert.deepEqual(
+    untraced.cases.map((c) => c.name),
+    ["named"],
+  );
+});
+
+test("a Test Case's identity is one line, whatever its name holds, and names its carrier and name exactly", () => {
+  const names = [
+    "line1\nline2",
+    "carriage\rreturn",
+    "\u2028separator",
+    "\u2029and\u0085next",
+    'quote " and \\ backslash',
+    "::",
+    '", "',
+    "tab\tand unicode é\u{1f600}",
+  ];
+  const { cases, errors } = parse(
+    names.map((n) => `test(${JSON.stringify(n)}, { tests: { requirement: ["r"] } }, () => {});`).join("\n"),
+    "dir/a::b.test.ts",
+  );
+  assert.deepEqual(errors, []);
+  assert.deepEqual(
+    cases.map((c) => c.name),
+    names,
+  );
+  const ids = testCasesTesting(cases, "requirement", "r");
+  assert.equal(ids.length, names.length);
+  for (const [index, line] of ids.entries()) {
+    assert.doesNotMatch(line, /[\n\r\u0085\u2028\u2029]/);
+    assert.deepEqual(JSON.parse(line), ["dir/a::b.test.ts", names[index]]);
+  }
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.join("\n").split("\n").length, names.length);
 });

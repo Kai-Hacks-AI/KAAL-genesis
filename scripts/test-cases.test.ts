@@ -6,7 +6,7 @@ import test from "node:test";
 import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import { createDefect } from "../skills/managing-defects/scripts/create.js";
 import { createRequirement } from "../skills/managing-requirements/scripts/create.js";
-import { testCasesTesting } from "../skills/testing/scripts/test-cases.js";
+import { testCaseId, testCasesTesting } from "../skills/testing/scripts/test-cases.js";
 import {
   carrierPlaces,
   kaalTestCases,
@@ -49,6 +49,8 @@ const dirTree = (root: string): Record<string, string> =>
   );
 
 const BASE = "change/x/26/09/30/01/test";
+/** A Test Case's identity, as its one line. */
+const id = (carrier: string, name: string) => testCaseId({ carrier, name });
 const PLACE = `${BASE}/suite`;
 
 test("KAAL's own Test Cases state only references to Requirements and Defects that exist", () => {
@@ -67,13 +69,16 @@ test("a Test Case can test a Requirement, a Defect, and several of each; several
   assert.deepEqual(errors, []);
   assert.equal(cases.length, 5);
   assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [
-    `${PLACE}/a.test.ts::reqs`,
-    `${PLACE}/b.test.ts::many`,
-    `${PLACE}/b.test.ts::again`,
+    id(`${PLACE}/a.test.ts`, "reqs"),
+    id(`${PLACE}/b.test.ts`, "many"),
+    id(`${PLACE}/b.test.ts`, "again"),
   ]);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [`${PLACE}/b.test.ts::many`]);
-  assert.deepEqual(testCasesTestingDefect(cases, "d1"), [`${PLACE}/a.test.ts::defect`, `${PLACE}/b.test.ts::many`]);
-  assert.deepEqual(testCasesTestingDefect(cases, "d2"), [`${PLACE}/b.test.ts::many`]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [id(`${PLACE}/b.test.ts`, "many")]);
+  assert.deepEqual(testCasesTestingDefect(cases, "d1"), [
+    id(`${PLACE}/a.test.ts`, "defect"),
+    id(`${PLACE}/b.test.ts`, "many"),
+  ]);
+  assert.deepEqual(testCasesTestingDefect(cases, "d2"), [id(`${PLACE}/b.test.ts`, "many")]);
   assert.deepEqual(testCasesTestingRequirement(cases, "d1"), []);
 });
 
@@ -82,8 +87,8 @@ test("traceability is of the Test Case: Test Cases of one Carrier test different
     "a.test.ts": tc("first", '{ requirement: ["r1"] }') + tc("second", '{ requirement: ["r2"] }'),
   });
   const { cases } = kaalTestCases(dir);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [`${PLACE}/a.test.ts::first`]);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [`${PLACE}/a.test.ts::second`]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [id(`${PLACE}/a.test.ts`, "first")]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [id(`${PLACE}/a.test.ts`, "second")]);
 });
 
 test("testing a Requirement or a Defect modifies neither, and leaves no reverse registry behind", () => {
@@ -93,7 +98,7 @@ test("testing a Requirement or a Defect modifies neither, and leaves no reverse 
   fs.writeFileSync(path.join(suite, "a.test.ts"), IMPORT + tc("one", '{ requirement: ["r1"], defect: ["d1"] }'));
   const { cases, errors } = kaalTestCases(dir);
   assert.deepEqual(errors, []);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [`${PLACE}/a.test.ts::one`]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [id(`${PLACE}/a.test.ts`, "one")]);
   const after = dirTree(dir);
   // Only the Carrier was added: Requirements, Defects and everything else are byte for byte as they were.
   assert.deepEqual(
@@ -145,7 +150,10 @@ test("what Testing refuses in a Carrier is refused here, with the Carrier's path
   const errors = kaalTestCases(dir).errors;
   assert.equal(errors.length, 3);
   assert.match(errors[0], new RegExp(`^${PLACE}/a\\.test\\.ts:2: tests requirement "r1" twice$`));
-  assert.match(errors[1], new RegExp(`^${PLACE}/b\\.test\\.ts:\\d+: tests belongs on a top-level Test Case`));
+  assert.match(
+    errors[1],
+    new RegExp(`^${PLACE}/b\\.test\\.ts:\\d+: tests belongs on the options of a top-level Test Case`),
+  );
   assert.match(errors[2], new RegExp(`^${PLACE}/c\\.test\\.ts:3: tests must be an object literal`));
 });
 
@@ -164,7 +172,7 @@ test("supersession is never followed: a Test Case tests the Requirement it names
   fs.writeFileSync(path.join(born, REQUIREMENT_DIR, "r2.md"), "---\nid: r2\nsupersedes: r1\n---\n\nr2 holds.\n");
   const { cases, errors } = kaalTestCases(dir);
   assert.deepEqual(errors, []);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [`${PLACE}/a.test.ts::one`]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [id(`${PLACE}/a.test.ts`, "one")]);
   assert.deepEqual(testCasesTestingRequirement(cases, "r2"), []);
 });
 
@@ -190,9 +198,9 @@ test("Carriers are found beneath each Change's test directory directly, whether 
   ]);
   const { cases, errors } = kaalTestCases(dir);
   assert.deepEqual(errors, [`${BASE}/d.test.js: "bad" tests requirement "nope", which names no requirement`]);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [`${BASE}/loose/deep/c.test.cts::loose`]);
-  assert.deepEqual(testCasesTestingDefect(cases, "d1"), [`${BASE}/suite/inner/b.test.mjs::inner`]);
-  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [`${PLACE}/a.test.ts::in suite`]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [id(`${BASE}/loose/deep/c.test.cts`, "loose")]);
+  assert.deepEqual(testCasesTestingDefect(cases, "d1"), [id(`${BASE}/suite/inner/b.test.mjs`, "inner")]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [id(`${PLACE}/a.test.ts`, "in suite")]);
 });
 
 test("a broken Suite does not hide its Test Cases' references, and no Suite is needed to see them", () => {
@@ -230,4 +238,52 @@ test("Testing is independent of Requirements and Defects, and they of Testing", 
       [],
       other,
     );
+});
+
+// Review round 1 of #121: the findings as KAAL meets them.
+test("a Test Case defined by a named skip, only or todo export, or awaited, is validated like any other", () => {
+  const { dir } = repo({
+    "a.test.ts":
+      'import { skip, todo } from "node:test";\nskip("skipped", { tests: { requirement: ["missing"] } }, () => {});\nawait todo("later", { tests: { defect: ["r1"] } }, () => {});\n',
+  });
+  assert.deepEqual(kaalTestCases(dir).errors, [
+    `${PLACE}/a.test.ts: "skipped" tests requirement "missing", which names no requirement`,
+    `${PLACE}/a.test.ts: "later" tests defect "r1", which names no defect`,
+  ]);
+});
+
+test("a duplicate or computed tests option cannot hide a reference from validation", () => {
+  const { dir } = repo({
+    "a.test.ts": tc("n", '{ requirement: ["r1"] }').replace(
+      "{ tests:",
+      '{ tests: { requirement: ["missing"] }, tests:',
+    ),
+    "b.test.ts": 'test("m", { tests: { requirement: ["r1"] }, ["tests"]() {} }, () => {});\n',
+  });
+  const errors = kaalTestCases(dir).errors.map((e) => e.replace(/^.*\/(\w\.test\.ts):\d+: /, "$1: "));
+  assert.deepEqual(errors, [
+    "a.test.ts: tests is stated twice",
+    "b.test.ts: options must not compute keys, since that could carry tests",
+  ]);
+});
+
+test("reverse lookup prints one identity per line, each naming its carrier and name, whatever the name holds", () => {
+  const { dir } = repo({
+    "a.test.ts":
+      tc("line1\\nline2", '{ requirement: ["r1"] }') +
+      tc("plain", '{ requirement: ["r1"] }') +
+      tc("\\u2028sep", '{ requirement: ["r1"] }'),
+  });
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(errors, []);
+  const lines = testCasesTestingRequirement(cases, "r1").join("\n").split("\n");
+  assert.equal(lines.length, 3);
+  assert.deepEqual(
+    lines.map((line) => JSON.parse(line)),
+    [
+      [`${PLACE}/a.test.ts`, "line1\nline2"],
+      [`${PLACE}/a.test.ts`, "plain"],
+      [`${PLACE}/a.test.ts`, " sep"],
+    ],
+  );
 });
