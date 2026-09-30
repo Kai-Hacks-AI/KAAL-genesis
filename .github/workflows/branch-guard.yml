@@ -1,0 +1,40 @@
+# Guards main: a pull request into main must come from a `kaal/*` branch of
+# this repository, or from Dependabot. Anything else, such as an unnamed
+# agent branch or a fork, fails guard-branch-linux.
+#
+# Runs as pull_request_target, like seal.yml: GitHub takes the workflow from
+# main, never from the change, so a change cannot weaken the guard that judges
+# it. Only main is checked out and no change code runs; the branch name and the
+# author reach the script only as environment variables, never as script text.
+# The trigger, not a job condition, limits it to pull requests into main: a
+# skipped job still reports a check, and a skipped check counts as passing.
+name: branch-guard
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  branch-guard:
+    name: guard-branch-linux
+    runs-on: ubuntu-latest
+    env:
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
+      THIS_REPO: ${{ github.repository }}
+    steps:
+      # main's own checkout, never the change's: the rule lives in
+      # scripts/guard-branch.ts, tested there, and runs from main.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/guard-branch.ts

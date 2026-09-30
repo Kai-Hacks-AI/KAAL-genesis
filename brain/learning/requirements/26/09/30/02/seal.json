@@ -1,0 +1,11 @@
+{
+  "unit": "requirements/26/09/30/02",
+  "previous": "ffe95c12326320747bafcc6c55d9b5d6e8039710e47fe4736b7546b6ec0e3d0c",
+  "files": [
+    {
+      "path": "nodes/execution-environments.md",
+      "sha256": "20142858d171ba3b5274a6e847c2b5f8b822f9ca769124cb2d39fc136de18e2b"
+    }
+  ],
+  "seal": "1a3fa2438eb4892635141bd2f17677b6c501ffdf943829f436c3368dca8ca616"
+}
