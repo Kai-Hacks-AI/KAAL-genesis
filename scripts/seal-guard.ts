@@ -1,7 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
-import { sealStateChanges } from "./brain-seals.js";
+import { HEADS_FILE, LOCK_FILE } from "../skills/using-seals/scripts/seals.js";
+import { kaalSealStateChanges } from "./kaal-seals.js";
 
 // Refuses a change that touches seal state compared with <base>. <repo> is
 // the change's checkout, by default this one; CI passes the change's checkout
@@ -14,10 +16,22 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else {
     const diff = execFileSync(
       "git",
-      ["-C", repo, "diff", "--name-status", "--no-renames", `${base}...HEAD`, "--", ROOT],
+      [
+        "-C",
+        repo,
+        "diff",
+        "--name-status",
+        "--no-renames",
+        `${base}...HEAD`,
+        "--",
+        ROOT,
+        CHANGE_ROOT,
+        HEADS_FILE,
+        LOCK_FILE,
+      ],
       { encoding: "utf8" },
     );
-    const errors = sealStateChanges(diff);
+    const errors = kaalSealStateChanges(diff);
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;

@@ -1,0 +1,96 @@
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { type Change, lineageError, occurrenceError, ROOT } from "./changes.js";
+
+export type Birth = Change & { root?: string };
+
+/**
+ * Refuses to birth through a symlink anywhere from the root down to where the
+ * Change is born, so a Change is never born outside the root or into material
+ * it does not own. Uses lstat so dangling symlinks are refused too.
+ */
+function rejectSymlinks(root: string, dir: string): void {
+  let current = root;
+  for (const part of ["", ...path.relative(root, dir).split(path.sep)]) {
+    current = path.join(current, part);
+    const stat = fs.lstatSync(current, { throwIfNoEntry: false });
+    if (!stat) return;
+    if (stat.isSymbolicLink()) throw new Error(`${current}: symlink in Change path`);
+  }
+}
+
+/**
+ * Removes the directories a failed birth created, deepest first. Never
+ * recursive: a directory another birth has since filled, even with a Change
+ * of the same identity, is left as it is, and so is every directory above it.
+ */
+function removeCreated(created: string[]): void {
+  for (const dir of [...created].reverse()) {
+    try {
+      fs.rmdirSync(dir);
+    } catch {
+      return;
+    }
+  }
+}
+
+/**
+ * Births a Change: creates its occurrence directory, empty, and nothing in it.
+ * What the Change will hold is not birth's concern. Refuses an unportable
+ * lineage, a malformed occurrence and a symlinked path before writing
+ * anything, and refuses an occurrence that already exists: a Change is never
+ * born again, so an earlier Change is never written over. Creates each missing
+ * directory on the way one at a time, so if birth fails at any of them, the
+ * ones it created are known and removed while they are still empty. Returns
+ * the occurrence's directory.
+ */
+export function birthChange(input: Birth): string {
+  const root = input.root ?? ROOT;
+  const error = lineageError(input.lineage) ?? occurrenceError(input.occurrence);
+  if (error) throw new Error(error);
+  const dir = path.join(root, input.lineage, ...input.occurrence.split("/"));
+  rejectSymlinks(root, dir);
+  const missing: string[] = [];
+  for (let level = path.dirname(dir); !fs.existsSync(level); level = path.dirname(level)) missing.unshift(level);
+  const created: string[] = [];
+  try {
+    for (const level of missing) {
+      try {
+        fs.mkdirSync(level);
+        created.push(level);
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+        // Something appeared at this level meanwhile. A directory another
+        // birth created is shared, not ours; anything else is never entered.
+        const stat = fs.lstatSync(level);
+        if (stat.isSymbolicLink()) throw new Error(`${level}: symlink in Change path`);
+        if (!stat.isDirectory()) throw new Error(`${level}: not a directory`);
+      }
+    }
+    // An existing occurrence, even an empty one, is refused.
+    fs.mkdirSync(dir);
+  } catch (e) {
+    removeCreated(created);
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error(`${input.lineage}/${input.occurrence}: already exists; a Change is never born again`);
+    }
+    throw e;
+  }
+  return dir;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [lineage, occurrence, ...rest] = process.argv.slice(2);
+  if (!lineage || !occurrence || rest.length) {
+    console.error("usage: birth.ts <lineage> <YY/MM/DD/CC>");
+    process.exitCode = 2;
+  } else {
+    try {
+      console.log(birthChange({ lineage, occurrence }));
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exitCode = 1;
+    }
+  }
+}
