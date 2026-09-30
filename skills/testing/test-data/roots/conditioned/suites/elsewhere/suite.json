@@ -1,0 +1,11 @@
+{
+  "concern": "A test declared not applicable only on another platform.",
+  "conditions": [
+    {
+      "case": "suites/elsewhere/skips.test.ts",
+      "test": "does not apply # here",
+      "notOn": ["aix"],
+      "because": "It applies everywhere but aix."
+    }
+  ]
+}

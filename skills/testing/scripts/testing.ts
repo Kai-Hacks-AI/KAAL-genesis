@@ -12,11 +12,21 @@ export const CASE = /\.test\.[cm]?[jt]s$/;
 /** A Plan: the protection it states (its body), and the Suites it collects, as posix paths relative to the testing root. */
 export type Plan = { concern: string; suites: string[] };
 
-/** A Suite: its place relative to the testing root, its concern, and its Cases as posix paths relative to it. */
-export type Suite = { place: string; concern: string; cases: string[] };
+/**
+ * A Condition: the platforms on which one test of a Case does not apply, and
+ * why. `case` is the Case as a Run names it, `test` its test's exact name.
+ */
+export type Condition = { case: string; test: string; notOn: string[]; because: string };
 
-/** What a Run saw of one Case. A Case that ran no test, or skipped one, proves nothing, so it did not pass. */
-export type Observation = { case: string; passed: boolean; output: string };
+/** A Suite: its place relative to the testing root, its concern, its Cases as posix paths relative to it, and its Conditions. */
+export type Suite = { place: string; concern: string; cases: string[]; conditions: Condition[] };
+
+/**
+ * What a Run saw of one Case. A Case that ran no test, or skipped one, proves
+ * nothing, so it did not pass, unless every skipped test is one its Suite
+ * declares not applicable here: those are `notApplicable`, never proof.
+ */
+export type Observation = { case: string; passed: boolean; notApplicable: string[]; output: string };
 
 /**
  * One execution of a Plan: which Cases ran against which candidate, under
@@ -101,6 +111,47 @@ export function readPlan(file: string): { plan?: Plan; errors: string[] } {
   return errors.length ? { errors } : { plan: { concern, suites: data.suites as string[] }, errors };
 }
 
+/** Node's names for the platforms a Condition may name. */
+export const PLATFORMS = [
+  "aix",
+  "android",
+  "cygwin",
+  "darwin",
+  "freebsd",
+  "haiku",
+  "linux",
+  "netbsd",
+  "openbsd",
+  "sunos",
+  "win32",
+];
+
+/** A Suite's `conditions`, each naming one of its `cases`, with every way one is not a Condition. */
+function readConditions(file: string, value: unknown, cases: string[]): { conditions: Condition[]; errors: string[] } {
+  if (value === undefined) return { conditions: [], errors: [] };
+  if (!Array.isArray(value)) return { conditions: [], errors: [`${file}: conditions must be a list`] };
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  for (const condition of value) {
+    if (!isObject(condition)) {
+      errors.push(`${file}: a condition must be an object`);
+      continue;
+    }
+    const extra = Object.keys(condition).filter((key) => !["case", "test", "notOn", "because"].includes(key));
+    if (extra.length) errors.push(`${file}: unknown ${extra.map((key) => `"${key}"`).join(", ")} in a condition`);
+    const { case: at, test, notOn, because } = condition;
+    if (typeof at !== "string" || !cases.includes(at))
+      errors.push(`${file}: condition names "${at}", not a Case of this Suite`);
+    if (typeof test !== "string" || !test) errors.push(`${file}: a condition's test must be a non-empty name`);
+    else if (seen.has(`${at}\n${test}`)) errors.push(`${file}: test "${test}" of "${at}" has two conditions`);
+    else seen.add(`${at}\n${test}`);
+    if (!Array.isArray(notOn) || !notOn.length || notOn.some((p) => !PLATFORMS.includes(p as string)))
+      errors.push(`${file}: a condition's notOn must list platforms among ${PLATFORMS.join(", ")}`);
+    if (typeof because !== "string" || !because.trim()) errors.push(`${file}: a condition must say because why`);
+  }
+  return errors.length ? { conditions: [], errors } : { conditions: value as Condition[], errors };
+}
+
 /** The Suite at `place` beneath `root`: its concern and its Cases, in sorted order. */
 export function readSuite(root: string, place: string): { suite?: Suite; errors: string[] } {
   const dir = path.join(root, ...place.split("/"));
@@ -110,7 +161,7 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
   if (error) return { errors: [`${place}/${SUITE_FILE}: unreadable suite (${error})`] };
   if (!isObject(value)) return { errors: [`${place}/${SUITE_FILE}: a suite must be an object`] };
   const errors: string[] = [];
-  const extra = Object.keys(value).filter((key) => key !== "concern");
+  const extra = Object.keys(value).filter((key) => key !== "concern" && key !== "conditions");
   if (extra.length) errors.push(`${place}/${SUITE_FILE}: unknown ${extra.map((key) => `"${key}"`).join(", ")}`);
   const concern = concernError(value);
   if (concern) errors.push(`${place}/${SUITE_FILE}: ${concern}`);
@@ -120,7 +171,15 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
     .map((entry) => path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   if (!cases.length) errors.push(`${place}: holds no Case`);
-  return errors.length ? { errors } : { suite: { place, concern: value.concern as string, cases }, errors };
+  const conditions = readConditions(
+    `${place}/${SUITE_FILE}`,
+    value.conditions,
+    cases.map((file) => `${place}/${file}`),
+  );
+  errors.push(...conditions.errors);
+  return errors.length
+    ? { errors }
+    : { suite: { place, concern: value.concern as string, cases, conditions: conditions.conditions }, errors };
 }
 
 /** Every Suite the Plan at `plan` (relative to `root`) collects, with every way the Plan or a Suite is broken. */
@@ -135,6 +194,15 @@ export function readPlanSuites(root: string, plan: string): { plan?: Plan; suite
     errors.push(...invalid);
   }
   return { plan: read.plan, suites, errors };
+}
+
+/** The names of the tests TAP reports, at any depth: every one, or only the skipped ones. */
+function testNames(tap: string, skippedOnly: boolean): string[] {
+  const names: string[] = [];
+  for (const [, name, directive] of tap.matchAll(/^\s*(?:not )?ok \d+ - (.*?)(?: # (SKIP|TODO)\b[^\r\n]*)?\r?$/gm)) {
+    if (!skippedOnly || directive === "SKIP") names.push(name.replace(/\\([\\#])/g, "$1"));
+  }
+  return names;
 }
 
 /** The TAP summary count Node's test runner reports under `name`. */
@@ -166,7 +234,12 @@ export function loaderArgs(argv: string[]): string[] {
  * passed. Its tests report to it even when this process runs inside a test
  * runner.
  */
-export function runCase(file: string, candidate: string): { passed: boolean; output: string } {
+export function runCase(
+  file: string,
+  candidate: string,
+  notApplicableHere: string[] = [],
+  declared: string[] = notApplicableHere,
+): { passed: boolean; notApplicable: string[]; output: string } {
   const { NODE_TEST_CONTEXT: _, ...env } = process.env;
   const result = spawnSync(process.execPath, [...loaderArgs(process.execArgv), "--test-reporter=tap", file], {
     cwd: candidate,
@@ -175,8 +248,17 @@ export function runCase(file: string, candidate: string): { passed: boolean; out
   });
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? String(result.error) : ""}`;
   const tests = count(output, "tests");
-  const passed = result.status === 0 && tests > 0 && count(output, "pass") === tests;
-  return { passed, output };
+  const skipped = testNames(output, true);
+  const reported = testNames(output, false);
+  const notApplicable = skipped.filter((name) => notApplicableHere.includes(name));
+  const passed =
+    result.status === 0 &&
+    tests > 0 &&
+    count(output, "pass") + count(output, "skipped") === tests &&
+    skipped.length === count(output, "skipped") &&
+    notApplicable.length === skipped.length &&
+    declared.every((name) => reported.includes(name));
+  return { passed, notApplicable, output };
 }
 
 /**
@@ -189,10 +271,18 @@ export function runPlan(plan: string, root = ".", candidate = root): Run {
   if (errors.length) throw new Error(`refusing to run ${plan}:\n${errors.join("\n")}`);
   const observations: Observation[] = [];
   for (const suite of suites) {
-    for (const file of suite.cases) {
-      const at = `${suite.place}/${file}`;
-      const { passed, output } = runCase(path.resolve(root, ...at.split("/")), path.resolve(candidate));
-      observations.push({ case: at, passed, output });
+    for (const name of suite.cases) {
+      const at = `${suite.place}/${name}`;
+      const declared = suite.conditions.filter((c) => c.case === at);
+      const here = declared.filter((c) => c.notOn.includes(process.platform)).map((c) => c.test);
+      const file = path.resolve(root, ...at.split("/"));
+      const run = runCase(
+        file,
+        path.resolve(candidate),
+        here,
+        declared.map((c) => c.test),
+      );
+      observations.push({ case: at, ...run });
     }
   }
   return {
@@ -210,7 +300,10 @@ export function report(run: Run): string {
     `plan ${run.plan}`,
     `candidate ${run.candidate}`,
     `conditions ${run.conditions}`,
-    ...run.observations.map((o) => `${o.passed ? "pass" : "fail"} ${o.case}`),
+    ...run.observations.map(
+      (o) =>
+        `${o.passed ? "pass" : "fail"} ${o.case}${o.notApplicable.length ? ` (${o.notApplicable.length} not applicable)` : ""}`,
+    ),
     run.holds ? "holds" : "does not hold",
   ].join("\n");
 }
