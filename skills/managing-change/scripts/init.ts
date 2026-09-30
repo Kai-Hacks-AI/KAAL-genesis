@@ -5,11 +5,11 @@ const SKILL = fileURLToPath(new URL("../SKILL.md", import.meta.url));
 
 /** This skill's SKILL.md. The skill is born from init: SKILL.md is generated from here, never edited by hand. */
 export const SKILL_MD = `---
-name: using-changes
+name: managing-change
 description: Birth and validate immutable Changes, each an occurrence of work beneath the lineage it contributes to, owning a sparse subtree no other Change overwrites.
 ---
 
-# Using Changes
+# Managing Change
 
 A Change is an immutable occurrence of work contributing to a named lineage and owning a sparse subtree. Changes live beneath a root, by default \`change\`:
 
