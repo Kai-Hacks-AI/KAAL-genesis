@@ -15,7 +15,24 @@ const repo = () => fs.mkdtempSync(path.join(os.tmpdir(), "kaal-requirements-"));
 test("KAAL's own Requirements are valid and each resolves by its id", () => {
   const { requirements, errors } = kaalRequirements();
   assert.deepEqual(errors, []);
-  const ids = ["git-independence", "github-independence", "linux-support", "windows-support"];
+  const ids = [
+    "git-independence",
+    "github-independence",
+    "linux-support",
+    "windows-support",
+    "agent-guidance-scoped-and-concise",
+    "brain-nodes-born-through-one-mechanism",
+    "brain-structure-validation",
+    "changes-checked-against-seals-of-target-branch",
+    "closed-learning-integrity",
+    "kaal-context-in-brain-not-agent-guidance",
+    "kaal-meaning-in-brain-not-skills",
+    "past-understanding-retained",
+    "seal-state-written-only-by-sealing-on-main",
+    "skills-born-from-own-init",
+    "skills-follow-agent-skills-standard",
+    "skills-independent-capabilities",
+  ];
   assert.deepEqual(resolve(requirements, ids).errors, []);
   assert.deepEqual(requirements.map((r) => r.id).sort(), [...ids].sort());
 });
