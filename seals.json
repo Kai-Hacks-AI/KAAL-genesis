@@ -15,9 +15,10 @@
   },
   "execution-environments": {
     "units": [
-      "change/execution-environments/26/10/01/01"
+      "change/execution-environments/26/10/01/01",
+      "change/execution-environments/26/10/01/02"
     ],
-    "seal": "96d98b82428007da446abd0b2776ec77014d24f2c52e8cdc10409a2ccd738bdf"
+    "seal": "8e85c9046568bb9132ec8ffa3bf346701daae868c0461d67ca44a16dfd46be42"
   },
   "git-independence": {
     "units": [

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import YAML from "yaml";
 import { readChanges, ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
 import {
   carriersCurrentlyTesting,
@@ -10,7 +11,7 @@ import {
   type PlanEntry,
 } from "../skills/testing/scripts/supersession.js";
 import { readTestCases, testCasesTesting, type TestCase } from "../skills/testing/scripts/test-cases.js";
-import { CASE } from "../skills/testing/scripts/testing.js";
+import { CASE, instanceId, PARAMETER, type Instance, type Parameters } from "../skills/testing/scripts/testing.js";
 import { kaalDefects } from "./defects.js";
 import { kaalRequirements } from "./requirements.js";
 
@@ -113,45 +114,187 @@ export const carriersProtecting = (
     ids.map((id) => ({ kind, id })),
   );
 
+/*
+ * Which instances a Plan requires is KAAL's decision, and a Change keeps it
+ * beneath its `test/`, with the rest of its protection: `test/instances/`, one
+ * Markdown file per decision.
+ *
+ *     ---
+ *     requirement: linux-support
+ *     parameters:
+ *       environment: linux
+ *     ---
+ *
+ *     Why this Requirement's HOW is required under these parameters.
+ *
+ * A Test Case is generic HOW and carries no environment; Testing compares a
+ * parameter only by equality with what a Run observed and knows no name and no
+ * value; a Requirement states what must hold, never what demonstrates it. So
+ * the decision belongs to the Change's test material, never to a Test Case,
+ * to Testing or to the sealed Requirement. A Requirement may be named by any
+ * number of decisions, each a parameter set, and each, with every Test Case
+ * that tests the Requirement, is one required instance; one no decision names
+ * is required as it always was, under none. It is input to deriving a Plan:
+ * what the Runs show of those instances is Testing's evidence, and is neither
+ * stored nor decided here.
+ */
+
+/** Where a Change occurrence keeps, beneath its `test/`, its decisions about the parameters a Requirement's instances are required under. */
+export const INSTANCE_DIR = "instances";
+
+/** One decision: the Test Cases that test `requirement` are required under `parameters`, as stated in `file`. */
+export type InstanceRequirement = { requirement: string; parameters: Parameters; file: string };
+
+/** Every Change's `test/instances/` directory beneath the repository, in traversal order; a Change with none holds none. */
+export function instanceRoots(repo = "."): string[] {
+  return readChanges(path.join(repo, CHANGE_ROOT)).changes.map((change) =>
+    path.join(repo, CHANGE_ROOT, change.lineage, ...change.occurrence.split("/"), TEST_DIR, INSTANCE_DIR),
+  );
+}
+
+const INSTANCE_FRONTMATTER = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
+
+/** Parses one decision, or says why it is not one. `file` only names errors; `known` are the ids of the Requirements that exist. */
+export function parseInstanceRequirement(
+  text: string,
+  file: string,
+  known: ReadonlySet<string>,
+): InstanceRequirement | string {
+  const match = INSTANCE_FRONTMATTER.exec(text);
+  if (!match) return `${file}: missing YAML frontmatter`;
+  let data: unknown;
+  try {
+    data = YAML.parse(match[1]);
+  } catch {
+    return `${file}: frontmatter is not valid YAML`;
+  }
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return `${file}: frontmatter must be a mapping`;
+  const { requirement, parameters } = data as { requirement?: unknown; parameters?: unknown };
+  if (typeof requirement !== "string") return `${file}: requirement is required`;
+  if (!known.has(requirement)) return `${file}: requirement "${requirement}" names no requirement`;
+  if (
+    typeof parameters !== "object" ||
+    parameters === null ||
+    Array.isArray(parameters) ||
+    !Object.keys(parameters).length
+  )
+    return `${file}: parameters must be a non-empty mapping of names to values`;
+  for (const [name, value] of Object.entries(parameters))
+    if (!PARAMETER.test(name) || typeof value !== "string" || !PARAMETER.test(value))
+      return `${file}: parameter "${name}" must be a plain name with a plain string value`;
+  if (!match[2].trim()) return `${file}: a decision must state why`;
+  return { requirement, parameters: parameters as Parameters, file };
+}
+
+/**
+ * The decisions across all Changes, with everything that stops them being
+ * decisions. The `*.md` entries directly in a `test/instances/` directory are the
+ * candidates, each a regular file; anything else there is not this
+ * composition's. Two decisions of one Requirement under the same parameters
+ * are one: an instance is never required twice.
+ */
+export function kaalInstanceRequirements(repo = "."): { required: InstanceRequirement[]; errors: string[] } {
+  const { requirements, errors } = kaalRequirements(repo);
+  const known = new Set(requirements.map((r) => r.id));
+  const required = new Map<string, InstanceRequirement>();
+  for (const root of instanceRoots(repo)) {
+    const stat = fs.lstatSync(root, { throwIfNoEntry: false });
+    if (!stat) continue;
+    if (!stat.isDirectory()) {
+      errors.push(`${root}: not a directory`);
+      continue;
+    }
+    for (const entry of fs.readdirSync(root, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      if (!entry.name.endsWith(".md")) continue;
+      const file = path.relative(repo, path.join(root, entry.name)).split(path.sep).join("/");
+      if (!entry.isFile()) {
+        errors.push(`${file}: not a regular file`);
+        continue;
+      }
+      const read = parseInstanceRequirement(fs.readFileSync(path.join(root, entry.name), "utf8"), file, known);
+      if (typeof read === "string") errors.push(read);
+      else {
+        const key = instanceId({ carrier: read.requirement, parameters: read.parameters });
+        if (!required.has(key)) required.set(key, read);
+      }
+    }
+  }
+  return { required: [...required.values()], errors };
+}
+
+const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * The instances the Test Cases of `entries` are required under: each Test
+ * Case, once per set of parameters any Requirement it is selected for is
+ * required under, and under none when it is selected for a Defect or for a
+ * Requirement no decision names. A Test Case is a Carrier here, as Testing can
+ * name only the file that executes it. Each instance once, sorted by identity.
+ */
+export function requiredInstances(entries: readonly PlanEntry[], required: readonly InstanceRequirement[]): Instance[] {
+  const instances = new Map<string, Instance>();
+  for (const { carrier, targets } of entries)
+    for (const { kind, id } of targets) {
+      const sets = kind === "requirement" ? required.filter((e) => e.requirement === id) : [];
+      for (const parameters of sets.length ? sets.map((e) => e.parameters) : [{}]) {
+        const instance = { carrier, parameters };
+        instances.set(instanceId(instance), instance);
+      }
+    }
+  return [...instances.entries()].sort(([a], [b]) => compare(a, b)).map(([, instance]) => instance);
+}
+
 /**
  * The Test Plan that demonstrates the protection of the Requirements or
  * Defects `ids` of `kind`: each Test Case active for any of them once, with
- * the ids that select it, and the Carriers a Run executes. Derived, never
- * stored: a Plan file made of it is discarded and made again from the sources
- * as it was. Which identities are protected is for the caller to say.
+ * the ids that select it, and the instances a Run executes, each Carrier under
+ * the parameters `required` says the Requirement it is selected for is
+ * required under, and under none for a Defect or a Requirement it names no
+ * decision of. Derived, never stored: a Plan file made of it is discarded and
+ * made again from the sources as it was. Which identities are protected is for
+ * the caller to say.
  */
 export function testPlanProtecting(
   cases: TestCase[],
   kind: (typeof KINDS)[number],
   ids: readonly string[],
-): { entries: PlanEntry[]; carriers: string[]; plan: string } | { errors: string[] } {
+  required: readonly InstanceRequirement[] = [],
+): { entries: PlanEntry[]; carriers: string[]; instances: Instance[]; plan: string } | { errors: string[] } {
   const answer = testCasesProtecting(
     cases,
     ids.map((id) => ({ kind, id })),
   );
   if ("errors" in answer) return answer;
-  const carriers = [...new Set(answer.entries.map((e) => e.carrier))];
+  const instances = requiredInstances(answer.entries, required);
+  const carriers = [...new Set(instances.map((i) => i.carrier))];
   const protectedIds = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const plan = [
     "---",
     "carriers:",
-    ...carriers.map((c) => `  - ${JSON.stringify(c)}`),
+    ...instances.map((i) =>
+      Object.keys(i.parameters).length
+        ? `  - { carrier: ${JSON.stringify(i.carrier)}, parameters: ${JSON.stringify(i.parameters)} }`
+        : `  - ${JSON.stringify(i.carrier)}`,
+    ),
     "---",
     "",
-    `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once, computed from the Test Cases and the \`tests\` and \`supersedes\` they declare. Made again from them, it is the same.`,
+    `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once under each set of parameters its ${kind}'s instances are required under, computed from the Test Cases, the \`tests\` and \`supersedes\` they declare and the instances the Changes require. Made again from them, it is the same.`,
     "",
     ...protectedIds.map((id) => `- ${id}`),
     "",
   ].join("\n");
-  return { entries: answer.entries, carriers, plan };
+  return { entries: answer.entries, carriers, instances, plan };
 }
+
+/** The identity of each instance, as Testing names it: the Carrier alone, or `carrier[name=value]`. */
+export const instanceIds = (instances: readonly Instance[]): string[] => instances.map(instanceId);
 
 // With no arguments, checks every reference and every lineage. With `<requirement|defect> <id>`,
 // prints the Test Cases that test it, one identity per line, after the same check; with `current`
 // before them, only those active for it: no later Test Case of their own lineage tests it too. With
 // `carriers <requirement|defect> <id>...`, prints the Carriers, one path per line, that hold the Test
 // Cases active for any of the ids. With `plan <requirement|defect> <id>...`, prints the Test Plan, a
-// Plan file that collects those Carriers, derived from the same material and never stored.
+// Plan file that collects those Carriers, under the parameters the Changes require their Requirements' instances under, derived from the same material and never stored.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const usage = `usage: test-cases.ts [current] [${KINDS.join("|")} <id>] | carriers|plan <${KINDS.join("|")}> <id>...`;
   const args = process.argv.slice(2);
@@ -168,7 +311,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error(usage);
     process.exitCode = 2;
   } else {
-    const { cases, errors } = kaalTestCases();
+    const tested = kaalTestCases();
+    const instances = kaalInstanceRequirements();
+    const cases = tested.cases;
+    const errors = [...tested.errors, ...instances.errors];
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;
@@ -176,7 +322,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       const ids = [id, ...rest];
       const k = kind as (typeof KINDS)[number];
       if (plan) {
-        const answer = testPlanProtecting(cases, k, ids);
+        const answer = testPlanProtecting(cases, k, ids, instances.required);
         if ("errors" in answer) {
           console.error(answer.errors.join("\n"));
           process.exitCode = 1;
