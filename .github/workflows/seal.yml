@@ -117,7 +117,7 @@ jobs:
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
         run: |
-          out="$(npm run -s seals:pull-request -- gate "origin/$BASE_REF" ../change HEAD^2)"
+          out="$(npm run -s seals:pull-request -- gate "origin/$BASE_REF" ../change)"
           if [ "$out" = hold ]; then echo "HELD=true" >> "$GITHUB_ENV"; fi
         working-directory: trusted
         env:
@@ -140,11 +140,11 @@ jobs:
               description="The pull request changed while it was checked; the next run decides"
             fi
           fi
-          # Success only where the Changes are sealed: a draft's or a non-admitted base's
-          # unsealed Change holds the status pending, so no success stands that a later
-          # change of draft state or base could turn into an unsealed admission.
+          # A draft's unsealed Change and any pull request outside an admission hold the
+          # status pending, so no success stands that a later change of draft state or
+          # base could turn into an unsealed admission.
           if [ "$state" = success ] && [ "${HELD:-}" = true ]; then
             state=pending
-            description="A Change is unsealed: it is sealed when ready for review and admitted"
+            description="Held: a draft with an unsealed Change, or not into a flight or main"
           fi
           gh api "$STATUS_URL" -f state="$state" -f context=check-seals -f target_url="$RUN_URL" -f description="$description"

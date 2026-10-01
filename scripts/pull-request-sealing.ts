@@ -115,59 +115,36 @@ export function sealPullRequest(options: {
 }
 
 /**
- * Every Change in the tree of `rev` at `repo` that is not sealed, touched by the
- * change or not, read from git so that it is exactly that commit's tree and
- * nothing a merge brought in.
- */
-export function unsealedAt(repo: string, rev: string): string[] {
-  const listed = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", "-z", rev, "--", CHANGE_ROOT], {
-    encoding: "utf8",
-  })
-    .split("\0")
-    .filter(Boolean);
-  const files = new Set(listed);
-  return touchedOccurrences(listed).filter((occurrence) => !files.has(`${CHANGE_ROOT}/${occurrence}/seal.json`));
-}
-
-/**
  * How the gate judges the change at `repo`'s HEAD. For a ready pull request into
- * a flight or main, a Change it touches and has not sealed is refused. A draft's
- * is held, and so is anything against a base that is no admission, never refused
- * and never passed: a held status stays pending. What a pull request touches
- * depends on its base, so against a base that is no admission an unsealed Change
- * anywhere in the head holds the status, since a retarget could make it touched;
- * success there needs every Change in the pull request's own head sealed, not in
- * a merge with the base, which could hold a seal only the base supplies. Success is
- * therefore published only where no change of draft state or base can make it
- * wrong. This is the requirement; CI's sealing is how it is met where it can write.
+ * a flight or main, a Change it touches and has not sealed is refused; a draft's
+ * is held, never refused and never passed, and a held status stays pending. A
+ * pull request against a base that is no admission is not judged and is always
+ * held: what it touches, and whether a seal in it is valid, depend on the base, so
+ * no verdict about it could be kept from becoming wrong if it were retargeted.
+ * Success is therefore published only for an admitted base where every Change the
+ * pull request touches is sealed, however its draft state changes. This is the
+ * requirement; CI's sealing is how it is met where it can write.
  */
-export function gateOutcome(options: {
-  base: string;
-  repo?: string;
-  /** The pull request's own head, judged when the base is no admission; where the checkout is a merge, its second parent. */
-  head?: string;
-  draft: boolean;
-  admitted: boolean;
-}): {
+export function gateOutcome(options: { base: string; repo?: string; draft: boolean; admitted: boolean }): {
   outcome: "pass" | "hold" | "refuse";
   errors: string[];
 } {
-  const { base, repo = ".", head = "HEAD", draft, admitted } = options;
-  const occurrences = admitted ? unsealedOccurrences(base, repo) : unsealedAt(repo, head);
-  const errors = occurrences.map(
+  const { base, repo, draft, admitted } = options;
+  if (!admitted) return { outcome: "hold", errors: [] };
+  const errors = unsealedOccurrences(base, repo).map(
     (occurrence) =>
       `${CHANGE_ROOT}/${occurrence}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
   );
   if (!errors.length) return { outcome: "pass", errors };
-  return { outcome: draft || !admitted ? "hold" : "refuse", errors };
+  return { outcome: draft ? "hold" : "refuse", errors };
 }
 
 // `seal <base> [repo]` seals the pull request's Changes; `admission` names
-// where its base admits it; `gate` refuses a ready, admitted pull request with an unsealed Change and holds a draft's. The pull request reaches it as environment variables, never
+// where its base admits it; `gate` refuses a ready, admitted pull request with an unsealed Change and holds a draft's and any outside an admission. The pull request reaches it as environment variables, never
 // as arguments or script text, so a branch name cannot inject anything.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { HEAD_REF = "", HEAD_REPO = "", AUTHOR = "", THIS_REPO = "", DRAFT = "" } = process.env;
-  const [command, base, repo, head] = process.argv.slice(2);
+  const [command, base, repo] = process.argv.slice(2);
   const draft = DRAFT === "true";
   if (command === "admission") {
     const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
@@ -177,7 +154,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { outcome, errors } = gateOutcome({
       base,
       repo,
-      head,
       draft,
       admitted: admission(BASE_REF, DEFAULT_BRANCH) !== undefined,
     });
@@ -201,7 +177,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exitCode = 1;
     }
   } else {
-    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate <base> [repo] [head]");
+    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate <base> [repo]");
     process.exitCode = 2;
   }
 }
