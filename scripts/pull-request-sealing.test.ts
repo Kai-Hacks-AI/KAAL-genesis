@@ -511,10 +511,28 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
     "ready_for_review",
     "converted_to_draft",
   ]);
-  assert.deepEqual(wf.jobs["check-seals"].permissions, { contents: "read", statuses: "write" });
-  const gate = (wf.jobs["check-seals"].steps as Step[]).find((s) => /seals:pull-request -- gate/.test(s.run ?? ""))!;
+  const steps = wf.jobs["check-seals"].steps as Step[];
+  const gate = steps.find((s) => /seals:pull-request -- gate/.test(s.run ?? ""))!;
   assert.equal(gate["working-directory"], "trusted");
   assert.equal(gate.if, "github.event_name == 'pull_request_target'");
-  assert.equal(gate.env?.DRAFT, "${{ github.event.pull_request.draft }}");
   assert.match(gate.run!, /\.\.\/change/);
+
+  // A stale run must not publish over a newer one: runs of a pull request are serialised,
+  // never cancelled, and the draft state and base are read from GitHub when the run reaches
+  // them, before anything judges, never taken from the event.
+  assert.equal(wf.concurrency.group, "check-seals-${{ github.event.pull_request.number || github.run_id }}");
+  assert.equal(wf.concurrency["cancel-in-progress"], false);
+  assert.deepEqual(wf.jobs["check-seals"].permissions, {
+    contents: "read",
+    "pull-requests": "read",
+    statuses: "write",
+  });
+  const live = steps.findIndex((s) => s.id === "live");
+  const judging = steps.findIndex((s) => /seals:(check|guard)\b|seals:pull-request/.test(s.run ?? ""));
+  assert.ok(live >= 0 && live < judging);
+  assert.match(steps[live].run!, /pulls\/\$PR_NUMBER.*DRAFT=.*BASE_REF=/);
+  for (const s of steps) {
+    assert.doesNotMatch(JSON.stringify(s.env ?? {}), /pull_request\.(draft|base)/, s.run);
+    assert.doesNotMatch(s.run ?? "", /github\.(base_ref|event\.pull_request\.(draft|base))/, s.run);
+  }
 });

@@ -42,20 +42,36 @@ on:
 permissions:
   contents: read
 
+# A pull request's runs are serialised and never cancelled, and each reads the
+# pull request's draft state and base from GitHub when it runs, never from its
+# own event: a stale run, say a draft's after the same head turned ready, must
+# not publish over the verdict of a newer one. Pushes to main are not grouped.
+concurrency:
+  group: check-seals-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   check-seals:
     name: check-seals
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
       statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
       STATUS_URL: repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - if: github.event_name == 'pull_request_target'
         run: gh api "$STATUS_URL" -f state=pending -f context=check-seals -f target_url="$RUN_URL" -f description="Checking KAAL's seals"
+      # The pull request as it is now: the gate and the guard judge this, not the
+      # event, which may be older than the run. Values are single-line (a draft
+      # flag, a ref name) and reach the steps below only as environment variables.
+      - id: live
+        if: github.event_name == 'pull_request_target'
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '"DRAFT=\(.draft)", "BASE_REF=\(.base.ref)"' >> "$GITHUB_ENV"
       - run: git config --global core.autocrlf true
       # The pushed commit on push; main's latest commit on a pull request.
       - uses: actions/checkout@v7
@@ -83,14 +99,12 @@ jobs:
         run: npm run seals:check -- ../change
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
-        run: npm run seals:guard -- "origin/${{ github.base_ref }}" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
+        run: npm run seals:guard -- "origin/$BASE_REF" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
         run: npm run seals:pull-request -- gate "origin/$BASE_REF" ../change
         working-directory: trusted
         env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          DRAFT: ${{ github.event.pull_request.draft }}
       - if: always() && github.event_name == 'pull_request_target'
         run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=check-seals -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken, the change touches seal state or carries an unsealed Change' }}"
