@@ -247,6 +247,7 @@ test("an unsealed Change is refused for a ready admitted pull request and held, 
 
   // Once sealed, by CI or by hand, every state passes; a Change the pull request does not touch never counts.
   seal(repo);
+  commit(repo, "sealed");
   for (const over of [{}, { draft: true }, { admitted: false }]) assert.equal(gate(over).outcome, "pass");
   const plain = mainAndBranch();
   write(plain, "skills/x.txt", "ordinary\n");
@@ -270,6 +271,19 @@ test("against a base that is no admission, an unsealed Change anywhere in the he
   const held = gate({ admitted: false });
   assert.equal(held.outcome, "hold");
   assert.match(held.errors.join(), /change\/earlier\/26\/10\/01\/01: Change is not sealed/);
+  // The head's own tree is what is judged, never a merge with the base: a base that later adds the seal
+  // makes the merge look sealed while the head itself, retargeted to a base without it, is not.
+  git(repo, "checkout", "-q", "main");
+  sealChange(repo, "earlier/26/10/01/01");
+  commit(repo, "main seals what the head inherited");
+  git(repo, "merge", "-q", "--no-ff", "--no-edit", "kaal/work");
+  assert.equal(git(repo, "rev-parse", "HEAD^2"), git(repo, "rev-parse", "kaal/work"));
+  assert.equal(gate({ admitted: false }).outcome, "pass");
+  const judged = gateOutcome({ base: "main", repo, head: "HEAD^2", draft: false, admitted: false });
+  assert.equal(judged.outcome, "hold");
+  assert.match(judged.errors.join(), /change\/earlier\/26\/10\/01\/01: Change is not sealed/);
+  git(repo, "reset", "-q", "--hard", "HEAD^");
+  git(repo, "checkout", "-q", "kaal/work");
   // With every Change sealed, success holds under any base.
   sealChange(repo, "earlier/26/10/01/01");
   commit(repo, "sealed");
@@ -541,7 +555,7 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
   const gate = steps.find((s) => /seals:pull-request -- gate/.test(s.run ?? ""))!;
   assert.equal(gate["working-directory"], "trusted");
   assert.equal(gate.if, "github.event_name == 'pull_request_target'");
-  assert.match(gate.run!, /\.\.\/change/);
+  assert.match(gate.run!, /\.\.\/change HEAD\^2\)"/);
   // A held Change keeps the status pending, so success never stands where a later change of draft
   // state or base could turn it into an unsealed admission.
   assert.match(gate.run!, /if \[ "\$out" = hold \]; then echo "HELD=true" >> "\$GITHUB_ENV"; fi/);

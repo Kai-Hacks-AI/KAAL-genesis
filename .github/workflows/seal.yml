@@ -117,7 +117,7 @@ jobs:
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
         run: |
-          out="$(npm run -s seals:pull-request -- gate "origin/$BASE_REF" ../change)"
+          out="$(npm run -s seals:pull-request -- gate "origin/$BASE_REF" ../change HEAD^2)"
           if [ "$out" = hold ]; then echo "HELD=true" >> "$GITHUB_ENV"; fi
         working-directory: trusted
         env:
