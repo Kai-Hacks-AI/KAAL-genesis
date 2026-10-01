@@ -1,0 +1,131 @@
+{
+  "unit": "change/far/26/09/26/01",
+  "previous": "b9e753803bfb23fb4e9eedc349b481061d564b159d8368263cf35f1c13c02167",
+  "files": [
+    {
+      "path": "acceptance.md",
+      "sha256": "0a2563dd879aada7837a7874b75dedf21b9b7c07211cfbfeec850ff5d03647d3"
+    },
+    {
+      "path": "feature.md",
+      "sha256": "2b22f359400d18ad51905a92f9baf4e42174869b85f46a06e828ce7477e2f016"
+    },
+    {
+      "path": "regression.md",
+      "sha256": "986dfc7c3ba5eb63c44cda97b6d704362e4a57dc0223346e4cb8d84f2f3b2d67"
+    },
+    {
+      "path": "requirement/agent-guidance-scoped-and-concise.md",
+      "sha256": "d2716543075ca358175819b6eb9cf88b72bbcf0e60a066731a09a0d23ed488f9"
+    },
+    {
+      "path": "requirement/brain-nodes-born-through-one-mechanism.md",
+      "sha256": "b8a2f878769143986f64a4656368bdaef3bc16a11ee4c8b559fe1cb1a86e8124"
+    },
+    {
+      "path": "requirement/brain-structure-validation.md",
+      "sha256": "7a507f45ed74045b435d99c7c41efc29632aae012a9cb772f75a22da3803158e"
+    },
+    {
+      "path": "requirement/changes-checked-against-seals-of-target-branch.md",
+      "sha256": "77aaabc23080ba766f1a94feba9352c1116e08144bf6f1132fda056914071863"
+    },
+    {
+      "path": "requirement/closed-learning-integrity.md",
+      "sha256": "8819b123284a23f905a057441a695f83eb58cd265fe11cc1e8a945fdc5abe4fa"
+    },
+    {
+      "path": "requirement/kaal-context-in-brain-not-agent-guidance.md",
+      "sha256": "7abd7904d862b27e86114fad571df725b98d42f92915dd4bbcd23ee2051eb7a5"
+    },
+    {
+      "path": "requirement/kaal-meaning-in-brain-not-skills.md",
+      "sha256": "87b474156f08b6b7f7f65faf9a4dd69f417eb19ace04e5231018150e7392a3aa"
+    },
+    {
+      "path": "requirement/past-understanding-retained.md",
+      "sha256": "9f10b172f0b5abe4d873812e6258ece8ae8b78cb2cb4c80f1106d16e077d91c1"
+    },
+    {
+      "path": "requirement/seal-state-written-only-by-sealing-on-main.md",
+      "sha256": "27e5af86526c8dd1489d185544b52081f0e71c174675a3898cd62462b807f6a5"
+    },
+    {
+      "path": "requirement/skills-born-from-own-init.md",
+      "sha256": "65e3f12c670039dc577222e8ae413423dfbcc83afc3aa1620a9c8c75e3c4d15e"
+    },
+    {
+      "path": "requirement/skills-follow-agent-skills-standard.md",
+      "sha256": "9d70647c2b2d4c2ec8f704d822e711f95f0dc1b8ef5c6a51bfe24b18d3b1d411"
+    },
+    {
+      "path": "requirement/skills-independent-capabilities.md",
+      "sha256": "863828a56541c30c62b2cba6c54bc3dc78941d867e44612bcb8248dc696460a8"
+    },
+    {
+      "path": "runs/01/plan.md",
+      "sha256": "30b86e6f509b9850ab37418c818eb1f17f800cb03b0d733ec2118994160a5da3"
+    },
+    {
+      "path": "runs/01/run.md",
+      "sha256": "8021c55210ac5676bd47368ad1892aee3c611b1e03d6476bb77d97c5199040e8"
+    },
+    {
+      "path": "test/candidate.ts",
+      "sha256": "842a79f03dc3f464e82436f4c0a71d009f41f98b57ba0cee1492dfc0dd733818"
+    },
+    {
+      "path": "test/genesis/agent-guidance-scoped-and-concise.test.ts",
+      "sha256": "893b2df23e94c70428acd8953c500b0500f37b2e1e9f90fb3a576b4605a2084e"
+    },
+    {
+      "path": "test/genesis/brain-nodes-born-through-one-mechanism.test.ts",
+      "sha256": "de7cd0d003f5e18bed6d3ae1b3a8aacd9738510dcba9eebcf2d97a1243afe4d2"
+    },
+    {
+      "path": "test/genesis/brain-structure-validation.test.ts",
+      "sha256": "26d12c4da5032c190e48b55c485946596b2d7c7320c70852cee5b6a57fccd74e"
+    },
+    {
+      "path": "test/genesis/changes-checked-against-seals-of-target-branch.test.ts",
+      "sha256": "57a91b51be3ebb0d01ee6862754a0fed8e8afadafc65bab256681d70429da456"
+    },
+    {
+      "path": "test/genesis/closed-learning-integrity.test.ts",
+      "sha256": "9bd98909c873ae6de45143a0c6539a252431b0823f6b43d5f0066f99d2866090"
+    },
+    {
+      "path": "test/genesis/kaal-context-in-brain-not-agent-guidance.test.ts",
+      "sha256": "2cfe65696408163d7d5e3c8aa1ad2ba28983426ef3826c4ac762c95ee921d51e"
+    },
+    {
+      "path": "test/genesis/kaal-meaning-in-brain-not-skills.test.ts",
+      "sha256": "aae5664e4b7cb79bf415a5f77f66b3923205d0a11f24687f5d0fe399355f5067"
+    },
+    {
+      "path": "test/genesis/past-understanding-retained.test.ts",
+      "sha256": "76567d8989c2f158b90ad87207bc2720ff768f8e75de8dff2a07dbf95ab0ea92"
+    },
+    {
+      "path": "test/genesis/seal-state-written-only-by-sealing-on-main.test.ts",
+      "sha256": "6c32c9b367c1a678cd7051637177041e79e3616588a002b80ea252809b778d67"
+    },
+    {
+      "path": "test/genesis/skills-born-from-own-init.test.ts",
+      "sha256": "7ef3c0b725cb66d79bb6724b87096a1a61c4d7adb6ce91b77ac1ca3b75fa8779"
+    },
+    {
+      "path": "test/genesis/skills-follow-agent-skills-standard.test.ts",
+      "sha256": "d6ccdd6c67af1332fc9facb534669b30c02f3f11402c0ad20b6b580511324a14"
+    },
+    {
+      "path": "test/genesis/skills-independent-capabilities.test.ts",
+      "sha256": "bf52b9fb4826cc62b179265913be791afc840090e7fe31f7757ad315568aafa1"
+    },
+    {
+      "path": "test/genesis/suite.json",
+      "sha256": "073d4075e17738bd72ebf51b1480ad2b67ab34acc208a66242505b3851d01d3a"
+    }
+  ],
+  "seal": "c76e4e3cd3d2c79075e887d1ba37251b033eb7e1d0703bbd71a189f3b9a28989"
+}
