@@ -4,13 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-// The dependency rules of Core, Skill and Extension, shown against the code KAAL has today.
+// The dependency rule of a Skill, shown against the code KAAL has today.
 // Why: change/adapters/26/10/01/02/architecture, brain/learning/adapters/26/10/01/02.
-// A Skill is a directory holding SKILL.md, whichever folder holds it; Core is the machinery
-// that births KAAL and can operate before KAAL exists; an Extension presupposes a KAAL to
-// extend. No rule here classifies a module by its folder or by the role it plays. That nothing
-// imports Genesis, and that the other modules under scripts/ are acyclic, are observations
-// about today's code and are deliberately not asserted: whether they are rules is not decided.
+// A Skill is a directory holding SKILL.md, whichever folder holds it. It may depend on Core,
+// which does not exist yet, so nothing here forbids reaching beyond the Skill's directory;
+// it forbids reaching another Skill, an Extension or a concrete provider. That Genesis is no
+// Core, that nothing imports it and that the modules under scripts/ are acyclic are not asserted:
+// the last two are observations about today's code, and whether they are rules is not decided.
 
 /** The relative modules a source imports or re-exports, as written. */
 const relativeImports = (source: string): string[] =>
@@ -35,15 +35,22 @@ const skillsIn = (root: string): string[] =>
     .filter((e) => e.isDirectory() && fs.existsSync(path.join(root, e.name, "SKILL.md")))
     .map((e) => path.join(root, e.name));
 
-/** Every way a Skill reaches beyond itself: an import that leaves its directory, or a concrete provider it names or runs. */
-function skillDependencies(skill: string): string[] {
+/** Whether `target` is `dir` or lies inside it. */
+const inside = (dir: string, target: string): boolean => !path.relative(dir, target).startsWith("..");
+
+/**
+ * Every way a Skill depends on another Skill, on an Extension (machinery under one of `extensions`) or
+ * on a concrete provider it names or runs. Reaching Core, which is not installed yet, is not one of them.
+ */
+function skillDependencies(skill: string, siblings: string[], extensions: string[]): string[] {
   const found: string[] = [];
   for (const file of typescript(skill)) {
     const source = fs.readFileSync(file, "utf8");
     const where = path.relative(path.dirname(skill), file).split(path.sep).join("/");
     for (const spec of relativeImports(source)) {
       const target = resolveImport(file, spec);
-      if (path.relative(skill, target).startsWith("..")) found.push(`${where} imports ${spec}`);
+      if (siblings.some((other) => inside(other, target))) found.push(`${where} imports another Skill: ${spec}`);
+      if (extensions.some((dir) => inside(dir, target))) found.push(`${where} imports an Extension: ${spec}`);
     }
     if (file.endsWith(".test.ts") || file.includes(`${path.sep}test-data`)) continue;
     if (/\b(?:execFileSync|execFile|spawnSync|spawn|execSync|exec)\(\s*["'`]git["'`]/.test(source))
@@ -53,40 +60,43 @@ function skillDependencies(skill: string): string[] {
   return found;
 }
 
-test("no Skill depends on another Skill, on Core, on an Extension or on Git or GitHub", () => {
+const dependenciesOf = (skills: string[], extensions: string[]): string[][] =>
+  skills.map((skill) =>
+    skillDependencies(
+      skill,
+      skills.filter((s) => s !== skill),
+      extensions,
+    ),
+  );
+
+test("no Skill depends on another Skill, on an Extension or on Git or GitHub", () => {
   const skills = skillsIn("skills");
   assert.ok(skills.length > 1);
-  for (const skill of skills) assert.deepEqual(skillDependencies(skill), [], skill);
+  // scripts/ is where today's Extensions are: each module there composes Skills or realizes a boundary, whichever role.
+  for (const found of dependenciesOf(skills, [path.resolve("scripts")])) assert.deepEqual(found, []);
 });
 
-test("the rule is not vacuous: a Skill that imports out, runs git or names GitHub is found", () => {
+test("the rule is not vacuous: a Skill that imports a Skill or an Extension, runs git or names GitHub is found, and one that reaches Core is not", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-deps-"));
-  for (const name of ["a", "b"]) {
-    fs.mkdirSync(path.join(root, name, "scripts"), { recursive: true });
-    fs.writeFileSync(path.join(root, name, "SKILL.md"), "---\nname: x\n---\n");
+  const skills = ["a", "b", "c"].map((name) => path.join(root, "skills", name));
+  for (const skill of skills) {
+    fs.mkdirSync(path.join(skill, "scripts"), { recursive: true });
+    fs.writeFileSync(path.join(skill, "SKILL.md"), "---\nname: x\n---\n");
   }
-  fs.writeFileSync(path.join(root, "a/scripts/own.ts"), "export const own = 1;\n");
+  for (const dir of ["extensions", "core"]) fs.mkdirSync(path.join(root, dir));
+  fs.writeFileSync(path.join(skills[0], "scripts/own.ts"), "export const own = 1;\n");
+  fs.writeFileSync(path.join(root, "extensions/composes.ts"), "export const composed = 1;\n");
+  fs.writeFileSync(path.join(root, "core/shared.ts"), "export const shared = 1;\n");
   fs.writeFileSync(
-    path.join(root, "b/scripts/bad.ts"),
-    'import { own } from "../../a/scripts/own.js";\nimport { execFileSync } from "node:child_process";\nexecFileSync("git", []);\nconst h = "https://api.github.com";\n',
+    path.join(skills[1], "scripts/bad.ts"),
+    'import { own } from "../../a/scripts/own.js";\nimport { composed } from "../../../extensions/composes.js";\nimport { execFileSync } from "node:child_process";\nexecFileSync("git", []);\nconst h = "https://api.github.com";\n',
+  );
+  fs.writeFileSync(
+    path.join(skills[2], "scripts/ok.ts"),
+    'import { shared } from "../../../core/shared.js";\nexport const ok = shared;\n',
   );
   assert.deepEqual(
-    skillsIn(root).map((s) => skillDependencies(s).length),
-    [0, 3],
+    dependenciesOf(skills, [path.join(root, "extensions")]).map((found) => found.length),
+    [0, 4, 0],
   );
-});
-
-/** Core's imports: the modules `scripts/genesis.ts` reaches, resolved from the repository root. */
-const coreImports = (): string[] =>
-  relativeImports(fs.readFileSync(CORE, "utf8")).map((s) =>
-    path.relative(".", resolveImport(CORE, s)).split(path.sep).join("/"),
-  );
-
-const CORE = "scripts/genesis.ts";
-
-test("Core, which operates before KAAL exists, reaches Skills only", () => {
-  const imports = coreImports();
-  assert.ok(imports.length);
-  // An Extension presupposes a KAAL to extend, so Core, running before one exists, cannot be built on one.
-  for (const target of imports) assert.match(target, /^skills\/[^/]+\//, `Core imports ${target}`);
 });
