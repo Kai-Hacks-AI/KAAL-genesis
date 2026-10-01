@@ -8,6 +8,7 @@ import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import { createDefect } from "../skills/managing-defects/scripts/create.js";
 import { createRequirement } from "../skills/managing-requirements/scripts/create.js";
 import { testCaseId, testCasesTesting } from "../skills/testing/scripts/test-cases.js";
+import { runPlan } from "../skills/testing/scripts/testing.js";
 import {
   carrierPlaces,
   carriersProtecting,
@@ -16,6 +17,7 @@ import {
   TEST_DIR,
   testCasesTestingDefect,
   testCasesTestingRequirement,
+  testPlanProtecting,
 } from "./test-cases.js";
 import { DEFECT_DIR } from "./defects.js";
 import { REQUIREMENT_DIR } from "./requirements.js";
@@ -371,4 +373,66 @@ test("`test-cases.ts carriers <kind> <id>...` prints the Carriers, one path per 
     assert.match(refused.stderr, /usage:/);
   }
   assert.equal(run("carriers", "requirement", "nope").status, 0, "an id that names nothing is protected by nothing");
+});
+
+test("the Test Plan of protected Requirements holds each active Test Case once, and a Run of it demonstrates them without the stale Carrier", () => {
+  const { dir, born } = repo({
+    "a.test.ts": tc("a for r1", '{ requirement: ["r1"] }') + tc("a for r2", '{ requirement: ["r2"] }'),
+    "stale.test.ts": `test("stale", { tests: { requirement: ["r1"] } }, () => { throw new Error("stale HOW"); });\n`,
+  });
+  const later = birthChange({ root: path.join(dir, "change"), lineage: "x", occurrence: "26/09/30/02" });
+  fs.mkdirSync(path.join(later, TEST_DIR, "next"), { recursive: true });
+  fs.writeFileSync(
+    path.join(later, TEST_DIR, "next", "n.test.ts"),
+    `${IMPORT}test("n", { tests: { requirement: ["r1", "r2"] }, supersedes: ["${PLACE}/stale.test.ts", "stale"] }, () => {});\n`,
+  );
+  const cases = kaalTestCases(dir).cases;
+  const plan = testPlanProtecting(cases, "requirement", ["r2", "r1", "r1"]);
+  assert.ok("plan" in plan, JSON.stringify(plan));
+  assert.deepEqual(
+    plan.entries.map((e) => [e.carrier, e.name, e.targets.map((t) => t.id)]),
+    [
+      [`${PLACE}/a.test.ts`, "a for r1", ["r1"]],
+      [`${PLACE}/a.test.ts`, "a for r2", ["r2"]],
+      [NEXT, "n", ["r1", "r2"]],
+    ],
+    "n is selected by r1 and r2 and is one entry",
+  );
+  assert.deepEqual(plan.carriers, [`${PLACE}/a.test.ts`, NEXT]);
+  assert.match(plan.plan, /^---\ncarriers:\n  - "change\/x\/26\/09\/30\/01\/test\/suite\/a\.test\.ts"\n/);
+  fs.writeFileSync(path.join(dir, "plan.md"), plan.plan);
+  const run = runPlan("plan.md", dir);
+  assert.deepEqual(
+    run.observations.map((o) => [o.case, o.passed]),
+    [
+      [`${PLACE}/a.test.ts`, true],
+      [NEXT, true],
+    ],
+  );
+  assert.equal(run.holds, true);
+  fs.writeFileSync(path.join(dir, "whole.md"), `---\nsuites:\n  - ${PLACE}\n---\n\nWhole Suite.\n`);
+  assert.equal(runPlan("whole.md", dir).holds, false, "collecting the whole Suite runs the stale Carrier too");
+  const sealed = [dirTree(born), dirTree(later)];
+  assert.deepEqual(testPlanProtecting(kaalTestCases(dir).cases, "requirement", ["r1", "r2"]), plan, "rebuilt exactly");
+  assert.deepEqual([dirTree(born), dirTree(later)], sealed, "no Change, Suite or Case is modified");
+});
+
+test("`test-cases.ts plan <kind> <id>...` prints the Plan file, and refuses a wrong use", () => {
+  const { dir } = supersededRepo();
+  const run = (...args: string[]) =>
+    spawnSync(
+      process.execPath,
+      ["--import", import.meta.resolve("tsx"), path.resolve("scripts/test-cases.ts"), ...args],
+      {
+        cwd: dir,
+        encoding: "utf8",
+      },
+    );
+  const printed = run("plan", "requirement", "r1", "r2");
+  assert.equal(printed.status, 0, printed.stderr);
+  const plan = testPlanProtecting(kaalTestCases(dir).cases, "requirement", ["r1", "r2"]);
+  assert.ok("plan" in plan);
+  assert.equal(printed.stdout, plan.plan);
+  for (const args of [["plan"], ["plan", "requirement"], ["plan", "nothing", "r1"]])
+    assert.equal(run(...args).status, 2, args.join(" "));
 });
