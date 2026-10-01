@@ -26,7 +26,7 @@ test("a valid Idea born in a new Change occurrence is discovered without any cen
   const before = kaalIdeas(dir);
   assert.deepEqual(before.errors, []);
   const born = birthChange({ root: path.join(dir, "change"), lineage: "hotfix-probe", occurrence: "26/10/01/01" });
-  createIdea(path.join(born, IDEA_DIR), "hotfix-probe-idea", "It could be so.");
+  createIdea(path.join(born, IDEA_DIR), "hotfix-probe-idea", "It could be so.", "Why it is worth keeping.");
   const after = kaalIdeas(dir);
   assert.deepEqual(after.errors, []);
   assert.deepEqual(after.ideas.map((r) => r.id).sort(), [...before.ideas.map((r) => r.id), "hotfix-probe-idea"].sort());
@@ -37,7 +37,7 @@ test("Ideas sit inside the Change occurrence, beside Requirements, Defects and A
   const root = path.join(dir, "change");
   const first = birthChange({ root, lineage: "x", occurrence: "26/10/01/01" });
   birthChange({ root, lineage: "x", occurrence: "26/10/01/02" });
-  createIdea(path.join(first, IDEA_DIR), "a", "It could be so.");
+  createIdea(path.join(first, IDEA_DIR), "a", "It could be so.", "Why it is worth keeping.");
   for (const kind of ["requirement", "defect", "architecture"]) {
     fs.mkdirSync(path.join(first, kind));
     fs.writeFileSync(path.join(first, kind, "r.md"), "---\nid: r\n---\n\nIt holds.\n");
@@ -60,9 +60,9 @@ test("a later Change retaining the same id is refused, and an Idea is never over
   const dirs = ["26/10/01/01", "26/10/01/02"].map((occurrence) =>
     path.join(birthChange({ root, lineage: "x", occurrence }), IDEA_DIR),
   );
-  createIdea(dirs[0], "a", "It could be so.");
-  assert.throws(() => createIdea(dirs[0], "a", "Rewritten."), /EEXIST/);
-  createIdea(dirs[1], "a", "It could be otherwise.");
+  createIdea(dirs[0], "a", "It could be so.", "Why it is worth keeping.");
+  assert.throws(() => createIdea(dirs[0], "a", "Rewritten.", "Rewritten."), /EEXIST/);
+  createIdea(dirs[1], "a", "It could be otherwise.", "Why it is worth keeping.");
   assert.match(kaalIdeas(dir).errors.join("\n"), /id "a" is already defined/);
   assert.deepEqual(resolve(kaalIdeas(dir).ideas, ["a"]).errors, ["a: no such Idea"]);
   fs.writeFileSync(path.join(root, "stray.txt"), "");

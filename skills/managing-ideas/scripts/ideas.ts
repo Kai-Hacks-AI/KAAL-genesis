@@ -3,7 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 
 /** An Idea: a possibility worth retaining without commitment, identified by a portable `id`. */
-export type Idea = { id: string; possibility: string; file: string };
+export type Idea = { id: string; idea: string; context: string; file: string };
 
 /** Windows reserves these device names as file names, with or without an extension. */
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
@@ -24,7 +24,7 @@ export function idError(id: string): string | undefined {
 }
 
 /**
- * The possibility as written, less only its framing: whole blank lines before it
+ * Text as written, less only its framing: whole blank lines before it
  * and whitespace after it. Indentation of the first line is content (a
  * Markdown code block starts with it), so it is never trimmed.
  */
@@ -32,9 +32,9 @@ export function framed(text: string): string {
   return text.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
 }
 
-/** The text of an Idea file: frontmatter holding only its id, then its possibility. */
-export function render(id: string, possibility: string): string {
-  return `---\n${YAML.stringify({ id }).trimEnd()}\n---\n\n${framed(possibility)}\n`;
+/** The text of an Idea file: frontmatter holding its id and the possibility, then the context needed to understand it. */
+export function render(id: string, idea: string, context: string): string {
+  return `---\n${YAML.stringify({ id, idea: idea.trim() }).trimEnd()}\n---\n\n${framed(context)}\n`;
 }
 
 /** Parses one Idea file, or says why it is not one. `file` is only used to name errors. */
@@ -48,14 +48,15 @@ export function parse(text: string, file: string): Idea | string {
     return `${file}: frontmatter is not valid YAML`;
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return `${file}: frontmatter must be a mapping`;
-  const id = (data as { id?: unknown }).id;
+  const { id, idea } = data as { id?: unknown; idea?: unknown };
   if (typeof id !== "string") return `${file}: id is required`;
   const error = idError(id);
   if (error) return `${file}: ${error}`;
   if (path.basename(file) !== `${id}.md`) return `${file}: file name must be ${id}.md`;
-  const possibility = framed(match[2]);
-  if (!possibility) return `${file}: an Idea must state its possibility`;
-  return { id, possibility, file };
+  if (typeof idea !== "string" || !idea.trim()) return `${file}: idea is required`;
+  const context = framed(match[2]);
+  if (!context) return `${file}: an Idea must give its context`;
+  return { id, idea: idea.trim(), context, file };
 }
 
 /**
