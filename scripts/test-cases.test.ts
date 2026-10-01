@@ -9,6 +9,7 @@ import { createRequirement } from "../skills/managing-requirements/scripts/creat
 import { testCaseId, testCasesTesting } from "../skills/testing/scripts/test-cases.js";
 import {
   carrierPlaces,
+  currentTestCasesTestingRequirement,
   kaalTestCases,
   TEST_DIR,
   testCasesTestingDefect,
@@ -244,4 +245,39 @@ test("Testing is independent of Requirements and Defects, and they of Testing", 
       [],
       other,
     );
+});
+
+test("a later Change's Test Case supersedes an earlier one: both test the Requirement, the later is current, and the earlier Change is not touched", () => {
+  const { dir, born } = repo({ "one.test.ts": tc("how", '{ requirement: ["r1"] }') });
+  const earlier = dirTree(born);
+  const later = birthChange({ root: path.join(dir, "change"), lineage: "x", occurrence: "26/09/30/02" });
+  fs.mkdirSync(path.join(later, TEST_DIR, "next"), { recursive: true });
+  fs.writeFileSync(
+    path.join(later, TEST_DIR, "next", "two.test.ts"),
+    `${IMPORT}test("how again", { tests: { requirement: ["r1"] }, supersedes: ["change/x/26/09/30/01/test/suite/one.test.ts", "how"] }, () => {});\n`,
+  );
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(errors, []);
+  const [one, two] = cases.map(testCaseId);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [one, two]);
+  assert.deepEqual(currentTestCasesTestingRequirement(cases, "r1"), [two]);
+  assert.deepEqual(dirTree(born), earlier, "the earlier Change holds exactly what it held");
+});
+
+test("a lineage that names no Test Case of any Change, or drops what the earlier tested, is refused", () => {
+  const { dir, born } = repo({ "one.test.ts": tc("how", '{ requirement: ["r1"] }') });
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "two.test.ts"),
+    `${IMPORT}test("a", { tests: { requirement: ["r2"] }, supersedes: ["change/x/26/09/30/01/test/suite/one.test.ts", "how"] }, () => {});\n` +
+      `test("b", { tests: { requirement: ["r1"] }, supersedes: ["nowhere.test.ts", "x"] }, () => {});\n`,
+  );
+  const { errors } = kaalTestCases(dir);
+  assert.ok(
+    errors.some((e) => /does not test requirement "r1"/.test(e)),
+    errors.join("\n"),
+  );
+  assert.ok(
+    errors.some((e) => /names no Test Case/.test(e)),
+    errors.join("\n"),
+  );
 });
