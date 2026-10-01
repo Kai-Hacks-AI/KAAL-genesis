@@ -1,0 +1,31 @@
+{
+  "unit": "change/adapters/26/10/01/02",
+  "previous": "87bfd5f56e295961b6b1dab0e918086be7c38abfc014d0b15839b50cf73cfa73",
+  "files": [
+    {
+      "path": "architecture/a-skill-is-independent-of-skills-extensions-and-providers.md",
+      "sha256": "73c4711ad4add1e8ef4f2a7ae34f88d1f17247d78ca18e014455c7d92d4aaa4d"
+    },
+    {
+      "path": "architecture/an-extension-holds-what-a-skill-may-not.md",
+      "sha256": "5fae24bb63e300bbc531ff390d9fa2e4f5ffa5f9633fb40660d78349968539ab"
+    },
+    {
+      "path": "architecture/bootstrap-births-kaal-and-is-not-core.md",
+      "sha256": "0bba900fa5d30d6477e17e4fff056af5c0ae3ce89aab9b53e1e06f7beb808faa"
+    },
+    {
+      "path": "architecture/core-is-the-foundation-skills-and-extensions-depend-on.md",
+      "sha256": "b54eda956136cb7b7b3447ff2be7eccd40e1b1afd56e858cb41b49b545c34ba8"
+    },
+    {
+      "path": "architecture/earlier-records-name-roles-of-an-extension.md",
+      "sha256": "37e552147d7976d8331a4b9c7304d202f269cbc2c64d578b2de9d7fe56ac9f50"
+    },
+    {
+      "path": "architecture/required-instances-are-an-extension.md",
+      "sha256": "40b51ec6dbf05561e3623cb6b925d20135ab7d113ac23f16c745decaa2bcf900"
+    }
+  ],
+  "seal": "d5893977e799f4924f430d7dc7afed6b6d3157c5128ff00fb41789669af47ba5"
+}

@@ -7,7 +7,7 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts",
+    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts extensions/*/*.test.ts",
     "genesis": "tsx scripts/genesis.ts",
     "brain:create": "tsx skills/using-brain/scripts/create-brain.ts",
     "brain:create-node": "tsx skills/using-brain/scripts/create-node.ts",
@@ -16,6 +16,7 @@
     "change:validate": "tsx skills/managing-change/scripts/validate.ts",
     "change:list": "tsx skills/managing-change/scripts/list.ts",
     "testing:run": "tsx skills/testing/scripts/run.ts",
+    "environment:run": "tsx extensions/environment/run.ts",
     "testing:evidence": "tsx skills/testing/scripts/evidence.ts",
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
