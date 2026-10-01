@@ -106,5 +106,22 @@ jobs:
         working-directory: trusted
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      # Success is withheld if the pull request changed while it was checked: it
+      # is read again immediately before publishing, and a changed draft state or
+      # base publishes pending, which the run its change queued replaces with the
+      # verdict on the current state. GitHub offers no atomic compare-and-publish
+      # for a status, so a change in the instant between this read and the
+      # publication is left to that next run; that is a limit of the platform, and
+      # the window is that instant, no longer the length of the run.
       - if: always() && github.event_name == 'pull_request_target'
-        run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=check-seals -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken, the change touches seal state or carries an unsealed Change' }}"
+        run: |
+          state="${{ job.status == 'success' && 'success' || 'failure' }}"
+          description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken, the change touches seal state or carries an unsealed Change' }}"
+          if [ "$state" = success ]; then
+            now="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '"\(.draft) \(.base.ref)"' || echo changed)"
+            if [ "$now" != "$DRAFT $BASE_REF" ]; then
+              state=pending
+              description="The pull request changed while it was checked; the next run decides"
+            fi
+          fi
+          gh api "$STATUS_URL" -f state="$state" -f context=check-seals -f target_url="$RUN_URL" -f description="$description"

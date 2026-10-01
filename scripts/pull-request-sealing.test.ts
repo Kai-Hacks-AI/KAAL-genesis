@@ -531,6 +531,15 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
   const judging = steps.findIndex((s) => /seals:(check|guard)\b|seals:pull-request/.test(s.run ?? ""));
   assert.ok(live >= 0 && live < judging);
   assert.match(steps[live].run!, /pulls\/\$PR_NUMBER.*DRAFT=.*BASE_REF=/);
+  // And success is withheld if it changed meanwhile: the state is read again immediately before
+  // the status is published, and a different draft state or base publishes pending, never success.
+  const publish = steps.at(-1)!;
+  assert.equal(publish.if, "always() && github.event_name == 'pull_request_target'");
+  assert.match(
+    publish.run!,
+    /if \[ "\$state" = success \]; then\n\s+now="\$\(gh api .*pulls\/\$PR_NUMBER.*\n\s+if \[ "\$now" != "\$DRAFT \$BASE_REF" \]; then\n\s+state=pending/,
+  );
+  assert.ok(publish.run!.indexOf("now=") < publish.run!.indexOf('gh api "$STATUS_URL"'));
   for (const s of steps) {
     assert.doesNotMatch(JSON.stringify(s.env ?? {}), /pull_request\.(draft|base)/, s.run);
     assert.doesNotMatch(s.run ?? "", /github\.(base_ref|event\.pull_request\.(draft|base))/, s.run);
