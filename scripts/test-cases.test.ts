@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import { createRequirement } from "../skills/managing-requirements/scripts/creat
 import { testCaseId, testCasesTesting } from "../skills/testing/scripts/test-cases.js";
 import {
   carrierPlaces,
+  carriersProtecting,
   currentTestCasesTestingRequirement,
   kaalTestCases,
   TEST_DIR,
@@ -281,4 +283,92 @@ test("a supersession that names no Test Case of any Change is refused, and one t
     errors.some((e) => /names no Test Case/.test(e)),
     errors.join("\n"),
   );
+});
+
+/**
+ * The shape FAR-4 meets: a Suite of earlier Carriers, a later Change whose Test Cases supersede some
+ * of them, and the earlier Suite untouched. `a` holds one Test Case for r1 and one for r2; `b` only
+ * one for r1; `c` one for r2. A later Test Case supersedes `a`'s for r1 and `b`'s, in a Carrier `n`.
+ */
+function supersededRepo(): { dir: string; born: string; later: string } {
+  const { dir, born } = repo({
+    "a.test.ts": tc("a for r1", '{ requirement: ["r1"] }') + tc("a for r2", '{ requirement: ["r2"] }'),
+    "b.test.ts": tc("b for r1", '{ requirement: ["r1"] }'),
+    "c.test.ts": tc("c for r2", '{ requirement: ["r2"] }'),
+  });
+  const later = birthChange({ root: path.join(dir, "change"), lineage: "x", occurrence: "26/09/30/02" });
+  fs.mkdirSync(path.join(later, TEST_DIR, "next"), { recursive: true });
+  fs.writeFileSync(
+    path.join(later, TEST_DIR, "next", "n.test.ts"),
+    `${IMPORT}${tc("n for r1", '{ requirement: ["r1"] }').replace(" }, ", `, supersedes: ["${PLACE}/a.test.ts", "a for r1"] }, `)}` +
+      `test("n again", { tests: { requirement: ["r1"] }, supersedes: ["${PLACE}/b.test.ts", "b for r1"] }, () => {});\n`,
+  );
+  return { dir, born, later };
+}
+const NEXT = "change/x/26/09/30/02/test/next/n.test.ts";
+
+test("the runnable Carriers of protected Requirements are those holding active Test Cases: a stale Carrier drops out, a mixed one stays", () => {
+  const { dir } = supersededRepo();
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(errors, []);
+  const scope = (kind: "requirement" | "defect", ...ids: string[]) => carriersProtecting(cases, kind, ids);
+  assert.deepEqual(scope("requirement", "r1"), { carriers: [NEXT] }, "a and b hold nothing active for r1");
+  assert.deepEqual(scope("requirement", "r2"), { carriers: [`${PLACE}/a.test.ts`, `${PLACE}/c.test.ts`] });
+  assert.deepEqual(
+    scope("requirement", "r1", "r2"),
+    { carriers: [`${PLACE}/a.test.ts`, `${PLACE}/c.test.ts`, NEXT] },
+    "a stays for the r2 it alone protects, though its Test Case for r1 is superseded; b is not needed",
+  );
+  assert.deepEqual(scope("defect", "d1"), { carriers: [] });
+  assert.deepEqual(scope("requirement"), { carriers: [] });
+});
+
+test("deriving the runnable Carriers touches no Change, Suite or Run, and rereading the repository reconstructs exactly the same answer", () => {
+  const { dir, born, later } = supersededRepo();
+  const before = [dirTree(born), dirTree(later)];
+  const ask = () => {
+    const { cases, errors } = kaalTestCases(dir);
+    assert.deepEqual(errors, []);
+    return carriersProtecting(cases, "requirement", ["r1", "r2"]);
+  };
+  const first = ask();
+  assert.deepEqual(ask(), first);
+  assert.deepEqual([dirTree(born), dirTree(later)], before);
+  assert.ok(
+    fs.existsSync(path.join(dir, PLACE, "b.test.ts")),
+    "the superseded Carrier is still there, still collected by its Suite: only the derivation leaves it out",
+  );
+});
+
+test("a refused lineage is no basis for a runnable scope", () => {
+  const { dir, born } = repo({ "a.test.ts": tc("a", '{ requirement: ["r1"] }') });
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "b.test.ts"),
+    `${IMPORT}test("b", { tests: { requirement: ["r1"] }, supersedes: ["nowhere.test.ts", "x"] }, () => {});\n`,
+  );
+  const answer = carriersProtecting(kaalTestCases(dir).cases, "requirement", ["r1"]);
+  assert.ok("errors" in answer && /names no Test Case/.test(answer.errors.join()), JSON.stringify(answer));
+});
+
+test("`test-cases.ts carriers <kind> <id>...` prints the Carriers, one path per line, and refuses a wrong use", () => {
+  const { dir } = supersededRepo();
+  const run = (...args: string[]) =>
+    spawnSync(
+      process.execPath,
+      ["--import", import.meta.resolve("tsx"), path.resolve("scripts/test-cases.ts"), ...args],
+      {
+        cwd: dir,
+        encoding: "utf8",
+      },
+    );
+  const both = run("carriers", "requirement", "r1", "r2");
+  assert.equal(both.status, 0, both.stderr);
+  assert.equal(both.stdout, `${PLACE}/a.test.ts\n${PLACE}/c.test.ts\n${NEXT}\n`);
+  assert.equal(run("carriers", "requirement", "r1").stdout, `${NEXT}\n`);
+  for (const args of [["carriers"], ["carriers", "requirement"], ["carriers", "nothing", "r1"]]) {
+    const refused = run(...args);
+    assert.equal(refused.status, 2, args.join(" "));
+    assert.match(refused.stderr, /usage:/);
+  }
+  assert.equal(run("carriers", "requirement", "nope").status, 0, "an id that names nothing is protected by nothing");
 });
