@@ -1,4 +1,10 @@
 {
+  "adapters": {
+    "units": [
+      "change/adapters/26/10/01/01"
+    ],
+    "seal": "87bfd5f56e295961b6b1dab0e918086be7c38abfc014d0b15839b50cf73cfa73"
+  },
   "bootstrap": {
     "units": [
       "change/bootstrap/26/09/30/01",
