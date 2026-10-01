@@ -1,4 +1,4 @@
-import { testCaseId, type TestCase } from "./test-cases.js";
+import { testCaseId, type TestCase, type Tests } from "./test-cases.js";
 
 /**
  * How one Test Case's HOW supersedes another's without the earlier Test Case
@@ -39,15 +39,21 @@ export function readSupersession(cases: TestCase[]): { superseder: Map<string, s
       );
     else superseder.set(earlier, id);
   }
+  // A Test Case supersedes one and is superseded by one, so a lineage is a line or a circle. A walk that
+  // ends, or reaches one that did, settles all it passed: each Test Case is walked once.
+  const settled = new Set<string>();
   for (const start of superseder.keys()) {
     const seen = new Set([start]);
-    for (let at = superseder.get(start); at !== undefined; at = superseder.get(at)) {
+    let circle = false;
+    for (let at = superseder.get(start); at !== undefined && !settled.has(at); at = superseder.get(at)) {
       if (seen.has(at)) {
         errors.push(`Test Cases ${[...seen].join(", ")} supersede one another in a circle`);
+        circle = true;
         break;
       }
       seen.add(at);
     }
+    if (!circle) for (const id of seen) settled.add(id);
   }
   return { superseder, errors: [...new Set(errors)] };
 }
@@ -73,4 +79,43 @@ export function currentTestCasesTesting(cases: TestCase[], kind: string, id: str
       return true;
     })
     .map(testCaseId);
+}
+
+/**
+ * The Carriers that hold the Test Cases, among those given, that are active
+ * for at least one of `targets`, each a `kind` and `id`: a Test Case counts
+ * when it is active for a target it tests, by the same rule as
+ * `currentTestCasesTesting`. A Carrier is selected by its active Test Cases
+ * alone, never by whether it, or any Test Case in it, has been superseded: one
+ * whose Test Case is superseded for one target but active for another stays
+ * selected, and one whose every Test Case is superseded for every target does
+ * not appear. The Carriers are paths, sorted by code unit and each once; a
+ * Test Case contains its Carrier and nothing else is inferred.
+ *
+ * It is computed from the Test Cases given and the edges they declare, so
+ * discarding the answer and asking again gives the same one, and it is a
+ * single pass over them: each lineage, a line, is walked from its latest Test
+ * Case back, remembering what the later ones test. Nothing is answered from a
+ * lineage that is refused: the errors of `readSupersession` are returned
+ * instead.
+ */
+export function carriersCurrentlyTesting(
+  cases: TestCase[],
+  targets: readonly Tests[],
+): { carriers: string[] } | { errors: string[] } {
+  const { superseder, errors } = readSupersession(cases);
+  if (errors.length) return { errors };
+  const key = ({ kind, id }: Tests) => JSON.stringify([kind, id]);
+  const wanted = new Set(targets.map(key));
+  const byId = new Map(cases.map((c) => [testCaseId(c), c]));
+  const carriers = new Set<string>();
+  for (const head of cases.filter((c) => !superseder.has(testCaseId(c)))) {
+    const later = new Set<string>();
+    for (let at: TestCase | undefined = head; at; at = at.supersedes && byId.get(testCaseId(at.supersedes))) {
+      const edges = at.tests.map(key);
+      if (edges.some((e) => wanted.has(e) && !later.has(e))) carriers.add(at.carrier);
+      for (const e of edges) later.add(e);
+    }
+  }
+  return { carriers: [...carriers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) };
 }
