@@ -1,9 +1,27 @@
 {
+  "adapters": {
+    "units": [
+      "change/adapters/26/10/01/01",
+      "change/adapters/26/10/01/02"
+    ],
+    "seal": "d5893977e799f4924f430d7dc7afed6b6d3157c5128ff00fb41789669af47ba5"
+  },
   "bootstrap": {
     "units": [
-      "change/bootstrap/26/09/30/01"
+      "change/bootstrap/26/09/30/01",
+      "change/bootstrap/26/09/30/02",
+      "change/bootstrap/26/09/30/03"
     ],
-    "seal": "caab3fbbca7ace3dba78ce76d7894befa51b60702c17ecb614c6df9255175ddd"
+    "seal": "b771b45f3372565bef6bf5a44525b7fcd2eec3821a587aa669cf5f4f7340a6dd"
+  },
+  "execution-environments": {
+    "units": [
+      "change/execution-environments/26/10/01/01",
+      "change/execution-environments/26/10/01/02",
+      "change/execution-environments/26/10/01/03",
+      "change/execution-environments/26/10/01/04"
+    ],
+    "seal": "ef3e494a1f4b3a00d7a9c27d46745a7dfada09d1fc2ea89bb6859a7515c475c5"
   },
   "far": {
     "units": [
@@ -18,6 +36,18 @@
       "change/far/26/09/30/05"
     ],
     "seal": "fe359e596d608ab2ba53e483baeec56a39aeb3f36b3e2868843a6b60aafad3e2"
+  },
+  "git-independence": {
+    "units": [
+      "change/git-independence/26/10/01/01"
+    ],
+    "seal": "197900b23cf6a73753b6b6a4fbdced9d8778722dce6f6f478e7e4f90f2a88720"
+  },
+  "github-independence": {
+    "units": [
+      "change/github-independence/26/10/01/01"
+    ],
+    "seal": "d206365b9c4825f74076c040b3deb913bf59904c5bff6157a5afa5d2058feb57"
   },
   "regression-testing": {
     "units": [

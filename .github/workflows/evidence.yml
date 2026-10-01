@@ -1,0 +1,95 @@
+# Shows that the Plan KAAL derives for linux-support and windows-support holds,
+# from two Runs that were each made where they say: one on a Linux host, one on
+# a Windows host. How KAAL tests: test/strategy.md, Instances.
+#
+# KAAL's meaning is not here. The Plan is derived by `test-cases:check -- plan`
+# from the Test Cases and the decisions of the Changes; each host makes its own
+# Run of it through the Environment Extension, which performs only the instances
+# under the environment that host is; Testing's evidence says what the Runs show
+# together. What is GitHub's is only what obtains them: a job per host, hosted
+# runners, and an artifact to carry each report to the job that reads them.
+#
+# Until KAAL derives which Requirements are protected for a change, the ids are
+# named here, as test.yml names the Regression Test Plan, a bootstrap. A host no
+# job runs on is a Run nobody made: the evidence then says the Plan is not
+# evidenced, and nothing here supplies it.
+#
+# Pull requests only. Job names are unique across all workflows and name what
+# they assert: run-<where> makes the Run observed where it executes, and
+# evidence asserts what the two show together.
+name: evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: run-${{ matrix.where }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - where: linux
+            os: ubuntu-latest
+          - where: windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      # Check out the way Git for Windows does by default, on every OS, as test.yml does.
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Derive the Plan and make this host's Run of it
+        shell: bash
+        run: |
+          npm run --silent test-cases:check -- plan requirement linux-support windows-support > .derived-plan.md
+          # The Run is incomplete by design here (exit 3): it leaves the other host's instance unrun. Only a
+          # Run that cannot be made (2, or an error) or one that does not hold (1) fails this job.
+          code=0
+          npm run --silent environment:run -- .derived-plan.md > "run-${{ matrix.where }}.txt" || code=$?
+          cat "run-${{ matrix.where }}.txt"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then exit "$code"; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: run-${{ matrix.where }}
+          path: run-${{ matrix.where }}.txt
+          if-no-files-found: error
+
+  evidence:
+    name: evidence
+    needs: run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: run-*
+      - name: What each Run shows alone, and what both show together
+        shell: bash
+        run: |
+          linux=run-linux/run-linux.txt
+          windows=run-windows/run-windows.txt
+          # Each alone must leave the Plan not evidenced: no Run pretends to satisfy the whole of it.
+          for report in "$linux" "$windows"; do
+            echo "== $report alone"
+            # Not evidenced is what it must say: a report Testing refuses is no answer either.
+            shown=$(npm run --silent testing:evidence -- "$report" || true)
+            echo "$shown"
+            if [ "$(echo "$shown" | tail -n 1)" != "not evidenced" ]; then
+              echo "::error::$report alone does not leave the Plan not evidenced"; exit 1
+            fi
+          done
+          echo "== both"
+          npm run --silent testing:evidence -- "$linux" "$windows"

@@ -86,7 +86,7 @@ export const unmet = (parameters: Parameters, conditions: Conditions): string[] 
   Object.keys(parameters).filter((name) => !Object.hasOwn(conditions, name) || conditions[name] !== parameters[name]);
 
 /** A name or a value of a parameter: non-empty, with no whitespace and none of `,`, `=`, `[` and `]`, so an identity is never ambiguous. */
-const PARAMETER = /^[^\s,=[\]]+$/;
+export const PARAMETER = /^[^\s,=[\]]+$/;
 
 /**
  * The identity of a required instance as one line: its Carrier alone when it is

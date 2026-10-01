@@ -1,4 +1,10 @@
 {
+  "architecting": {
+    "units": [
+      "architecting/26/10/01/01"
+    ],
+    "seal": "ab2b1adacd782008b7a24ee3a81c5da4ff2cfb7d2b4edc8c41406d0149e42f63"
+  },
   "change": {
     "units": [
       "change/26/09/30/01",
