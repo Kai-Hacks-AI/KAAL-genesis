@@ -1,0 +1,11 @@
+{
+  "unit": "architecting/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/architecting.md",
+      "sha256": "f63e578f445a5e588cf0865b0e1d2cd2a67d6e88946c01c61c940a83b36918cc"
+    }
+  ],
+  "seal": "ab2b1adacd782008b7a24ee3a81c5da4ff2cfb7d2b4edc8c41406d0149e42f63"
+}

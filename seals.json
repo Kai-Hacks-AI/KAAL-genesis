@@ -1,9 +1,11 @@
 {
   "bootstrap": {
     "units": [
-      "change/bootstrap/26/09/30/01"
+      "change/bootstrap/26/09/30/01",
+      "change/bootstrap/26/09/30/02",
+      "change/bootstrap/26/09/30/03"
     ],
-    "seal": "caab3fbbca7ace3dba78ce76d7894befa51b60702c17ecb614c6df9255175ddd"
+    "seal": "b771b45f3372565bef6bf5a44525b7fcd2eec3821a587aa669cf5f4f7340a6dd"
   },
   "regression-testing": {
     "units": [
