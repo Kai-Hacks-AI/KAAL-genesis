@@ -114,26 +114,33 @@ export function sealPullRequest(options: {
   return { status: "sealed", units, occurrences };
 }
 
+/** Every Change at `repo` that is not sealed, touched by the change or not. */
+export function unsealedAnywhere(repo = "."): string[] {
+  return [...changeChains(repo).values()].flat().filter((unit) => !isSealed(repo, unit));
+}
+
 /**
- * How the gate judges the change at `repo`'s HEAD. A Change the pull request
- * touches and has not sealed is refused when the pull request is ready and
- * admitted (into a flight or main), and held, never refused, while it is a draft
- * or its base is no admission. Success is therefore possible only where the
- * Changes are sealed: a verdict that holds in the strictest state cannot be made
- * wrong by the draft flag or the base changing afterwards, so `check-seals` never
- * leaves a success that a state change could turn into an unsealed admission.
- * This is the requirement; CI's sealing is how it is met where it can write.
+ * How the gate judges the change at `repo`'s HEAD. For a ready pull request into
+ * a flight or main, a Change it touches and has not sealed is refused. A draft's
+ * is held, and so is anything against a base that is no admission, never refused
+ * and never passed: a held status stays pending. What a pull request touches
+ * depends on its base, so against a base that is no admission an unsealed Change
+ * anywhere in the head holds the status, since a retarget could make it touched;
+ * success there needs every Change sealed, which holds under any base. Success is
+ * therefore published only where no change of draft state or base can make it
+ * wrong. This is the requirement; CI's sealing is how it is met where it can write.
  */
 export function gateOutcome(options: { base: string; repo?: string; draft: boolean; admitted: boolean }): {
   outcome: "pass" | "hold" | "refuse";
   errors: string[];
 } {
-  const errors = unsealedOccurrences(options.base, options.repo).map(
-    (occurrence) =>
-      `${CHANGE_ROOT}/${occurrence}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
+  const { base, repo, draft, admitted } = options;
+  const units = admitted ? unsealedOccurrences(base, repo).map((o) => `${CHANGE_ROOT}/${o}`) : unsealedAnywhere(repo);
+  const errors = units.map(
+    (unit) => `${unit}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
   );
   if (!errors.length) return { outcome: "pass", errors };
-  return { outcome: options.draft || !options.admitted ? "hold" : "refuse", errors };
+  return { outcome: draft || !admitted ? "hold" : "refuse", errors };
 }
 
 // `seal <base> [repo]` seals the pull request's Changes; `admission` names

@@ -254,6 +254,28 @@ test("an unsealed Change is refused for a ready admitted pull request and held, 
   assert.equal(gateOutcome({ base: "main", repo: plain, draft: true, admitted: false }).outcome, "pass");
 });
 
+test("against a base that is no admission, an unsealed Change anywhere in the head holds, since a retarget could make it touched", () => {
+  // A Change a head inherits from its base is not touched by the pull request into that base...
+  const repo = mainAndBranch();
+  git(repo, "checkout", "-q", "main");
+  authored(repo, "earlier", "26/10/01/01");
+  git(repo, "checkout", "-q", "kaal/work");
+  git(repo, "merge", "-q", "--no-ff", "--no-edit", "main");
+  const gate = (over: { admitted: boolean; base?: string }) =>
+    gateOutcome({ base: "main", repo, draft: false, ...over });
+  assert.deepEqual(unsealedOccurrences("main", repo), []);
+  assert.equal(gate({ admitted: true }).outcome, "pass");
+  // ...but it is unsealed, and becomes touched when the base changes to one that lacks it, so a success
+  // that depended on the current base could stand while it did not hold. Not admitted, it is held.
+  const held = gate({ admitted: false });
+  assert.equal(held.outcome, "hold");
+  assert.match(held.errors.join(), /change\/earlier\/26\/10\/01\/01: Change is not sealed/);
+  // With every Change sealed, success holds under any base.
+  sealChange(repo, "earlier/26/10/01/01");
+  commit(repo, "sealed");
+  assert.equal(gate({ admitted: false }).outcome, "pass");
+});
+
 test("CI writes seal state back only to a claude/* or kaal/* branch of this repository", () => {
   assert.equal(writebackRefusal(ORIGIN), undefined);
   assert.equal(writebackRefusal({ ...ORIGIN, headRef: "kaal/hotfix/thing" }), undefined);
