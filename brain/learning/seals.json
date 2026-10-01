@@ -1,4 +1,10 @@
 {
+  "architecting": {
+    "units": [
+      "architecting/26/10/01/01"
+    ],
+    "seal": "ab2b1adacd782008b7a24ee3a81c5da4ff2cfb7d2b4edc8c41406d0149e42f63"
+  },
   "change": {
     "units": [
       "change/26/09/30/01",
@@ -17,6 +23,12 @@
       "genesis/26/09/25/01"
     ],
     "seal": "ccbdb92d3e9ba8abcd69cb7391e4f2267ad97b324018d43500ad2a9ccb56c6f3"
+  },
+  "ideas": {
+    "units": [
+      "ideas/26/10/01/01"
+    ],
+    "seal": "f0f1913be3130310c7be03a014f9f620fd9722ed6e988b1e1ba86965714a3387"
   },
   "regression-testing": {
     "units": [
