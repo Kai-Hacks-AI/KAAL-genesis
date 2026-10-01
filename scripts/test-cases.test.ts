@@ -356,13 +356,13 @@ test("an exported require declaration, or a computed member call through node:te
     "a.test.ts": 'test("same", { tests: { requirement: ["r1"] } }, () => {});\ntest["test"]("same", () => {});\n',
   });
   fs.writeFileSync(
-    path.join(born, TEST_DIR, "suite", "b.test.cjs"),
+    path.join(born, TEST_DIR, "suite", "b.test.cts"),
     'export const require = () => helper;\nconst test = require("node:test");\ntest("c", { tests: { requirement: ["r1"] } }, () => {});\n',
   );
   const errors = kaalTestCases(dir).errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": "));
   assert.deepEqual([...errors].sort(), [
     'a.test.ts: Test Case "same" is named more than once',
-    "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (require is declared in the Carrier, so it is not trusted to be node:test)",
+    "b.test.cts: tests belongs on the options of a top-level Test Case, not on another call (require is declared in the Carrier, so it is not trusted to be node:test)",
   ]);
 });
 
@@ -379,5 +379,22 @@ test("a spread argument list or a constant-built route to node:test cannot vouch
   assert.deepEqual([...errors].sort(), [
     "a.test.ts: arguments must not be spread, since that could carry tests",
     "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (node:test is reached other than by the Carrier's own import or const require, at line 2, so it is not trusted to be node:test)",
+  ]);
+});
+
+// Review round 7 of #121: the findings as KAAL meets them.
+test("a require in an ES module, or an inherited mutator called on node:test, cannot vouch for a reference", () => {
+  const { dir, born } = repo({
+    "a.test.ts":
+      'test.__defineGetter__("only", () => helper);\ntest.only("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  });
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "b.test.mjs"),
+    'const test = require("node:test");\ntest("d", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const errors = kaalTestCases(dir).errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": "));
+  assert.deepEqual([...errors].sort(), [
+    "a.test.ts: tests belongs on the options of a top-level Test Case, not on another call (test is used other than by calling it, at line 2, so it is not trusted to be node:test)",
+    "b.test.mjs: tests belongs on the options of a top-level Test Case, not on another call (require is not defined in an ES module, so it is not trusted to be node:test)",
   ]);
 });

@@ -732,26 +732,23 @@ test("a member reached by a literal computed key is the member: duplicates throu
     parse(`test["skip"]("n", ${T}, () => {});`).cases.map((c) => c.name),
     ["n"],
   );
-  // A member known only by evaluating it could be any function node:test offers: traced Carriers refuse it, untraced are as before.
+  // A member known only by evaluating it could be any function node:test offers, or an inherited mutator: calling through one
+  // costs the name its trust, so a traced Carrier is refused and an untraced one claims nothing.
   const traced = `test("a", ${T}, () => {});\n`;
-  const unknown = "a Carrier with traced Test Cases must not call node:test through a computed member";
+  const untrusted = /not trusted to be node:test\)$/;
   for (const call of [
     'test[k]("b", () => {});',
     'test["te" + "st"]("b", () => {});',
     'test[`t${x}`]("b", () => {});',
-    'test.mock[k]("b");',
   ]) {
     const read = parse(`${traced}${call}`);
-    assert.deepEqual(
-      read.errors.map((e) => e.replace(/^[^:]+:\d+: /, "")),
-      call.startsWith("test.mock") ? [] : [unknown],
-      call,
-    );
+    assert.deepEqual(read.cases, [], call);
+    assert.equal(read.errors.length, 1, call);
+    assert.match(read.errors[0], untrusted, call);
   }
-  assert.deepEqual(parse('test("a", () => {});\ntest[k]("b", () => {});'), {
-    cases: [{ carrier: "a.test.ts", name: "a", tests: [] }],
-    errors: [],
-  });
+  assert.deepEqual(parse(`${traced}test.mock[k]("b");`).errors, []);
+  // Untraced, the untrusted name claims nothing: no Test Case is listed and nothing is refused.
+  assert.deepEqual(parse('test("a", () => {});\ntest[k]("b", () => {});'), { cases: [], errors: [] });
   // An unbound object's computed members are not node:test's.
   assert.deepEqual(parse(`${traced}other[k]("b", () => {});`).errors, []);
 });
@@ -831,4 +828,132 @@ test("a specifier built from literals, templates, + and program-level consts is 
     'require("node:" + 1);',
   ])
     assert.equal(parseTestCases(`import test from "node:test";\n${head}\n${claim}`, "a.test.ts").cases.length, 1, head);
+});
+
+// Review round 7 of #121. Each finding was reproduced first, then its class repaired.
+
+test("require is the CommonJS loader only in a Carrier whose name settles it as CommonJS, and CommonJS has no import or export", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const source = `const test = require("node:test");\ntest("claim", ${T}, () => {});`;
+  // CommonJS by name: read.
+  for (const file of ["a.test.cjs", "a.test.cts"])
+    assert.deepEqual(
+      parseTestCases(source, file).cases.map((c) => c.name),
+      ["claim"],
+      file,
+    );
+  // An ES module has no require; a .js or .ts takes its format from a package this reading is not given.
+  for (const [file, reason] of [
+    ["a.test.mjs", "require is not defined in an ES module"],
+    ["a.test.mts", "require is not defined in an ES module"],
+    [
+      "a.test.js",
+      "the module format of a .js Carrier comes from its package and require is not known to be the CommonJS loader",
+    ],
+    [
+      "a.test.ts",
+      "the module format of a .ts Carrier comes from its package and require is not known to be the CommonJS loader",
+    ],
+  ]) {
+    const read = parseTestCases(source, file);
+    assert.deepEqual(read.cases, [], file);
+    assert.equal(read.errors.length, 1, file);
+    assert.ok(
+      read.errors[0].endsWith(` (${reason}, so it is not trusted to be node:test)`),
+      `${file}: ${read.errors[0]}`,
+    );
+  }
+  // Untraced, an untrusted require claims nothing.
+  assert.deepEqual(parseTestCases('const test = require("node:test");\ntest("n", () => {});', "a.test.mjs"), {
+    cases: [],
+    errors: [],
+  });
+  // An ES import needs no loader, in any format that has imports.
+  for (const file of ["a.test.mjs", "a.test.mts", "a.test.js", "a.test.ts", "a.test.cts"])
+    assert.equal(
+      parseTestCases(`import test from "node:test";\ntest("claim", ${T}, () => {});`, file).cases.length,
+      1,
+      file,
+    );
+  // A .cjs has no import or export declarations: it throws before registering anything.
+  for (const head of [
+    'import test from "node:test";',
+    'import "node:test";',
+    "export const x = 1;",
+    "export default 1;",
+    'export * from "node:fs";',
+  ])
+    assert.deepEqual(parseTestCases(`${head}\ntest("claim", ${T}, () => {});`, "a.test.cjs"), {
+      cases: [],
+      errors: ["a.test.cjs:1: ES module syntax in a CommonJS Carrier"],
+    });
+});
+
+test("calling through a name of node:test is a use only through members node:test offers there: an inherited member could be a mutator", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const claim = `test.only("claim", ${T}, () => {});`;
+  const untrusted =
+    / \((test|it|describe|skip|nt) is used other than by calling it, at line \d+, so it is not trusted to be node:test\)$/;
+  const mutating = [
+    'test.__defineGetter__("only", () => helper);',
+    'test.__defineSetter__("only", helper);',
+    'test.test.__defineGetter__("only", () => helper);',
+    'test.it.__defineGetter__("only", () => helper);',
+    'test["__defineGetter__"]("only", () => helper);',
+    'test?.["__defineGetter__"]("only", () => helper);',
+    'test[k]("only", () => helper);',
+    'test.constructor.defineProperty(test, "only", {});',
+    'test.hasOwnProperty("only");',
+    'test.call(null, "n", () => {});',
+    'test.bind(null)("n");',
+    'test.only.call(null, "n", () => {});',
+    'test.skip.__defineGetter__("x", () => 1);',
+    'test.describe.__defineGetter__("skip", () => helper);',
+    'test.describe.skip.call(null, "n");',
+    "test.toString();",
+    'it.__defineGetter__("only", () => helper);',
+    'describe.__defineGetter__("skip", () => helper);',
+    'skip.call(null, "n");',
+    'nt.test.__defineGetter__("only", () => helper);',
+    'nt.__defineGetter__("test", () => helper);',
+    'nt.default.__defineGetter__("only", () => helper);',
+  ];
+  for (const use of mutating) {
+    const read = parse(
+      `import { it, describe, skip } from "node:test";\nimport * as nt from "node:test";\n${use}\n${claim}`,
+    );
+    assert.deepEqual(read.cases, [], use);
+    assert.equal(read.errors.length, 1, use);
+    assert.match(read.errors[0], untrusted, use);
+  }
+  // Members node:test offers are how a Carrier uses it, however deep: tests, contexts, modifiers, hooks, the mock tracker, the runner.
+  for (const fine of [
+    'test("a", () => {});',
+    'test.test("a", () => {});',
+    'test.it.skip("a", () => {});',
+    'test.describe("s", () => { test.it("i", () => {}); });',
+    'test.describe.skip("s", () => {});',
+    'test.suite.only("s", () => {});',
+    "test.after(() => {});",
+    "test.before(() => {});",
+    "test.afterEach(() => {});",
+    "test.beforeEach(() => {});",
+    'test.mock.method(console, "log");',
+    "test.mock.fn().mock.calls.length;",
+    "test.mock.timers.enable();",
+    'test.snapshot.setResolveSnapshotPath(() => "x");',
+    "test.run({ files: [] });",
+    "test.assert.ok(true);",
+    'test.expectFailure("n", () => {});',
+    'test["test"]("a", () => {});',
+    'nt.default.skip("a", () => {});',
+    'nt.test.todo("a", () => {});',
+    'nt.mock.method(console, "log");',
+    "nt.after(() => {});",
+  ])
+    assert.deepEqual(
+      parse(`import { it } from "node:test";\nimport * as nt from "node:test";\n${fine}\n${claim}`).errors,
+      [],
+      fine,
+    );
 });

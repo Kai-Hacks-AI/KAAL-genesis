@@ -278,30 +278,84 @@ function isDeclaration(path: Step[]): boolean {
   );
 }
 
-/** Whether the identifier at the end of `path` is only called, or the root of a chain of members that is: `f(...)`, `f.g.h(...)`. */
-function isCallRoot(path: Step[]): boolean {
+/** Where a chain of members stands among what `node:test` offers: its module, `test` or `it`; a test or a context to call; a part that is not a test function. */
+type At = "module" | "test" | "context" | "other" | "free";
+
+/** Where a name bound to `node:test` starts. */
+const START: Record<Binding, At> = {
+  module: "module",
+  test: "module",
+  it: "module",
+  skip: "test",
+  only: "test",
+  todo: "test",
+  expectFailure: "test",
+  describe: "context",
+  suite: "context",
+};
+
+/**
+ * Where `member` leads from `from`, by what `node:test` offers, or nothing if
+ * it offers no such member there. The module, `test` and `it` offer the same
+ * members; a context offers its modifiers; a test or context to call offers
+ * none, and any member such as one inherited from `Function` or `Object` is
+ * not `node:test`'s. Past a part that is not a test function (`mock`, `after`,
+ * `assert`), nothing more is asked of the members.
+ */
+function next(from: At, member: string): At | undefined {
+  if (from === "free") return "free";
+  if (from === "context") return MODIFIERS.has(member) ? "other" : undefined;
+  if (from !== "module") return undefined;
+  if (member === "test" || member === "it" || member === "default") return "module";
+  if (member === "describe" || member === "suite") return "context";
+  if (MODIFIERS.has(member)) return "test";
+  return (NODE_TEST.ignored as readonly string[]).includes(member) ? "free" : undefined;
+}
+
+/** Whether the members of a chain from `binding` are all ones `node:test` offers there, so calling through it cannot be a mutator it merely inherits. */
+function offered(binding: Binding, chain: (string | undefined)[]): boolean {
+  let at: At | undefined = START[binding];
+  for (const member of chain) {
+    if (at === "free") return true;
+    at = member === undefined ? undefined : next(at, member);
+    if (!at) return false;
+  }
+  return true;
+}
+
+/**
+ * The members of the chain the identifier at the end of `path` is the root of,
+ * if the chain is only called: `f(...)` is `[]`, `f.g.h(...)` is `["g", "h"]`,
+ * a computed member that is not a literal is `undefined`. Nothing if it is not
+ * called.
+ */
+function calledChain(path: Step[]): (string | undefined)[] | undefined {
+  const chain: (string | undefined)[] = [];
   let i = path.length - 1;
   while (
     i >= 0 &&
     (path[i].node.type === "MemberExpression" || path[i].node.type === "OptionalMemberExpression") &&
     path[i].key === "object"
-  )
+  ) {
+    const member = path[i].node;
+    chain.push(member.computed ? literal(member.property) : nameOf(member.property));
     i--;
-  return (
+  }
+  const called =
     i >= 0 &&
     (path[i].node.type === "CallExpression" || path[i].node.type === "OptionalCallExpression") &&
-    path[i].key === "callee"
-  );
+    path[i].key === "callee";
+  return called ? chain : undefined;
 }
 
 /**
  * Where each of `names` is first used in some way other than being called, or
- * having a member of it called: written to, a member of it written to or
+ * having a member of it that `node:test` offers called: written to, a member of it written to or
  * deleted, passed, aliased, returned, re-exported, or read. Such a use could
  * change what the name is at a later call, which static reading cannot follow,
  * so a name used so is not trusted to be what `node:test` offers.
  */
-function usedOtherwise(program: Node, names: Set<string>): Map<string, number> {
+function usedOtherwise(program: Node, names: Set<string>, bound: Map<string, Binding>): Map<string, number> {
   const found = new Map<string, number>();
   const visit = (node: Node, path: Step[]) => {
     if (
@@ -309,10 +363,15 @@ function usedOtherwise(program: Node, names: Set<string>): Map<string, number> {
       names.has(node.name as string) &&
       path.length &&
       !onlyNames(path) &&
-      !isDeclaration(path) &&
-      !isCallRoot(path)
-    )
-      if (!found.has(node.name as string)) found.set(node.name as string, at(node));
+      !isDeclaration(path)
+    ) {
+      // Called, or a member of it called, through members `node:test` offers; any other member could be one it
+      // merely inherits, such as `__defineGetter__`, which can change what a later call is.
+      const chain = calledChain(path);
+      const binding = bound.get(node.name as string);
+      const ok = chain !== undefined && (binding === undefined || offered(binding, chain));
+      if (!ok && !found.has(node.name as string)) found.set(node.name as string, at(node));
+    }
     for (const [key, value] of Object.entries(node))
       for (const child of nodes(value)) visit(child, [...path, { node, key }]);
   };
@@ -386,6 +445,14 @@ function otherRoute(program: Node, recognized: Set<Node>): number | undefined {
 }
 
 /**
+ * A Carrier's module format as its name settles it: `.cjs` and `.cts` are
+ * CommonJS, `.mjs` and `.mts` are ES modules, and `.js` and `.ts` take theirs
+ * from the nearest package, which reading the Carrier is not given.
+ */
+const format = (file: string): "cjs" | "esm" | "package" =>
+  /\.c[jt]s$/.test(file) ? "cjs" : /\.m[jt]s$/.test(file) ? "esm" : "package";
+
+/**
  * The names `node:test` is bound to that the Carrier can be trusted to leave
  * as Node defines them, and the reason for each that cannot. The Carrier is
  * trusted only for what its own source shows: a name it uses other than by
@@ -397,7 +464,10 @@ function otherRoute(program: Node, recognized: Set<Node>): number | undefined {
  * tracked, so a local name shadowing one of these and used otherwise than by
  * calling it also costs the trust, which only ever refuses more.
  */
-function trusted(program: Node): {
+function trusted(
+  program: Node,
+  file: string,
+): {
   bound: Map<string, Binding>;
   dropped: Map<string, string>;
   declared: Map<string, { index: number; line: number }>;
@@ -406,7 +476,7 @@ function trusted(program: Node): {
   const dropped = new Map<string, string>();
   const names = new Set(bound.keys());
   if (viaRequire.size) names.add("require");
-  const used = usedOtherwise(program, names);
+  const used = usedOtherwise(program, names, bound);
   const route = otherRoute(program, recognized);
   // Every name of `node:test` reaches the same functions and members, so what is said of one is said of all.
   const [first] = [...used].filter(([name]) => name !== "require");
@@ -420,11 +490,18 @@ function trusted(program: Node): {
       dropped.set(name, reason);
       bound.delete(name);
     }
-  const why = used.has("require")
-    ? `require is used other than by calling it, at line ${used.get("require")}`
-    : declares(program, "require")
-      ? "require is declared in the Carrier"
-      : undefined;
+  // `require` is the CommonJS loader only in a CommonJS Carrier; an ES module has none.
+  const kind = format(file);
+  const why =
+    kind === "esm"
+      ? "require is not defined in an ES module"
+      : kind === "package"
+        ? `the module format of a ${file.slice(file.lastIndexOf("."))} Carrier comes from its package and require is not known to be the CommonJS loader`
+        : used.has("require")
+          ? `require is used other than by calling it, at line ${used.get("require")}`
+          : declares(program, "require")
+            ? "require is declared in the Carrier"
+            : undefined;
   if (why)
     for (const name of viaRequire) {
       dropped.set(name, why);
@@ -441,10 +518,11 @@ function trusted(program: Node): {
  * context (`describe`, `suite`, their `skip`, `only` and `todo`, and a
  * `t.test(...)` subtest), nothing for any other call. A chain is followed
  * member by member through what `node:test` offers, and is nothing where it
- * leaves it; a member computed from an expression is `unknown`, since which
- * function it names is not known without evaluating it.
+ * leaves it; a member computed from an expression is nothing, since which
+ * function it names is not known without evaluating it, and calling through
+ * one costs the name its trust (see `usedOtherwise`).
  */
-function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | "unknown" | undefined {
+function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | undefined {
   // Each member of the chain by name; a computed one that is a literal names its member just as a dot does.
   const chain: (string | undefined)[] = [];
   let root: unknown = callee;
@@ -457,37 +535,12 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
   const last = chain[chain.length - 1];
   // Unbound, a chain ending in a `node:test` name is a subtest or nested suite opened through some context, such as `t.test(...)`.
   if (binding === undefined) return last !== undefined && EXPORTS.has(last) ? "other" : undefined;
-  // Where the chain stands: at the module, `test` or `it` (which offer the same members); at a test to call; at a context; at one to call.
-  type At = "module" | "test" | "context" | "other";
-  const start: Record<Binding, At> = {
-    module: "module",
-    test: "module",
-    it: "module",
-    skip: "test",
-    only: "test",
-    todo: "test",
-    expectFailure: "test",
-    describe: "context",
-    suite: "context",
-  };
-  const step = (from: At, member: string): At | undefined =>
-    from === "module"
-      ? member === "test" || member === "it"
-        ? "module"
-        : member === "describe" || member === "suite"
-          ? "context"
-          : MODIFIERS.has(member)
-            ? "test"
-            : undefined
-      : from === "context" && MODIFIERS.has(member)
-        ? "other"
-        : undefined;
-  let at: At | undefined = start[binding];
+  let at: At | undefined = START[binding];
   for (const member of chain) {
-    // A member known only by evaluating it could be any function `node:test` offers.
-    if (member === undefined) return "unknown";
-    at = step(at, member);
-    if (!at) return undefined;
+    // A member known only by evaluating it names no function `node:test` offers that can be told from another.
+    if (member === undefined) return undefined;
+    at = next(at, member);
+    if (!at || at === "free") return undefined;
   }
   return at === "module" || at === "test" ? "test" : "other";
 }
@@ -613,7 +666,16 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   } catch (e) {
     return { cases: [], errors: [`${file}: unparseable carrier (${e instanceof Error ? e.message : String(e)})`] };
   }
-  const { bound, dropped, declared } = trusted(program);
+  // CommonJS has no `import` or `export` declarations: a `.cjs` Carrier with one throws before registering anything.
+  if (/\.cjs$/.test(file)) {
+    const esm = nodes(program.body).find((n) =>
+      ["ImportDeclaration", "ExportNamedDeclaration", "ExportDefaultDeclaration", "ExportAllDeclaration"].includes(
+        n.type,
+      ),
+    );
+    if (esm) return { cases: [], errors: [`${file}:${at(esm)}: ES module syntax in a CommonJS Carrier`] };
+  }
+  const { bound, dropped, declared } = trusted(program, file);
   /** Why a top-level call was not recognized: it runs before the declaration that binds its callee. */
   const early = new Map<Node, string>();
   const errors: string[] = [];
@@ -622,15 +684,9 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   const found: { name: string; tests: Tests[]; annotated: boolean; line: number }[] = [];
   /** Top-level tests whose name Node reports by what they are, not by a literal: known only by running them. */
   const unresolved: number[] = [];
-  /** Top-level calls through `node:test` by a member known only by evaluating it: which function runs is not known. */
-  const unclassified: number[] = [];
   for (const [index, statement] of nodes(program.body).entries()) {
     let call: unknown = statement.type === "ExpressionStatement" ? statement.expression : undefined;
     while (isNode(call) && call.type === "AwaitExpression") call = call.argument;
-    if (isNode(call) && call.type !== "NewExpression" && isCall(call) && role(call.callee, bound) === "unknown") {
-      unclassified.push(at(call));
-      continue;
-    }
     if (!isNode(call) || call.type === "NewExpression" || !isCall(call) || role(call.callee, bound) !== "test")
       continue;
     const where_ = declared.get(rootName(call.callee) ?? "");
@@ -674,11 +730,6 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   }
   // Node reports a test without a literal, non-empty name as its function's name or `<anonymous>`, so such a
   // name could be any other's: traced Test Cases need every top-level test named, or their identity is not known.
-  if (found.some((f) => f.annotated))
-    for (const line of unclassified)
-      errors.push(
-        `${file}:${line}: a Carrier with traced Test Cases must not call node:test through a computed member`,
-      );
   if (found.some((f) => f.annotated))
     for (const line of unresolved)
       errors.push(
