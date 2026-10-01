@@ -287,3 +287,25 @@ test("reverse lookup prints one identity per line, each naming its carrier and n
     ],
   );
 });
+
+// Review round 2 of #121: the findings as KAAL meets them.
+test("an optional call is validated, and a reassigned binding or a template key cannot make a reference vanish", () => {
+  const { dir, born } = repo({
+    "a.test.ts": 'test?.("opt", { tests: { requirement: ["missing"] } }, () => {});\n',
+    "c.test.ts":
+      'function register() { test("n", { [`tests`]: { requirement: ["missing"] } }, () => {}); }\nregister();\n',
+  });
+  // Written without the import the helper adds, since a CommonJS binding is the point.
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "b.test.cjs"),
+    'let test = require("node:test");\ntest = helper;\ntest("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const errors = kaalTestCases(dir).errors.map((e) =>
+    e.replace(/^.*\/(\w\.test\.\w+):\d+: /, "$1: ").replace(`${PLACE}/`, ""),
+  );
+  assert.deepEqual([...errors].sort(), [
+    'a.test.ts: "opt" tests requirement "missing", which names no requirement',
+    "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call",
+    "c.test.ts: options must not compute keys, since that could carry tests",
+  ]);
+});

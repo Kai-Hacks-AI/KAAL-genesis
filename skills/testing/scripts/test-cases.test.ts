@@ -380,3 +380,78 @@ test("a Test Case's identity is one line, whatever its name holds, and names its
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(ids.join("\n").split("\n").length, names.length);
 });
+
+// Review round 2 of #121. Each finding was reproduced first, then its class repaired.
+
+test("an optional call or member of node:test defines a Test Case like the plain one, and one nested or applied by new is refused", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  for (const call of ["test?.(", "test?.skip(", "test.skip?.(", "test?.only?.(", "await test?.("])
+    assert.deepEqual(
+      parse(`${call}"n", ${T}, () => {});`).cases.map((c) => c.name),
+      ["n"],
+      call,
+    );
+  const moved = ["tests belongs on the options of a top-level Test Case, not on another call"];
+  assert.deepEqual(refused(`function r() { test?.("n", ${T}, () => {}); }`), moved);
+  assert.deepEqual(refused(`new test("n", ${T}, () => {});`), moved);
+  assert.deepEqual(refused(`(0, test)("n", ${T}, () => {});`), moved);
+  assert.deepEqual(refused(`test("p", async (t) => { await t?.test("n", ${T}, () => {}); });`), moved);
+});
+
+test("a key is the name its syntax gives it: literal and template keys, computed or not, cannot hide tests", () => {
+  const nested = (key: string) => refused(`function r() { test("n", { ${key}: { requirement: ["r"] } }, () => {}); }`);
+  const computed = ["options must not compute keys, since that could carry tests"];
+  assert.deepEqual(nested("[`tests`]"), computed);
+  assert.deepEqual(nested('["tests"]'), computed);
+  assert.deepEqual(nested("['tests']"), computed);
+  assert.deepEqual(nested("[tests]"), computed);
+  assert.deepEqual(nested('"tests"'), ["tests belongs on the options of a top-level Test Case, not on another call"]);
+  // Unregistered calls are read by syntax alone: a literal or template key is the name, any other expression is not evaluated.
+  const other = (key: string) => refused(`helper({ ${key}: 1 });`);
+  assert.deepEqual(other("[`tests`]"), ["tests belongs on the options of a top-level Test Case, not on another call"]);
+  assert.deepEqual(other('["tests"]'), ["tests belongs on the options of a top-level Test Case, not on another call"]);
+  assert.deepEqual(other("[k]"), []);
+  assert.deepEqual(other('["te" + "sts"]'), []);
+  assert.deepEqual(other("[`te${k}`]"), []);
+  // A call that registers a test never hides a key behind an expression, evaluated or not.
+  assert.deepEqual(nested('["te" + "sts"]'), computed);
+  assert.deepEqual(refused('test("n", { ["te" + "sts"]: 1 }, () => {});'), computed);
+  assert.deepEqual(refused('test("p", async (t) => { await t.test("n", { ...o }, () => {}); });'), [
+    "options must not spread, since that could carry tests",
+  ]);
+});
+
+test("only a const binding of node:test is trusted: a let, a var, or a reassigned name is not a Test Case and is refused", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const moved = ["tests belongs on the options of a top-level Test Case, not on another call"];
+  const cjs = (source: string) => parseTestCases(source, "a.test.cjs");
+  const names = (source: string) => cjs(source).cases.map((c) => c.name);
+  assert.deepEqual(names(`const test = require("node:test");\ntest("n", ${T}, () => {});`), ["n"]);
+  assert.deepEqual(
+    names(`const { test, skip: s } = require("node:test");\ntest("n", ${T}, () => {});\ns("m", ${T}, () => {});`),
+    ["n", "m"],
+  );
+  for (const head of [
+    'let test = require("node:test");\ntest = helper;',
+    'let test = require("node:test");\nfunction swap() { test = helper; }\nswap();',
+    'var test = require("node:test");\nvar test = helper;',
+    'var test = require("node:test");',
+    'let test = require("node:test");',
+    'let { test } = require("node:test");',
+  ]) {
+    const read = cjs(`${head}\ntest("n", ${T}, () => {});`);
+    assert.deepEqual(read.cases, [], head);
+    assert.deepEqual(
+      read.errors.map((e) => e.replace(/^[^:]+:\d+: /, "")),
+      moved,
+      head,
+    );
+  }
+  // Untraced, an untrusted binding claims nothing and is not an error.
+  assert.deepEqual(cjs('let test = require("node:test");\ntest("n", () => {});'), { cases: [], errors: [] });
+  // An ES import is immutable, so it is always trusted.
+  assert.deepEqual(
+    parse(`test("n", ${T}, () => {});`).cases.map((c) => c.name),
+    ["n"],
+  );
+});

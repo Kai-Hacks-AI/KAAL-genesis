@@ -24,6 +24,10 @@ export const testCaseId = (tc: Pick<TestCase, "carrier" | "name">): string =>
     (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
   );
 
+/** A call by its syntax: `f(...)`, `f?.(...)`, or `new f(...)`: every node that applies a callee to arguments. */
+const isCall = (node: Node): boolean =>
+  node.type === "CallExpression" || node.type === "OptionalCallExpression" || node.type === "NewExpression";
+
 /** The syntax tree, as far as the reader looks at it: nodes are objects with a `type`. */
 type Node = { type: string; loc?: { start: { line: number } } | null; [key: string]: unknown };
 const isNode = (value: unknown): value is Node =>
@@ -89,7 +93,8 @@ function bindings(program: Node): Map<string, Binding> {
     ) {
       const local = nameOf(statement.id);
       if (local) bound.set(local, "module");
-    } else if (statement.type === "VariableDeclaration") {
+    } else if (statement.type === "VariableDeclaration" && statement.kind === "const") {
+      // Only a `const` binding is trusted: a `let` or `var` can be written to later, so what it names at a call is not known.
       for (const d of nodes(statement.declarations)) {
         const init = d.init;
         if (
@@ -126,7 +131,7 @@ function bindings(program: Node): Map<string, Binding> {
 function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | undefined {
   const chain: string[] = [];
   let root: unknown = callee;
-  while (isNode(root) && root.type === "MemberExpression") {
+  while (isNode(root) && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression")) {
     const property = root.computed ? undefined : nameOf(root.property);
     if (property === undefined) return undefined;
     chain.unshift(property);
@@ -168,13 +173,27 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
   return at === "module" || at === "test" ? "test" : "other";
 }
 
-/** The member of an options object, or of any object literal, that is a plain property named `tests`. */
-const isTests = (member: Node): boolean =>
-  member.type === "ObjectProperty" && !member.computed && nameOf(member.key) === "tests";
+/**
+ * The name a member of an object literal has by its syntax alone: an
+ * identifier, a string or number literal, or a computed key that is itself one
+ * of the literals or a template without substitutions. A computed key built
+ * from any other expression has none without evaluating it.
+ */
+function staticKey(member: Node): string | undefined {
+  const key = member.key;
+  if (!isNode(key)) return undefined;
+  if (!member.computed && key.type === "Identifier") return key.name as string;
+  if (key.type === "NumericLiteral") return String(key.value);
+  return literal(key);
+}
 
-/** Whether any member of the object literal is named `tests`, however it is written: property, method, accessor, computed or not. */
+/** The member of an options object that is a plain property named `tests`. */
+const isTests = (member: Node): boolean =>
+  member.type === "ObjectProperty" && !member.computed && staticKey(member) === "tests";
+
+/** Whether any member of the object literal is named `tests` by its syntax, however it is written: property, method, accessor, computed or not. */
 const mentionsTests = (object: Node): boolean =>
-  nodes(object.properties).some((m) => m.type !== "SpreadElement" && nameOf(m.key) === "tests");
+  nodes(object.properties).some((m) => m.type !== "SpreadElement" && staticKey(m) === "tests");
 
 /**
  * Why an options object cannot be read for `tests`, or the one plain property
@@ -190,7 +209,7 @@ function optionsTests(options: Node): { property?: Node; error?: string } {
     if (member.type !== "ObjectProperty" && member.type !== "ObjectMethod")
       return { error: "options hold a member this skill does not read, which could carry tests" };
     if (member.computed) return { error: "options must not compute keys, since that could carry tests" };
-    if (member.type === "ObjectMethod" && nameOf(member.key) === "tests")
+    if (member.type === "ObjectMethod" && staticKey(member) === "tests")
       return { error: "tests must be a plain property, not a method or accessor" };
     if (isTests(member)) {
       if (property) return { error: "tests is stated twice" };
@@ -277,7 +296,8 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   for (const statement of nodes(program.body)) {
     let call: unknown = statement.type === "ExpressionStatement" ? statement.expression : undefined;
     while (isNode(call) && call.type === "AwaitExpression") call = call.argument;
-    if (!isNode(call) || call.type !== "CallExpression" || role(call.callee, bound) !== "test") continue;
+    if (!isNode(call) || call.type === "NewExpression" || !isCall(call) || role(call.callee, bound) !== "test")
+      continue;
     const args = nodes(call.arguments);
     const where = `${file}:${at(call)}`;
     // Options are the second argument, before the function; with a third they must be a literal object.
@@ -314,16 +334,23 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
       errors.push(
         `${file}:${line}: a Carrier with traced Test Cases must give every top-level test a literal, non-empty name`,
       );
-  // Any other call that states `tests` in an object literal is not a Test Case, however it is written.
+  // No other call states `tests`, however it is written. One that registers a test (`role`), anywhere, must also
+  // not hide it in its options; any other is read by syntax alone, so a key computed from an expression is not evaluated.
   (function walk(node: Node) {
     for (const value of Object.values(node))
       for (const child of nodes(value)) {
-        if (child.type === "CallExpression")
-          for (const arg of nodes(child.arguments))
-            if (arg.type === "ObjectExpression" && mentionsTests(arg) && !(top.has(child) && top.get(child) === arg))
+        if (isCall(child)) {
+          const registers = role(child.callee, bound) !== undefined;
+          for (const arg of nodes(child.arguments)) {
+            if (arg.type !== "ObjectExpression" || (top.has(child) && top.get(child) === arg)) continue;
+            const hidden = registers ? optionsTests(arg).error : undefined;
+            if (hidden) errors.push(`${file}:${at(child)}: ${hidden}`);
+            else if (mentionsTests(arg))
               errors.push(
                 `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call`,
               );
+          }
+        }
         walk(child);
       }
   })(program);
