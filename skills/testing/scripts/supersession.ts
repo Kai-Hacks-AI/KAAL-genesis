@@ -82,7 +82,7 @@ export function currentTestCasesTesting(cases: TestCase[], kind: string, id: str
 }
 
 /**
- * One Test Case of a Test Plan, once, and the `targets` it is active for: the
+ * One active Test Case, once, and the `targets` it is active for: the
  * protected identities that select it. Whatever is relevant to its execution
  * for them is keyed by these, not by the Test Case.
  */
@@ -91,8 +91,7 @@ export type PlanEntry = { carrier: string; name: string; targets: Tests[] };
 /**
  * The Test Cases, among those given, that are active for at least one of
  * `targets`, each a `kind` and `id`, each once whatever number of targets
- * select it, with the targets it is active for: the Test Cases of a Test Plan
- * for the protection `targets` state. Activity is `currentTestCasesTesting`'s
+ * select it, with the targets it is active for. Activity is `currentTestCasesTesting`'s
  * rule, per edge. The entries are sorted by carrier and name, and the targets
  * of each by kind and id, by code unit. The answer is computed from the Test
  * Cases given and the edges they declare, never stored, so discarding it and

@@ -277,7 +277,7 @@ const entries = (cases: TestCase[], ...targets: { kind: string; id: string }[]) 
   return answer.entries.map((e) => [e.carrier, e.name, e.targets.map((t) => t.id)]);
 };
 
-test("a Test Case selected by several protected identities is one entry of the Test Plan, carrying them all", () => {
+test("a Test Case selected by several protected identities is one entry, carrying them all", () => {
   const one = tc("one.test.ts", "tc1", undefined, '{ requirement: ["r1", "r2"] }');
   const two = tc("two.test.ts", "tc2", undefined, '{ requirement: ["r3"] }');
   const r = (id: string) => target("requirement", id);
@@ -309,7 +309,7 @@ test("the entries are the active Test Cases per target: a superseded one stays f
   }
 });
 
-test("the Test Plan is derived: the same whatever the order, rebuilt exactly from the sources, refusing a refused lineage", () => {
+test("the entries are derived: the same whatever the order, rebuilt exactly from the sources, refusing a refused lineage", () => {
   const cases = [
     tc("b.test.ts", "two", undefined, '{ requirement: ["r2"] }'),
     tc("b.test.ts", "one", undefined, '{ requirement: ["r1", "r2"] }'),
@@ -329,7 +329,7 @@ test("the Test Plan is derived: the same whatever the order, rebuilt exactly fro
   assert.deepEqual(testCasesProtecting([gone], t), { errors: readSupersession([gone]).errors });
 });
 
-test("the Test Plan is one pass: a long lineage, and many Test Cases, finish at once", () => {
+test("the entries are one pass: a long lineage, and many Test Cases, finish at once", () => {
   const long: TestCase[] = [];
   for (let i = 0; i < 20000; i++)
     long.push(tc(`c${i}.test.ts`, "t", i ? [`c${i - 1}.test.ts`, "t"] : undefined, `{ requirement: ["r${i % 3}"] }`));
