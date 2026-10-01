@@ -1,10 +1,18 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { kaalInstanceRequirements, kaalTestCases, testPlanProtecting } from "../../scripts/test-cases.js";
-import { instanceId, observeConditions, unmet, verdict } from "../../skills/testing/scripts/testing.js";
+import {
+  instanceId,
+  observeConditions,
+  planEvidence,
+  readReport,
+  unmet,
+  verdict,
+} from "../../skills/testing/scripts/testing.js";
 import {
   ENVIRONMENT,
   environmentConditions,
@@ -94,4 +102,35 @@ test("the provider's spelling and the environment stop at the Extension: Testing
   assert.doesNotMatch(fs.readFileSync(CORE, "utf8"), /process\.platform|win32/);
   const imports = [...extension.matchAll(/from\s*"(\.[^"]*)"/g)].map((m) => m[1]);
   assert.deepEqual(imports, ["../../skills/testing/scripts/testing.js"]);
+});
+
+test("the Run its entry point makes of the derived Plan is a report Testing reads: this host's instance performed, the other unrun, and alone it evidences nothing", () => {
+  const { cases } = kaalTestCases();
+  const plan = testPlanProtecting(
+    cases,
+    "requirement",
+    ["linux-support", "windows-support"],
+    kaalInstanceRequirements().required,
+  );
+  assert.ok(!("errors" in plan));
+  const dir = fs.mkdtempSync(path.join(".", ".environment-run-"));
+  try {
+    const file = path.join(dir, "plan.md").split(path.sep).join("/");
+    fs.writeFileSync(file, plan.plan);
+    const run = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "extensions/environment/run.ts", file], {
+      encoding: "utf8",
+    });
+    // Incomplete, never 0: this Run is of one environment and the Plan requires two.
+    assert.equal(run.status, 3, run.stderr);
+    const read = readReport(run.stdout);
+    assert.deepEqual(read.errors, []);
+    const mine = HOST ? [`${CORE}[environment=${HOST}]`] : [];
+    assert.deepEqual(read.outcomes?.passed, mine);
+    assert.deepEqual(read.outcomes?.failed, []);
+    assert.equal(read.outcomes?.unrun.length, 2 - mine.length);
+    const alone = planEvidence([read.outcomes!]);
+    assert.equal(alone.evidence?.evidenced, false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
 });
