@@ -530,14 +530,21 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
   const live = steps.findIndex((s) => s.id === "live");
   const judging = steps.findIndex((s) => /seals:(check|guard)\b|seals:pull-request/.test(s.run ?? ""));
   assert.ok(live >= 0 && live < judging);
-  assert.match(steps[live].run!, /pulls\/\$PR_NUMBER.*DRAFT=.*BASE_REF=/);
+  assert.match(steps[live].run!, /pulls\/\$PR_NUMBER.*DRAFT=.*BASE_REF=.*HEAD_SHA=/);
   // And success is withheld if it changed meanwhile: the state is read again immediately before
   // the status is published, and a different draft state or base publishes pending, never success.
+  // The verdict is for one head: a stale event judges nothing, and what was checked out is the
+  // merge of exactly that head, so a force-pushed head cannot be judged through another's merge.
+  assert.ok(steps.some((s) => s.run === 'test "$HEAD_SHA" = "$EVENT_SHA"'));
+  const bound = steps.findIndex((s) => s.run === 'test "$(git rev-parse HEAD^2)" = "$EVENT_SHA"');
+  const checkoutChange = steps.findIndex((s) => s.with?.path === "change");
+  assert.ok(checkoutChange >= 0 && bound === checkoutChange + 1);
+  assert.equal(wf.jobs["check-seals"].env.EVENT_SHA, "${{ github.event.pull_request.head.sha }}");
   const publish = steps.at(-1)!;
   assert.equal(publish.if, "always() && github.event_name == 'pull_request_target'");
   assert.match(
     publish.run!,
-    /if \[ "\$state" = success \]; then\n\s+now="\$\(gh api .*pulls\/\$PR_NUMBER.*\n\s+if \[ "\$now" != "\$DRAFT \$BASE_REF" \]; then\n\s+state=pending/,
+    /if \[ "\$state" = success \]; then\n\s+now="\$\(gh api .*pulls\/\$PR_NUMBER.*\n\s+if \[ "\$now" != "\$DRAFT \$BASE_REF \$EVENT_SHA" \]; then\n\s+state=pending/,
   );
   assert.ok(publish.run!.indexOf("now=") < publish.run!.indexOf('gh api "$STATUS_URL"'));
   for (const s of steps) {
