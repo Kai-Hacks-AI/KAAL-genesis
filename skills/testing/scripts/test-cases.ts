@@ -64,8 +64,13 @@ export const NODE_TEST = {
   ],
 } as const;
 
-/** How a local name is bound to `node:test`: to the module or its default export, or to one named export. */
-type Binding = "module" | "test" | "it" | "skip" | "only" | "todo" | "expectFailure" | "describe" | "suite";
+/**
+ * How a local name is bound to `node:test`: to the function it exports as a
+ * default (a default import, an import-equals, a `require`), to the namespace
+ * of its exports, which is an object and not callable, or to one named export.
+ */
+type Binding =
+  "module" | "namespace" | "test" | "it" | "skip" | "only" | "todo" | "expectFailure" | "describe" | "suite";
 const EXPORTS = new Set<string>([...NODE_TEST.test, ...NODE_TEST.other]);
 /** What `describe` and `suite`, and `test` and `it`, offer as modifiers: the same call, skipped, only, todo, or expected to fail. */
 const MODIFIERS = new Set<string>(NODE_TEST.modifiers);
@@ -110,10 +115,12 @@ function bindings(program: Node): {
       for (const s of nodes(statement.specifiers)) {
         const local = nameOf(s.local);
         if (!local || s.importKind === "type") continue;
-        if (s.type === "ImportDefaultSpecifier" || s.type === "ImportNamespaceSpecifier") bound.set(local, "module");
+        if (s.type === "ImportDefaultSpecifier") bound.set(local, "module");
+        else if (s.type === "ImportNamespaceSpecifier") bound.set(local, "namespace");
         else if (s.type === "ImportSpecifier") {
           const imported = nameOf(s.imported);
-          if (imported && EXPORTS.has(imported)) bound.set(local, imported as Binding);
+          if (imported === "default") bound.set(local, "module");
+          else if (imported && EXPORTS.has(imported)) bound.set(local, imported as Binding);
         }
       }
     } else if (
@@ -279,11 +286,12 @@ function isDeclaration(path: Step[]): boolean {
 }
 
 /** Where a chain of members stands among what `node:test` offers: its module, `test` or `it`; a test or a context to call; a part that is not a test function. */
-type At = "module" | "test" | "context" | "other" | "free";
+type At = "module" | "namespace" | "test" | "context" | "other" | "free";
 
 /** Where a name bound to `node:test` starts. */
 const START: Record<Binding, At> = {
   module: "module",
+  namespace: "namespace",
   test: "module",
   it: "module",
   skip: "test",
@@ -296,8 +304,9 @@ const START: Record<Binding, At> = {
 
 /**
  * Where `member` leads from `from`, by what `node:test` offers, or nothing if
- * it offers no such member there. The module, `test` and `it` offer the same
- * members; a context offers its modifiers; a test or context to call offers
+ * it offers no such member there. The namespace, the default function, `test`
+ * and `it` offer the same members, except that only the namespace has a
+ * `default`; a context offers its modifiers; a test or context to call offers
  * none, and any member such as one inherited from `Function` or `Object` is
  * not `node:test`'s. Past a part that is not a test function (`mock`, `after`,
  * `assert`), nothing more is asked of the members.
@@ -305,8 +314,10 @@ const START: Record<Binding, At> = {
 function next(from: At, member: string): At | undefined {
   if (from === "free") return "free";
   if (from === "context") return MODIFIERS.has(member) ? "other" : undefined;
-  if (from !== "module") return undefined;
-  if (member === "test" || member === "it" || member === "default") return "module";
+  if (from !== "module" && from !== "namespace") return undefined;
+  // Only the namespace has a `default`: it is the function, which has none.
+  if (member === "default") return from === "namespace" ? "module" : undefined;
+  if (member === "test" || member === "it") return "module";
   if (member === "describe" || member === "suite") return "context";
   if (MODIFIERS.has(member)) return "test";
   return (NODE_TEST.ignored as readonly string[]).includes(member) ? "free" : undefined;
@@ -542,7 +553,8 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
     at = next(at, member);
     if (!at || at === "free") return undefined;
   }
-  return at === "module" || at === "test" ? "test" : "other";
+  // The namespace is an object: calling it registers nothing.
+  return at === "namespace" ? undefined : at === "module" || at === "test" ? "test" : "other";
 }
 
 /**
@@ -751,9 +763,15 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
             const hidden = registers ? optionsTests(arg).error : undefined;
             if (hidden) errors.push(`${file}:${at(child)}: ${hidden}`);
             else if (mentionsTests(arg)) {
-              const reason = early.get(child) ?? dropped.get(rootName(child.callee) ?? "");
+              const root = rootName(child.callee) ?? "";
+              const untrusted = early.get(child) ?? dropped.get(root);
+              const why = untrusted
+                ? ` (${untrusted}, so it is not trusted to be node:test)`
+                : bound.get(root) === "namespace" && isNode(child.callee) && child.callee.type === "Identifier"
+                  ? ` (${root} is the namespace of node:test, an object that cannot be called)`
+                  : "";
               errors.push(
-                `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call${reason ? ` (${reason}, so it is not trusted to be node:test)` : ""}`,
+                `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call${why}`,
               );
             }
           }

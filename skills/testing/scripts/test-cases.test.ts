@@ -957,3 +957,59 @@ test("calling through a name of node:test is a use only through members node:tes
       fine,
     );
 });
+
+// Review round 8 of #121. The finding was reproduced first, then its class repaired.
+
+test("each way of binding node:test is what Node makes it: the namespace is an object, the default is the function, and only the namespace has a default", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const names = (source: string, file = "a.test.mjs") => parseTestCases(source, file).cases.map((c) => c.name);
+  // The function, however it is imported.
+  for (const head of [
+    'import test from "node:test";',
+    'import { default as test } from "node:test";',
+    'import { default as t } from "node:test";\nconst test = t;',
+  ])
+    assert.deepEqual(names(`${head}\ntest("n", ${T}, () => {});`), head.includes("const test = t") ? [] : ["n"], head);
+  assert.deepEqual(names(`import test = require("node:test");\ntest("n", ${T}, () => {});`, "a.test.cts"), ["n"]);
+  assert.deepEqual(names(`const test = require("node:test");\ntest("n", ${T}, () => {});`, "a.test.cjs"), ["n"]);
+  // The namespace is an object: calling it registers nothing, so it is no Test Case and, stating tests, is refused.
+  const called = parseTestCases(`import * as nt from "node:test";\nnt("n", ${T}, () => {});`, "a.test.mjs");
+  assert.deepEqual(called.cases, []);
+  assert.deepEqual(
+    called.errors.map((e) => e.replace(/^[^:]+:\d+: /, "")),
+    [
+      "tests belongs on the options of a top-level Test Case, not on another call (nt is the namespace of node:test, an object that cannot be called)",
+    ],
+  );
+  // Its members are what Node exports, and its default is the function.
+  for (const call of [
+    "nt.default",
+    "nt.test",
+    "nt.it",
+    "nt.skip",
+    "nt.only",
+    "nt.todo",
+    "nt.expectFailure",
+    "nt.default.skip",
+    "nt.default.test",
+    "nt.test.skip",
+    "nt.it.todo",
+  ])
+    assert.deepEqual(names(`import * as nt from "node:test";\n${call}("n", ${T}, () => {});`), ["n"], call);
+  // The function has no default of its own, and no other binding has members it lacks: such a call is used otherwise and untrusts.
+  for (const head of [
+    'import test from "node:test";\ntest.default("n", ${T}, () => {});',
+    'const test = require("node:test");\ntest.default("n", ${T}, () => {});',
+  ])
+    assert.equal(
+      parseTestCases(head.replace("${T}", T), head.startsWith("const") ? "a.test.cjs" : "a.test.mjs").cases.length,
+      0,
+      head,
+    );
+  assert.deepEqual(names('import test from "node:test";\ntest.test.default("n", () => {});'), []);
+  // A namespace beside a default import: each is what it is.
+  assert.deepEqual(
+    names(`import test, * as nt from "node:test";\ntest("a", ${T}, () => {});\nnt.test("b", ${T}, () => {});`),
+    ["a", "b"],
+  );
+});

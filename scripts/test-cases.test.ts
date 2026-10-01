@@ -398,3 +398,20 @@ test("a require in an ES module, or an inherited mutator called on node:test, ca
     "b.test.mjs: tests belongs on the options of a top-level Test Case, not on another call (require is not defined in an ES module, so it is not trusted to be node:test)",
   ]);
 });
+
+// Review round 8 of #121: the finding as KAAL meets it.
+test("calling the namespace of node:test cannot vouch for a reference", () => {
+  const { dir, born } = repo({});
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "a.test.mjs"),
+    'import * as nt from "node:test";\nnt("claim", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(cases, []);
+  assert.deepEqual(
+    errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": ")),
+    [
+      "a.test.mjs: tests belongs on the options of a top-level Test Case, not on another call (nt is the namespace of node:test, an object that cannot be called)",
+    ],
+  );
+});
