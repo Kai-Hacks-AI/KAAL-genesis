@@ -655,6 +655,38 @@ function readTests(node: Node, file: string): { tests: Tests[]; errors: string[]
 }
 
 /**
+ * The first syntax at the top level of the program that only an ES module has:
+ * an `import` or `export` declaration (which TypeScript compiles in a `.cts`,
+ * so `declarations` is false there), a top-level `await` or `for await`, or
+ * `import.meta`. A function's body is its own scope, where `await` is its own.
+ */
+function moduleSyntax(program: Node, declarations: boolean): (Node & { what: string }) | undefined {
+  let found: (Node & { what: string }) | undefined;
+  const visit = (node: Node) => {
+    if (found) return;
+    const what =
+      declarations &&
+      ["ImportDeclaration", "ExportNamedDeclaration", "ExportDefaultDeclaration", "ExportAllDeclaration"].includes(
+        node.type,
+      )
+        ? "import or export declaration"
+        : node.type === "AwaitExpression" || (node.type === "ForOfStatement" && node.await === true)
+          ? "top-level await"
+          : node.type === "MetaProperty" && isNode(node.meta) && node.meta.name === "import"
+            ? "import.meta"
+            : undefined;
+    if (what) {
+      found = Object.assign(node, { what });
+      return;
+    }
+    if (FUNCTION.has(node.type) || node.type === "ClassPrivateMethod") return;
+    for (const value of Object.values(node)) for (const child of nodes(value)) visit(child);
+  };
+  visit(program);
+  return found;
+}
+
+/**
  * The Test Cases of the Carrier whose source is `text`, read from its syntax,
  * never by executing it: each top-level `node:test` call with a literal name.
  * A Test Case states what it tests in the literal `tests` option of that call,
@@ -678,15 +710,9 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   } catch (e) {
     return { cases: [], errors: [`${file}: unparseable carrier (${e instanceof Error ? e.message : String(e)})`] };
   }
-  // CommonJS has no `import` or `export` declarations: a `.cjs` Carrier with one throws before registering anything.
-  if (/\.cjs$/.test(file)) {
-    const esm = nodes(program.body).find((n) =>
-      ["ImportDeclaration", "ExportNamedDeclaration", "ExportDefaultDeclaration", "ExportAllDeclaration"].includes(
-        n.type,
-      ),
-    );
-    if (esm) return { cases: [], errors: [`${file}:${at(esm)}: ES module syntax in a CommonJS Carrier`] };
-  }
+  // CommonJS has syntax that only an ES module has; a Carrier that uses it throws before registering anything.
+  const esm = format(file) === "cjs" ? moduleSyntax(program, /\.cjs$/.test(file)) : undefined;
+  if (esm) return { cases: [], errors: [`${file}:${at(esm)}: ES module syntax in a CommonJS Carrier (${esm.what})`] };
   const { bound, dropped, declared } = trusted(program, file);
   /** Why a top-level call was not recognized: it runs before the declaration that binds its callee. */
   const early = new Map<Node, string>();

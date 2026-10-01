@@ -257,7 +257,8 @@ test("every way node:test offers to define a Test Case is read: named exports, m
     ['import test = require("node:test");', "test.todo", "a.test.cts"],
   ];
   for (const [head, callee, file] of forms)
-    for (const awaited of ["", "await "]) {
+    // Top-level await is only for ES modules: a CommonJS Carrier has none.
+    for (const awaited of /\.c[jt]s$/.test(file) ? [""] : ["", "await "]) {
       const { cases, errors } = parseTestCases(
         `${head}\n${awaited}${callee}("n", { tests: { requirement: ["r"] } }, () => {});`,
         file,
@@ -584,7 +585,6 @@ test("a call that runs before the declaration binding its name is not a Test Cas
     [`test("claim", ${T}, () => {});\nconst test = require("node:test");`, "a.test.cjs"],
     [`skip("claim", ${T}, () => {});\nconst { skip } = require("node:test");`, "a.test.cjs"],
     [`test("claim", ${T}, () => {});\nimport test = require("node:test");`, "a.test.cts"],
-    [`await test("claim", ${T}, () => {});\nconst test = require("node:test");`, "a.test.cjs"],
   ]) {
     const read = before(source, file);
     assert.deepEqual(read.cases, [], source);
@@ -885,7 +885,7 @@ test("require is the CommonJS loader only in a Carrier whose name settles it as 
   ])
     assert.deepEqual(parseTestCases(`${head}\ntest("claim", ${T}, () => {});`, "a.test.cjs"), {
       cases: [],
-      errors: ["a.test.cjs:1: ES module syntax in a CommonJS Carrier"],
+      errors: ["a.test.cjs:1: ES module syntax in a CommonJS Carrier (import or export declaration)"],
     });
 });
 
@@ -1012,4 +1012,49 @@ test("each way of binding node:test is what Node makes it: the namespace is an o
     names(`import test, * as nt from "node:test";\ntest("a", ${T}, () => {});\nnt.test("b", ${T}, () => {});`),
     ["a", "b"],
   );
+});
+
+// Review round 9 of #121. The finding was reproduced first, then its class repaired.
+
+test("syntax that only an ES module has, at the top of a CommonJS Carrier, is refused: it throws before registering anything", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const R = 'const test = require("node:test");\n';
+  const claim = `test("claim", ${T}, () => {});`;
+  for (const [head, what] of [
+    [`await test("claim", ${T}, () => {});`, "top-level await"],
+    ["await 1;", "top-level await"],
+    ["const x = await y;", "top-level await"],
+    ["for await (const x of y) {}", "top-level await"],
+    ["if (x) { await y; }", "top-level await"],
+    ["label: { await y; }", "top-level await"],
+    ["const u = import.meta.url;", "import.meta"],
+    ["if (x) { import.meta; }", "import.meta"],
+  ]) {
+    for (const file of ["a.test.cjs", "a.test.cts"]) {
+      const read = parseTestCases(`${R}${head}\n${claim}`, file);
+      assert.deepEqual(
+        read,
+        { cases: [], errors: [`${file}:2: ES module syntax in a CommonJS Carrier (${what})`] },
+        `${file}: ${head}`,
+      );
+    }
+  }
+  // A function is its own scope, where await is its own; and an ES module has top-level await.
+  for (const fine of [
+    "async function f() { await 1; for await (const x of y) {} }",
+    "const g = async () => { await 1; };",
+    "const o = { async m() { await 1; } };",
+    "class C { async m() { await 1; } static async s() { await 1; } }",
+  ])
+    assert.equal(parseTestCases(`${R}${fine}\n${claim}`, "a.test.cjs").cases.length, 1, fine);
+  for (const file of ["a.test.mjs", "a.test.mts", "a.test.ts", "a.test.js"])
+    assert.deepEqual(
+      parseTestCases(`import test from "node:test";\nawait test("claim", ${T}, () => {});`, file).cases.map(
+        (c) => c.name,
+      ),
+      ["claim"],
+      file,
+    );
+  // A .cts may import and export, which TypeScript compiles; a .cjs may not.
+  assert.equal(parseTestCases(`import test from "node:test";\n${claim}`, "a.test.cts").cases.length, 1);
 });

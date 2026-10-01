@@ -415,3 +415,18 @@ test("calling the namespace of node:test cannot vouch for a reference", () => {
     ],
   );
 });
+
+// Review round 9 of #121: the finding as KAAL meets it.
+test("a top-level await in a CommonJS Carrier cannot vouch for a reference", () => {
+  const { dir, born } = repo({});
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "a.test.cjs"),
+    'const test = require("node:test");\nawait test("claim", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(cases, []);
+  assert.deepEqual(
+    errors.map((e) => e.replace(`${PLACE}/`, "")),
+    ["a.test.cjs:2: ES module syntax in a CommonJS Carrier (top-level await)"],
+  );
+});
