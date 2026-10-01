@@ -10,7 +10,12 @@ export type Tests = { kind: string; id: string };
  * and the declared `name`. `tests` is what it declares it tests, in
  * declaration order.
  */
-export type TestCase = { carrier: string; name: string; tests: Tests[] };
+export type TestCase = {
+  carrier: string;
+  name: string;
+  tests: Tests[];
+  supersedes?: { carrier: string; name: string };
+};
 
 /**
  * A Test Case's identity as one line: the JSON array of its carrier and its
@@ -86,6 +91,20 @@ function readTests(value: unknown, where: string): { tests: Tests[]; errors: str
   return { tests, errors };
 }
 
+/** The Test Case an `supersedes` value names: a literal list of exactly two non-empty strings, its carrier and its name, or why it is not one. */
+function readSupersedes(
+  value: unknown,
+  where: string,
+): { supersedes?: { carrier: string; name: string }; errors: string[] } {
+  const elements = isNode(value) && value.type === "ArrayExpression" ? (value.elements as unknown[]) : undefined;
+  const [carrier, name] = elements?.length === 2 ? elements.map(stringLiteral) : [];
+  if (!carrier || !name)
+    return {
+      errors: [`${where}: supersedes must be a list of two string literals, a Test Case's carrier and its name`],
+    };
+  return { supersedes: { carrier, name }, errors: [] };
+}
+
 /** The local names the Carrier gives the default export of `node:test` by a value import: `import test from "node:test"`. */
 function defaultImports(program: Node): Set<string> {
   const names = new Set<string>();
@@ -115,13 +134,17 @@ function defaultImports(program: Node): Set<string> {
  * import of `node:test`, with exactly three arguments, none spread: a
  * non-empty string literal name, an object literal holding a plain `tests`
  * property, and anything as the third. `tests` is a literal object of kinds,
- * each a non-empty list of distinct string-literal ids. The declaration says
+ * each a non-empty list of distinct string-literal ids. The same options may
+ * also hold one plain `supersedes` property, a literal list of exactly two string
+ * literals, the carrier and the name of the Test Case this one supersedes: the
+ * newer Test Case names the earlier, which is never touched. The declaration says
  * that the Test Case of that name tests those things. It does not say that
  * Node registered or ran the call: that is for a Run to show.
  *
  * Refused: a Carrier that does not parse; a canonical declaration whose `tests`
  * is not that literal, or is stated twice in its options; two declarations of
- * one name, which make the identity ambiguous. Anything else, including any
+ * one name, which make the identity ambiguous; a `supersedes` that is not that
+ * literal, or is stated twice. Anything else, including any
  * other use of `node:test`, any other call and any other property named
  * `tests`, is ordinary syntax outside this: neither read nor refused. `file`
  * names the Carrier, in errors and in each identity, and nothing else:
@@ -141,7 +164,8 @@ export function parseTestCases(text: string, file: string, physical = file): { c
   }
   const locals = defaultImports(program);
   const errors: string[] = [];
-  const declared: { name: string; line: number; tests?: Tests[] }[] = [];
+  const declared: { name: string; line: number; tests?: Tests[]; supersedes?: { carrier: string; name: string } }[] =
+    [];
   for (const statement of nodes(program.body)) {
     const call = statement.type === "ExpressionStatement" ? statement.expression : undefined;
     if (!isNode(call) || call.type !== "CallExpression") continue;
@@ -161,7 +185,17 @@ export function parseTestCases(text: string, file: string, physical = file): { c
     }
     const read = readTests(stated[0].value, where);
     errors.push(...read.errors);
-    declared.push({ name, line: at(call), tests: read.errors.length ? undefined : read.tests });
+    const superseding = nodes(args[1].properties).filter((p) => keyName(p) === "supersedes");
+    const lineage = superseding.length === 1 ? readSupersedes(superseding[0].value, where) : { errors: [] as string[] };
+    if (superseding.length > 1) errors.push(`${where}: supersedes is stated twice`);
+    errors.push(...lineage.errors);
+    const sound = !read.errors.length && superseding.length < 2 && !lineage.errors.length;
+    declared.push({
+      name,
+      line: at(call),
+      tests: sound ? read.tests : undefined,
+      supersedes: "supersedes" in lineage ? lineage.supersedes : undefined,
+    });
   }
   // Two declarations of one name make its identity ambiguous, so it names no Test Case.
   const counts = new Map<string, number>();
@@ -170,7 +204,7 @@ export function parseTestCases(text: string, file: string, physical = file): { c
     if (counts.get(d.name)! > 1) errors.push(`${file}:${d.line}: Test Case "${d.name}" is traced more than once`);
   const cases = declared
     .filter((d) => d.tests && counts.get(d.name) === 1)
-    .map((d) => ({ carrier: file, name: d.name, tests: d.tests! }));
+    .map((d) => ({ carrier: file, name: d.name, tests: d.tests!, ...(d.supersedes && { supersedes: d.supersedes }) }));
   return { cases, errors };
 }
 
