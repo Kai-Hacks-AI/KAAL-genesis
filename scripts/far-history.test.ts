@@ -23,6 +23,7 @@ const AUTHORISE = [
     feature: ["changes-are-immutable-occurrences-beneath-their-lineage", "closed-change-cannot-change-unnoticed"],
   },
   { at: "change/far/26/09/30/02", previous: "change/far/26/09/30/01", feature: [] },
+  { at: "change/far/26/09/30/03", previous: "change/far/26/09/30/02", feature: [] },
 ];
 
 const identities = (file: string): string[] =>
