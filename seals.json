@@ -19,6 +19,12 @@
     ],
     "seal": "197900b23cf6a73753b6b6a4fbdced9d8778722dce6f6f478e7e4f90f2a88720"
   },
+  "github-independence": {
+    "units": [
+      "change/github-independence/26/10/01/01"
+    ],
+    "seal": "d206365b9c4825f74076c040b3deb913bf59904c5bff6157a5afa5d2058feb57"
+  },
   "regression-testing": {
     "units": [
       "change/regression-testing/26/09/30/01"
