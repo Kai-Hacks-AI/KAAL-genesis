@@ -10,8 +10,9 @@ import {
   type PlanEntry,
 } from "../skills/testing/scripts/supersession.js";
 import { readTestCases, testCasesTesting, type TestCase } from "../skills/testing/scripts/test-cases.js";
-import { CASE } from "../skills/testing/scripts/testing.js";
+import { CASE, instanceId, type Instance } from "../skills/testing/scripts/testing.js";
 import { kaalDefects } from "./defects.js";
+import { kaalRequiredEvidence, requiredInstances, type RequiredEvidence } from "./required-evidence.js";
 import { kaalRequirements } from "./requirements.js";
 
 /**
@@ -116,42 +117,54 @@ export const carriersProtecting = (
 /**
  * The Test Plan that demonstrates the protection of the Requirements or
  * Defects `ids` of `kind`: each Test Case active for any of them once, with
- * the ids that select it, and the Carriers a Run executes. Derived, never
- * stored: a Plan file made of it is discarded and made again from the sources
- * as it was. Which identities are protected is for the caller to say.
+ * the ids that select it, and the instances a Run executes, each Carrier under
+ * the parameters `evidence` says the Requirement it is selected for must be
+ * evidenced under, and under none for a Defect or a Requirement it names no
+ * decision of. Derived, never stored: a Plan file made of it is discarded and
+ * made again from the sources as it was. Which identities are protected is for
+ * the caller to say.
  */
 export function testPlanProtecting(
   cases: TestCase[],
   kind: (typeof KINDS)[number],
   ids: readonly string[],
-): { entries: PlanEntry[]; carriers: string[]; plan: string } | { errors: string[] } {
+  evidence: readonly RequiredEvidence[] = [],
+): { entries: PlanEntry[]; carriers: string[]; instances: Instance[]; plan: string } | { errors: string[] } {
   const answer = testCasesProtecting(
     cases,
     ids.map((id) => ({ kind, id })),
   );
   if ("errors" in answer) return answer;
-  const carriers = [...new Set(answer.entries.map((e) => e.carrier))];
+  const instances = requiredInstances(answer.entries, evidence);
+  const carriers = [...new Set(instances.map((i) => i.carrier))];
   const protectedIds = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const plan = [
     "---",
     "carriers:",
-    ...carriers.map((c) => `  - ${JSON.stringify(c)}`),
+    ...instances.map((i) =>
+      Object.keys(i.parameters).length
+        ? `  - { carrier: ${JSON.stringify(i.carrier)}, parameters: ${JSON.stringify(i.parameters)} }`
+        : `  - ${JSON.stringify(i.carrier)}`,
+    ),
     "---",
     "",
-    `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once, computed from the Test Cases and the \`tests\` and \`supersedes\` they declare. Made again from them, it is the same.`,
+    `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once under each set of parameters its ${kind}'s evidence is required under, computed from the Test Cases, the \`tests\` and \`supersedes\` they declare and the evidence the Changes require. Made again from them, it is the same.`,
     "",
     ...protectedIds.map((id) => `- ${id}`),
     "",
   ].join("\n");
-  return { entries: answer.entries, carriers, plan };
+  return { entries: answer.entries, carriers, instances, plan };
 }
+
+/** The identity of each instance, as Testing names it: the Carrier alone, or `carrier[name=value]`. */
+export const instanceIds = (instances: readonly Instance[]): string[] => instances.map(instanceId);
 
 // With no arguments, checks every reference and every lineage. With `<requirement|defect> <id>`,
 // prints the Test Cases that test it, one identity per line, after the same check; with `current`
 // before them, only those active for it: no later Test Case of their own lineage tests it too. With
 // `carriers <requirement|defect> <id>...`, prints the Carriers, one path per line, that hold the Test
 // Cases active for any of the ids. With `plan <requirement|defect> <id>...`, prints the Test Plan, a
-// Plan file that collects those Carriers, derived from the same material and never stored.
+// Plan file that collects those Carriers, under the parameters the Changes require their Requirements evidenced under, derived from the same material and never stored.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const usage = `usage: test-cases.ts [current] [${KINDS.join("|")} <id>] | carriers|plan <${KINDS.join("|")}> <id>...`;
   const args = process.argv.slice(2);
@@ -168,7 +181,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error(usage);
     process.exitCode = 2;
   } else {
-    const { cases, errors } = kaalTestCases();
+    const tested = kaalTestCases();
+    const required = kaalRequiredEvidence();
+    const cases = tested.cases;
+    const errors = [...tested.errors, ...required.errors];
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;
@@ -176,7 +192,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       const ids = [id, ...rest];
       const k = kind as (typeof KINDS)[number];
       if (plan) {
-        const answer = testPlanProtecting(cases, k, ids);
+        const answer = testPlanProtecting(cases, k, ids, required.evidence);
         if ("errors" in answer) {
           console.error(answer.errors.join("\n"));
           process.exitCode = 1;
