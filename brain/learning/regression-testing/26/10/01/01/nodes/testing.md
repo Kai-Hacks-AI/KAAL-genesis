@@ -12,4 +12,6 @@ KAAL understands that protection moves by three things: **Feature**, protected m
 
 This sharpens an earlier understanding, which called Authorise **Acceptance**. That understanding stands exactly as it was learned and as the material written under it says: the earlier learning, the Testing skill's and the Test Strategy's earlier wording, and the sealed FAR checkpoints keep the word Acceptance, and what they call Acceptance is what is now called Authorise. The transition's mathematics did not change, only the name for the authority in it.
 
+This node does not place Feature, Authorise and Regression: the Testing skill currently computes Regression, which is only where that computation happens to live, not a decision about what owns the semantics of FAR.
+
 How KAAL tests is KAAL's Test Strategy, in `test/`, KAAL's instance of Testing. This node records why KAAL uses it.
