@@ -7,5 +7,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["skills/**/*.ts", "scripts/**/*.ts"]
+  "include": ["skills/**/*.ts", "scripts/**/*.ts", "extensions/**/*.ts"]
 }

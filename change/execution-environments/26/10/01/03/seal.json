@@ -1,0 +1,11 @@
+{
+  "unit": "change/execution-environments/26/10/01/03",
+  "previous": "8e85c9046568bb9132ec8ffa3bf346701daae868c0461d67ca44a16dfd46be42",
+  "files": [
+    {
+      "path": "architecture/the-environment-extension-translates-the-host.md",
+      "sha256": "063f6ddbb1c22c50e89cbecad3f79ab27a1cb03ca5ddef75051e68e4847af581"
+    }
+  ],
+  "seal": "f9171603edc1d2e1d68d06c3099e6d54e3435a27b3f1de449b652c8cc550eec7"
+}

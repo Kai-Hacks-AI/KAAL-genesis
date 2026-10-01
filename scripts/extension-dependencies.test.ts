@@ -72,8 +72,9 @@ const dependenciesOf = (skills: string[], extensions: string[]): string[][] =>
 test("no Skill depends on another Skill, on an Extension or on Git or GitHub", () => {
   const skills = skillsIn("skills");
   assert.ok(skills.length > 1);
-  // scripts/ is where today's Extensions are: each module there composes Skills or realizes a boundary, whichever role.
-  for (const found of dependenciesOf(skills, [path.resolve("scripts")])) assert.deepEqual(found, []);
+  // scripts/ is where most of today's Extensions are, and extensions/ holds the Environment Extension: each module there composes Skills or realizes a boundary, whichever role.
+  for (const found of dependenciesOf(skills, [path.resolve("scripts"), path.resolve("extensions")]))
+    assert.deepEqual(found, []);
 });
 
 test("the rule is not vacuous: a Skill that imports a Skill or an Extension, runs git or names GitHub is found, and one that reaches Core is not", () => {
