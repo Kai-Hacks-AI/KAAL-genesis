@@ -1,0 +1,19 @@
+{
+  "unit": "change/windows-evidence/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "defect/birth-errors-throws-ebusy-on-windows.md",
+      "sha256": "1993632aeb254580943f9a102d7a248b2067b4be48816dbabac1651789e5a723"
+    },
+    {
+      "path": "defect/defect-management-resists-retaining-discovered-defects.md",
+      "sha256": "f4b42760b8191d5dad415ec50cf01d9c77b3b14954fecf5b5f0453cf8180dc50"
+    },
+    {
+      "path": "defect/windows-symlink-case-skipped-on-windows.md",
+      "sha256": "83a97919929a4873c2ca85afa2f9a860481e0420bdd516f4ccf2361f2ba65fe6"
+    }
+  ],
+  "seal": "e5fa7b1480b676838957e530c5cc29f0427c4140baf702de2b6da19fa3eb6b4f"
+}
