@@ -14,8 +14,16 @@ const HISTORY = [
   "change/far/26/09/26/03",
 ];
 
-// FAR-4 is written under the word Authorise, which is what Acceptance came to be called.
-const FAR4 = "change/far/26/09/30/01";
+// FAR-4 and later are written under the word Authorise, which is what Acceptance came to be called.
+// Each lists what its hit newly protects, and what it authorises away.
+const AUTHORISE = [
+  {
+    at: "change/far/26/09/30/01",
+    previous: "change/far/26/09/26/03",
+    feature: ["changes-are-immutable-occurrences-beneath-their-lineage", "closed-change-cannot-change-unnoticed"],
+  },
+  { at: "change/far/26/09/30/02", previous: "change/far/26/09/30/01", feature: [] },
+];
 
 const identities = (file: string): string[] =>
   fs
@@ -41,32 +49,33 @@ test("history that says Acceptance still computes: its Acceptance is an Authoris
   assert.equal(previous!.length, 12);
 });
 
-test("FAR-4 is written under Authorise: its Regression follows from FAR-3's, its Feature and its Authorise", () => {
-  assert.match(fs.readFileSync(`${FAR4}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
-  assert.equal(fs.existsSync(`${FAR4}/acceptance.md`), false);
-  const result = computeRegression({
-    previous: identities("change/far/26/09/26/03/regression.md"),
-    feature: identities(`${FAR4}/feature.md`),
-    authorise: identities(`${FAR4}/authorise.md`),
-  });
-  assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
-  assert.deepEqual(result.regression, identities(`${FAR4}/regression.md`).sort());
-  assert.deepEqual(identities(`${FAR4}/feature.md`), [
-    "changes-are-immutable-occurrences-beneath-their-lineage",
-    "closed-change-cannot-change-unnoticed",
-  ]);
-  assert.deepEqual(identities(`${FAR4}/authorise.md`), []);
+test("history written under Authorise computes: each Regression follows from the one before, its Feature and its Authorise", () => {
+  for (const { at, previous, feature } of AUTHORISE) {
+    assert.match(fs.readFileSync(`${at}/authorise.md`, "utf8"), /^# Authorise\r?\n/, at);
+    assert.equal(fs.existsSync(`${at}/acceptance.md`), false, at);
+    const result = computeRegression({
+      previous: identities(`${previous}/regression.md`),
+      feature: identities(`${at}/feature.md`),
+      authorise: identities(`${at}/authorise.md`),
+    });
+    assert.ok("regression" in result, `${at}: ${"errors" in result ? result.errors.join("; ") : ""}`);
+    assert.deepEqual(result.regression, identities(`${at}/regression.md`).sort(), at);
+    assert.deepEqual(identities(`${at}/feature.md`), feature, at);
+    assert.deepEqual(identities(`${at}/authorise.md`), [], at);
+  }
 });
 
-test("FAR-4's Plan is exactly what its Regression derives from the Test Cases: made again, it is the same bytes", () => {
+test("each Plan written under Authorise is exactly what its Regression derives from the Test Cases: made again, it is the same bytes", () => {
   const { cases, errors } = kaalTestCases();
   assert.deepEqual(errors, []);
-  const derived = testPlanProtecting(cases, "requirement", identities(`${FAR4}/regression.md`));
-  assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
-  assert.equal(fs.readFileSync(`${FAR4}/runs/01/plan.md`, "utf8"), derived.plan);
   // FAR-1's Suite and its twelve Carriers are untouched, yet the Carrier whose Test Cases FAR-4 superseded is not run.
   const stale = "change/far/26/09/26/01/test/genesis/changes-checked-against-seals-of-target-branch.test.ts";
   assert.equal(fs.existsSync(stale), true);
-  assert.equal(derived.carriers.includes(stale), false);
-  assert.equal(derived.carriers.length, 14);
+  for (const { at } of AUTHORISE) {
+    const derived = testPlanProtecting(cases, "requirement", identities(`${at}/regression.md`));
+    assert.ok("plan" in derived, `${at}: ${"errors" in derived ? derived.errors.join("; ") : ""}`);
+    assert.equal(fs.readFileSync(`${at}/runs/01/plan.md`, "utf8"), derived.plan, at);
+    assert.equal(derived.carriers.includes(stale), false, at);
+    assert.equal(derived.carriers.length, 14, at);
+  }
 });
