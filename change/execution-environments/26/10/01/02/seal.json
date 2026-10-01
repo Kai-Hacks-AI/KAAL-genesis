@@ -1,0 +1,15 @@
+{
+  "unit": "change/execution-environments/26/10/01/02",
+  "previous": "96d98b82428007da446abd0b2776ec77014d24f2c52e8cdc10409a2ccd738bdf",
+  "files": [
+    {
+      "path": "test/instances/linux-support.md",
+      "sha256": "609ec4f513d5357aa753ab7ba2979ee6d29fed439df6be10394e57212e0c3950"
+    },
+    {
+      "path": "test/instances/windows-support.md",
+      "sha256": "67c7e08215701c914c193ec14b0795820d2854e4875cf3794fa0f055573a7021"
+    }
+  ],
+  "seal": "8e85c9046568bb9132ec8ffa3bf346701daae868c0461d67ca44a16dfd46be42"
+}
