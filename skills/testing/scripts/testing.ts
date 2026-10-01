@@ -11,8 +11,11 @@ export const SUITE_FILE = "suite.json";
 /** A Case is a file whose `node:test` tests Node runs when it executes it: `*.test.js`, `*.test.ts` and their module variants. */
 export const CASE = /\.test\.[cm]?[jt]s$/;
 
-/** A Plan: the protection it states (its body), and the Suites it collects, as posix paths relative to the testing root. */
-export type Plan = { concern: string; suites: string[] };
+/**
+ * A Plan: the protection it states (its body), the Suites it collects and the Carriers it collects directly, all
+ * as posix paths relative to the testing root. A Plan written before Carriers could be collected has none.
+ */
+export type Plan = { concern: string; suites: string[]; carriers: string[] };
 
 /** A Suite: its place relative to the testing root, its concern, and its Cases as posix paths relative to it. */
 export type Suite = { place: string; concern: string; cases: string[] };
@@ -40,8 +43,8 @@ const concernError = (value: Record<string, unknown>): string | undefined =>
   typeof value.concern === "string" && value.concern.trim() ? undefined : "concern must be a non-empty string";
 
 /** A place is a relative posix path that stays beneath the root it is read from. */
-function placeError(place: unknown): string | undefined {
-  if (typeof place !== "string" || !place) return "a suite must be a non-empty path";
+function placeError(place: unknown, noun = "suite"): string | undefined {
+  if (typeof place !== "string" || !place) return `a ${noun} must be a non-empty path`;
   const parts = place.split("/");
   if (
     place.startsWith("/") ||
@@ -49,7 +52,7 @@ function placeError(place: unknown): string | undefined {
     place.includes("\\") ||
     parts.some((p) => !p || p === "." || p === "..")
   )
-    return `suite "${place}" must be a relative posix path beneath the root`;
+    return `${noun} "${place}" must be a relative posix path beneath the root`;
   return undefined;
 }
 
@@ -66,8 +69,9 @@ const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 /**
  * The Plan at `file`, with every way it is not one: Markdown whose YAML
- * frontmatter lists its `suites` and whose body states its concern. Every
- * other frontmatter key belongs to the using system and is never read.
+ * frontmatter lists its `suites`, and may list `carriers`, and whose body
+ * states its concern. Every other frontmatter key belongs to the using system
+ * and is never read.
  */
 export function readPlan(file: string): { plan?: Plan; errors: string[] } {
   let text: string;
@@ -88,19 +92,36 @@ export function readPlan(file: string): { plan?: Plan; errors: string[] } {
   const errors: string[] = [];
   const concern = text.slice(match[0].length).trim();
   if (!concern) errors.push(`${file}: the body must state the plan's concern`);
-  if (!Array.isArray(data.suites)) errors.push(`${file}: suites must be a list`);
+  // A Plan that collects Carriers need not state Suites it does not collect; one that states neither is still refused.
+  const suites = data.suites === undefined && data.carriers !== undefined ? [] : data.suites;
+  if (!Array.isArray(suites)) errors.push(`${file}: suites must be a list`);
   else {
-    for (const place of data.suites) {
+    for (const place of suites) {
       const invalid = placeError(place);
       if (invalid) errors.push(`${file}: ${invalid}`);
     }
     const seen = new Set<unknown>();
-    for (const place of data.suites) {
+    for (const place of suites) {
       if (seen.has(place)) errors.push(`${file}: suite "${place}" is collected twice`);
       seen.add(place);
     }
   }
-  return errors.length ? { errors } : { plan: { concern, suites: data.suites as string[] }, errors };
+  const carriers = data.carriers ?? [];
+  if (!Array.isArray(carriers)) errors.push(`${file}: carriers must be a list`);
+  else {
+    for (const place of carriers) {
+      const invalid = placeError(place, "carrier");
+      if (invalid) errors.push(`${file}: ${invalid}`);
+    }
+    const seen = new Set<unknown>();
+    for (const place of carriers) {
+      if (seen.has(place)) errors.push(`${file}: carrier "${place}" is collected twice`);
+      seen.add(place);
+    }
+  }
+  return errors.length
+    ? { errors }
+    : { plan: { concern, suites: suites as string[], carriers: carriers as string[] }, errors };
 }
 
 /** The Suite at `place` beneath `root`: its concern and its Cases, in sorted order. */
@@ -125,7 +146,7 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
   return errors.length ? { errors } : { suite: { place, concern: value.concern as string, cases }, errors };
 }
 
-/** Every Suite the Plan at `plan` (relative to `root`) collects, with every way the Plan or a Suite is broken. */
+/** Every Suite the Plan at `plan` (relative to `root`) collects, with every way the Plan, a Suite or a collected Carrier is broken. */
 export function readPlanSuites(root: string, plan: string): { plan?: Plan; suites: Suite[]; errors: string[] } {
   const read = readPlan(path.join(root, plan));
   if (!read.plan) return { suites: [], errors: read.errors };
@@ -136,7 +157,24 @@ export function readPlanSuites(root: string, plan: string): { plan?: Plan; suite
     if (suite) suites.push(suite);
     errors.push(...invalid);
   }
+  for (const place of read.plan.carriers) {
+    const stat = fs.lstatSync(path.join(root, ...place.split("/")), { throwIfNoEntry: false });
+    if (!stat?.isFile() || !CASE.test(place)) errors.push(`${place}: not a Case file`);
+  }
   return { plan: read.plan, suites, errors };
+}
+
+/**
+ * The Cases a Run of the Plan executes, as posix paths relative to the testing
+ * root, each once: those of its Suites in order, then the Carriers it collects
+ * directly. A Case that a Suite and the Plan both collect is the same Case, and
+ * a Run executes it once.
+ */
+export function planCases(plan: Plan, suites: Suite[]): string[] {
+  const cases = new Set<string>();
+  for (const suite of suites) for (const file of suite.cases) cases.add(`${suite.place}/${file}`);
+  for (const place of plan.carriers) cases.add(place);
+  return [...cases];
 }
 
 /**
@@ -251,15 +289,12 @@ export function runCase(file: string, candidate: string): { passed: boolean; out
  * directory. Refuses a broken Plan or Suite before running anything.
  */
 export function runPlan(plan: string, root = ".", candidate = root): Run {
-  const { suites, errors } = readPlanSuites(root, plan);
-  if (errors.length) throw new Error(`refusing to run ${plan}:\n${errors.join("\n")}`);
+  const read = readPlanSuites(root, plan);
+  if (read.errors.length) throw new Error(`refusing to run ${plan}:\n${read.errors.join("\n")}`);
   const observations: Observation[] = [];
-  for (const suite of suites) {
-    for (const file of suite.cases) {
-      const at = `${suite.place}/${file}`;
-      const { passed, output } = runCase(path.resolve(root, ...at.split("/")), path.resolve(candidate));
-      observations.push({ case: at, passed, output });
-    }
+  for (const at of planCases(read.plan!, read.suites)) {
+    const { passed, output } = runCase(path.resolve(root, ...at.split("/")), path.resolve(candidate));
+    observations.push({ case: at, passed, output });
   }
   return {
     plan,
