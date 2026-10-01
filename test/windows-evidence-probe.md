@@ -60,7 +60,9 @@ Two limits on that record. The red exists only under Testing's strict skip rule 
 
 Test Case: Carrier `skills/using-skills/scripts/named-pipe.test.ts`, name "an init that writes SKILL.md as a named pipe is reported, never read". It guards a hazard that exists only where a FIFO can be a filesystem entry: reading one blocks forever. Node has no portable way to make one, and the fixture runs `mkfifo`. On Windows the hazard does not exist. It carries `skip: process.platform === "win32"`, which is the one skip Windows still reports. Its portable sibling, `writes-directory`, already shows on Windows that a non-regular `SKILL.md` is reported and never read.
 
-This is the only case of the kind in KAAL, and it is a Linux-or-POSIX claim, not a Windows one. It supports a `linux-support` Suite, if anything, and never a Windows one.
+This is the only case of the kind in KAAL. It is POSIX-specific HOW protecting a POSIX-only claim, never a Windows one. It runs everywhere except Windows, so macOS would run it too, and the evidence never says "Linux" on its own. A Case like this belongs in an environment-specific Suite (the `environment-linux` that #102 anticipated), and the in-Case `skip` is the cheat: it makes the Case look portable and the Windows `npm test` look green. Putting the environment in the Suite would remove the switch. This flight does not build that Suite, because it is a Linux/POSIX concern and the flight is about Windows, but the evidence supports it with one Case.
+
+**Skipping on a platform is also evidence.** Linux skips nothing (302 tests, 0 skipped); Windows skips exactly this one. That skip is a recorded fact about where the claim applies, and nothing else in KAAL says it. The symlink skip was the opposite: a defect in the Case. A Run reads both as "proves nothing", which is the gap in section 9, item 4.
 
 ## 5. What Suite is justified
 
@@ -73,12 +75,23 @@ The existing Suite, `testing` in Change `regression-testing/26/09/30/01`, is coh
 ## 6. Pressures met, not hidden
 
 - **`foo-windows.test.ts`.** The easiest build would be `named-windows.test.ts`, `reserved-names-windows.test.ts` and the like, one Carrier per generic claim, so a Windows-flavoured Suite could collect something under Testing. Each would duplicate an existing Carrier's assertion and name an environment where only HOW belongs. The reserved-name and CRLF Cases already say what holds. Not built.
-- **`process.platform` branching.** Needed to make one Carrier mean different things per platform, or to skip. The only existing platform branch in a Case is the named-pipe skip. Not added.
+- **`process.platform` branching.** Needed to make one Carrier mean different things per platform, or to skip. The only existing platform branch in a Case is the named-pipe skip, which is the cheat named above. None was added. Platform-dependent behavior also hides in production code, below.
 - **Skipping.** Any Windows-only Carrier on Linux, or a POSIX one on Windows, must skip, and under the accepted rule (#80) a skip does not hold. The one existing skip proves the point: it keeps Windows `npm test` at `skipped 1` and would keep any Plan that collected it from holding there.
 - **Duplicating generic assertions.** To get Windows evidence "under Testing" without a way to say "run this Carrier here", the only move is to copy the Carrier into a Suite of its own. This is the same duplication as the first pressure, reached from the Plan side.
 - **Environment in Test Case identity.** Identity is `[carrier, name]`. A Windows-specific instance of a generic Case can be named only by putting the platform in the Carrier path or the test name. Not done.
 - **Suite membership as an environment condition.** A Suite named for Windows would let membership stand in for "applies on Windows", which is the `environment` field that #88/#92 proposed and the owner rejected. Not done.
 - **A Windows Carrier because execution cannot instantiate generic HOW under Windows.** Carriers run where the Run is, and a Run knows its platform only as an observed `conditions` string. Nothing lets a Plan require "this Carrier, evidenced on win32". The only way to require Windows evidence would be a Windows Carrier. That is the pressure this probe measures, and it is why no Suite is built.
+
+### Platform differences hidden in production code
+
+A cheat need not be a switch in a Case. A search of the 82 non-test files for platform-dependent APIs finds no `process.platform` branch in production code, but four places where one line behaves differently per platform. This is a read of the code only. The Windows behaviors below come from Node's documented semantics, and none was observed on a Windows runner in this flight.
+
+1. **`SIGKILL` and the "ignores SIGTERM" Case** (`skills.ts:153`, `skills.test.ts`, fixture `stuck/ignores-sigterm`). The Case runs on Windows and passes. As Node documents it, a Windows child is terminated outright and no SIGTERM handler runs, so the hazard the Case names is probably never exercised there. If so, it is a pass that exercises nothing, the same shape as a skip but unrecorded. This is the strongest candidate, and a Windows run should confirm it.
+2. **Retry on removal.** `testing.ts:244` removes its scratch directory with `maxRetries: 10, retryDelay: 100`, which only matters where a handle is still held, i.e. Windows. `skills.ts:167` makes the same call without it. #88 diagnosed an EBUSY race on exactly that call and proposed the one-line patch, which is not in the code. A known Windows defect is therefore unrepaired, and the Windows run is green when the race does not hit.
+3. **Path normalisation.** About a dozen places run `.split(path.sep).join("/")`, which is the identity on Linux, so the Windows-only work happens only on a Windows run.
+4. **Symlink type.** `fs.symlinkSync(…, "dir")` in the test data makes a directory symlink on Windows and is ignored on POSIX.
+
+Items 3 and 4 are legitimate adaptation. Items 1 and 2 are the ones that bear on evidence.
 
 ## 7. Can current Testing represent Windows evidence honestly?
 
@@ -103,8 +116,9 @@ Missing capability, named without designing it: a way for a Plan to require the 
 3. Evidence that `npm test` produces but Testing does not: 301 passing Windows tests are outside every Plan.
 4. A skip that distinguishes "not applicable" from "not performed" from "defective". Today that distinction is a human investigation and lives only in review comments.
 5. Test Case granularity: at Carrier grain the symlink red/green is not observable by itself. #102 had to move a Test Case into its own Carrier before the Carrier could be honest.
-6. Where a report like this belongs: no place exists in KAAL for historical Test Case evolution except sealed Changes, which this flight was told not to create.
+6. Evidence that a Case exercised its hazard on a platform, as opposed to passing there. The probable vacuous pass of the "ignores SIGTERM" Case on Windows looks identical to a real one in every Run.
+7. Where a report like this belongs: no place exists in KAAL for historical Test Case evolution except sealed Changes, which this flight was told not to create.
 
 ## 10. What this flight did and did not do
 
-It adds this file and nothing else. No Suite, Plan, Case, Defect record, Requirement edge, workflow or code changed, and nothing from #146, FAR or the historical record was touched. The repository checks ran on Linux locally (302 tests, R₁ holds, typecheck and format clean) and run on Windows on this pull request's CI. The Windows figures above are from the real Windows runs cited, not from this session's Linux execution.
+It adds this file and nothing else. No Suite, Plan, Case, Defect record, Requirement edge, workflow or code changed, and nothing from #146, FAR or the historical record was touched. The repository checks ran on Linux locally (302 tests, R₁ holds, typecheck and format clean). On this pull request's CI, `test-windows` and `test-linux` passed, and `guard-branch` failed because the branch is `claude/*`, as expected. None of those runs tested the hidden-in-code items above specifically. The Windows figures above are from the real Windows runs cited, not from this session's Linux execution.
