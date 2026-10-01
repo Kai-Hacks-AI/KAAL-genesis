@@ -115,23 +115,29 @@ export function sealPullRequest(options: {
 }
 
 /**
- * Why the change at `repo`'s HEAD may not be admitted yet, or none: a pull
- * request that is ready, into a flight or main, must carry every Change it
- * touches sealed. A draft is investigatory and never refused for this, and a
- * base that is no admission is not judged. This is the requirement; CI's sealing
- * is how it is met where it can write, and a head that cannot be written to
- * stays refused until its Changes arrive sealed.
+ * How the gate judges the change at `repo`'s HEAD. A Change the pull request
+ * touches and has not sealed is refused when the pull request is ready and
+ * admitted (into a flight or main), and held, never refused, while it is a draft
+ * or its base is no admission. Success is therefore possible only where the
+ * Changes are sealed: a verdict that holds in the strictest state cannot be made
+ * wrong by the draft flag or the base changing afterwards, so `check-seals` never
+ * leaves a success that a state change could turn into an unsealed admission.
+ * This is the requirement; CI's sealing is how it is met where it can write.
  */
-export function unsealedErrors(options: { base: string; repo?: string; draft: boolean; admitted: boolean }): string[] {
-  if (options.draft || !options.admitted) return [];
-  return unsealedOccurrences(options.base, options.repo).map(
+export function gateOutcome(options: { base: string; repo?: string; draft: boolean; admitted: boolean }): {
+  outcome: "pass" | "hold" | "refuse";
+  errors: string[];
+} {
+  const errors = unsealedOccurrences(options.base, options.repo).map(
     (occurrence) =>
       `${CHANGE_ROOT}/${occurrence}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
   );
+  if (!errors.length) return { outcome: "pass", errors };
+  return { outcome: options.draft || !options.admitted ? "hold" : "refuse", errors };
 }
 
 // `seal <base> [repo]` seals the pull request's Changes; `admission` names
-// where its base admits it; `gate` refuses a ready pull request with an unsealed Change. The pull request reaches it as environment variables, never
+// where its base admits it; `gate` refuses a ready, admitted pull request with an unsealed Change and holds a draft's. The pull request reaches it as environment variables, never
 // as arguments or script text, so a branch name cannot inject anything.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { HEAD_REF = "", HEAD_REPO = "", AUTHOR = "", THIS_REPO = "", DRAFT = "" } = process.env;
@@ -142,13 +148,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(admission(BASE_REF, DEFAULT_BRANCH) ?? "none");
   } else if (command === "gate" && base) {
     const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
-    const errors = unsealedErrors({
+    const { outcome, errors } = gateOutcome({
       base,
       repo,
       draft,
       admitted: admission(BASE_REF, DEFAULT_BRANCH) !== undefined,
     });
-    if (errors.length) {
+    if (outcome === "hold") console.log("hold");
+    if (outcome === "refuse") {
       console.error(errors.join("\n"));
       process.exitCode = 1;
     }

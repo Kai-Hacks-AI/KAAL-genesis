@@ -11,7 +11,7 @@ import { kaalSealErrors, kaalSealingOutputErrors } from "./kaal-seals.js";
 import {
   admission,
   sealPullRequest,
-  unsealedErrors,
+  gateOutcome,
   touchedOccurrences,
   unsealedOccurrences,
   writebackRefusal,
@@ -218,8 +218,8 @@ test("an incomplete draft may stay investigatory: nothing is sealed, it is never
   assert.deepEqual(tree(repo), before);
   // The Change is still unsealed, and the draft is not held to it.
   assert.deepEqual(unsealedOccurrences("main", repo), ["feature/26/10/01/01"]);
-  assert.deepEqual(unsealedErrors({ base: "main", repo, draft: true, admitted: true }), []);
-  assert.equal(unsealedErrors({ base: "main", repo, draft: false, admitted: true }).length, 1);
+  assert.equal(gateOutcome({ base: "main", repo, draft: true, admitted: true }).outcome, "hold");
+  assert.equal(gateOutcome({ base: "main", repo, draft: false, admitted: true }).outcome, "refuse");
 
   // A draft is held even where sealing it could never succeed.
   write(repo, "change/feature/26/10/01/notes.txt", "incomplete\n");
@@ -230,24 +230,28 @@ test("an incomplete draft may stay investigatory: nothing is sealed, it is never
   assert.throws(() => seal(repo), /refusing to seal Changes/);
 });
 
-test("a ready pull request into a flight or main is refused while a Change it touches is unsealed; a draft is not", () => {
+test("an unsealed Change is refused for a ready admitted pull request and held, never passed, for a draft or a base that is no admission", () => {
   const repo = mainAndBranch();
   authored(repo, "feature", "26/10/01/01");
   const gate = (over: { draft?: boolean; admitted?: boolean } = {}) =>
-    unsealedErrors({ base: "main", repo, draft: false, admitted: true, ...over });
+    gateOutcome({ base: "main", repo, draft: false, admitted: true, ...over });
 
-  assert.match(gate().join(), /change\/feature\/26\/10\/01\/01: Change is not sealed/);
-  // Investigatory while a draft, and not judged where the base is no admission.
-  assert.deepEqual(gate({ draft: true }), []);
-  assert.deepEqual(gate({ admitted: false }), []);
+  const refused = gate();
+  assert.equal(refused.outcome, "refuse");
+  assert.match(refused.errors.join(), /change\/feature\/26\/10\/01\/01: Change is not sealed/);
+  // Investigatory while a draft, and not an admission elsewhere: held, so the status stays pending and a
+  // later change of draft state or base cannot turn a standing success into an unsealed admission.
+  assert.equal(gate({ draft: true }).outcome, "hold");
+  assert.equal(gate({ admitted: false }).outcome, "hold");
+  assert.equal(gate({ draft: true, admitted: false }).outcome, "hold");
 
-  // Once sealed, by CI or by hand, it is admitted; a Change the pull request does not touch never counts.
+  // Once sealed, by CI or by hand, every state passes; a Change the pull request does not touch never counts.
   seal(repo);
-  assert.deepEqual(gate(), []);
+  for (const over of [{}, { draft: true }, { admitted: false }]) assert.equal(gate(over).outcome, "pass");
   const plain = mainAndBranch();
   write(plain, "skills/x.txt", "ordinary\n");
   commit(plain, "ordinary");
-  assert.deepEqual(unsealedErrors({ base: "main", repo: plain, draft: false, admitted: true }), []);
+  assert.equal(gateOutcome({ base: "main", repo: plain, draft: true, admitted: false }).outcome, "pass");
 });
 
 test("CI writes seal state back only to a claude/* or kaal/* branch of this repository", () => {
@@ -516,6 +520,12 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
   assert.equal(gate["working-directory"], "trusted");
   assert.equal(gate.if, "github.event_name == 'pull_request_target'");
   assert.match(gate.run!, /\.\.\/change/);
+  // A held Change keeps the status pending, so success never stands where a later change of draft
+  // state or base could turn it into an unsealed admission.
+  assert.match(gate.run!, /if \[ "\$out" = hold \]; then echo "HELD=true" >> "\$GITHUB_ENV"; fi/);
+  const verdict = (wf.jobs["check-seals"].steps as Step[]).at(-1)!.run!;
+  assert.match(verdict, /if \[ "\$state" = success \] && \[ "\$\{HELD:-\}" = true \]; then\n\s+state=pending/);
+  assert.ok(verdict.indexOf("HELD:-") < verdict.indexOf('gh api "$STATUS_URL"'));
 
   // A stale run must not publish over a newer one: runs of a pull request are serialised,
   // never cancelled, and the draft state and base are read from GitHub when the run reaches

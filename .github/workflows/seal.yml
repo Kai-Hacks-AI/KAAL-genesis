@@ -116,7 +116,9 @@ jobs:
         run: npm run seals:guard -- "origin/$BASE_REF" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
-        run: npm run seals:pull-request -- gate "origin/$BASE_REF" ../change
+        run: |
+          out="$(npm run -s seals:pull-request -- gate "origin/$BASE_REF" ../change)"
+          if [ "$out" = hold ]; then echo "HELD=true" >> "$GITHUB_ENV"; fi
         working-directory: trusted
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -137,5 +139,12 @@ jobs:
               state=pending
               description="The pull request changed while it was checked; the next run decides"
             fi
+          fi
+          # Success only where the Changes are sealed: a draft's or a non-admitted base's
+          # unsealed Change holds the status pending, so no success stands that a later
+          # change of draft state or base could turn into an unsealed admission.
+          if [ "$state" = success ] && [ "${HELD:-}" = true ]; then
+            state=pending
+            description="A Change is unsealed: it is sealed when ready for review and admitted"
           fi
           gh api "$STATUS_URL" -f state="$state" -f context=check-seals -f target_url="$RUN_URL" -f description="$description"
