@@ -1,0 +1,63 @@
+{
+  "unit": "change/far/26/09/30/04",
+  "previous": "e8b5ce038bf6464da0e86472d7a5beb8b533b631f16b021fb5f1438ac4558906",
+  "files": [
+    {
+      "path": "authorise.md",
+      "sha256": "d28c1a667e7a3d36b78685057cce2631de8944ec2c6aecc32b84444f5513c425"
+    },
+    {
+      "path": "feature.md",
+      "sha256": "2061b4255ceabf36b73d3d94e438986f4ab3cb8e76acd9b44f5845300e12af1f"
+    },
+    {
+      "path": "regression.md",
+      "sha256": "ecd4c5558803cca8882f3d09d71f68be94f0f3d832f33294011eabbe36fbe1a0"
+    },
+    {
+      "path": "requirement/review-round-justified-by-confidence-in-responsibility.md",
+      "sha256": "f64b1496d8b8fd6c53a0abe67857209225bfcc7517a3f74df9be31014907cede"
+    },
+    {
+      "path": "requirement/reviewing-ends-every-loop-in-one-of-four-outcomes.md",
+      "sha256": "d3a7971ba0178bcae3477e3e6041e737686db54f7b45a42d59cc831812c25d90"
+    },
+    {
+      "path": "requirement/reviewing-is-independent-of-what-it-reviews.md",
+      "sha256": "e6e1e51a5c2ec9edfd5e33d8dacad7d93187155975182b0f400649be2b264ad2"
+    },
+    {
+      "path": "requirement/reviewing-is-instructions-not-a-script.md",
+      "sha256": "6871cf63231beb2181f1b61af27973237afe05ae716c8be4e7025a851341e406"
+    },
+    {
+      "path": "runs/01/plan.md",
+      "sha256": "6dc2b0eaef0d7a8445b19039cc18d7492543feb21ad97177dbcd57cab7eed45f"
+    },
+    {
+      "path": "runs/01/run.md",
+      "sha256": "3c6bd1870790d1a837e364fc96fbc8103e4b0bb420aa28c26ed9470120266788"
+    },
+    {
+      "path": "test/reviewing/review-round-justified-by-confidence-in-responsibility.test.ts",
+      "sha256": "d0fd61b6fbbdae8aef5f9320e88a17ce29cec08f32bce25657bd15e0c8fcbaa8"
+    },
+    {
+      "path": "test/reviewing/reviewing-ends-every-loop-in-one-of-four-outcomes.test.ts",
+      "sha256": "20904fa17ebcf166f76c26c36d7da6e5e6bcee9661c06c6341d013c82d48ea84"
+    },
+    {
+      "path": "test/reviewing/reviewing-is-independent-of-what-it-reviews.test.ts",
+      "sha256": "2936878337bd9ba11e0cc4f5adccdf9d46ccf5f750ff651c89f97859a08d6423"
+    },
+    {
+      "path": "test/reviewing/reviewing-is-instructions-not-a-script.test.ts",
+      "sha256": "d82849e6c3d06a7ed28b85a0adc28c20270e13face91952b0d0bffa479405bc0"
+    },
+    {
+      "path": "test/reviewing/suite.json",
+      "sha256": "ba8aacd7c55c82290bf80ef0c04dea9c7f23f57ba58b2185a742e352304446cc"
+    }
+  ],
+  "seal": "659c47aeca89e6a23a7cdb346bd7a04e953cb31372a452cd5e390cf0c4f66fc0"
+}
