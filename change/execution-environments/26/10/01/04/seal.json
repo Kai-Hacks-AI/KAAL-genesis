@@ -1,0 +1,15 @@
+{
+  "unit": "change/execution-environments/26/10/01/04",
+  "previous": "f9171603edc1d2e1d68d06c3099e6d54e3435a27b3f1de449b652c8cc550eec7",
+  "files": [
+    {
+      "path": "architecture/composing-evidence-needed-no-extension-dependency.md",
+      "sha256": "5d2769ed2c6f4a5aad4a6fa4968d0855d19590b5d2ed12adfad0225a669375f4"
+    },
+    {
+      "path": "architecture/obtaining-a-run-is-the-boundarys-and-combining-is-testings.md",
+      "sha256": "1f4f48fc4cf74b3a2643984fc8e7f99ffc39dde46eb57cb317bb60f795250d8c"
+    }
+  ],
+  "seal": "565885e939129a02ae374c0e89b91ef3ed77aa5e40675ed87e7082d0cea7829b"
+}
