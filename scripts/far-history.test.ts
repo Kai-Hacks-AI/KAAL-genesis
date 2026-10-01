@@ -21,9 +21,21 @@ const AUTHORISE = [
     at: "change/far/26/09/30/01",
     previous: "change/far/26/09/26/03",
     feature: ["changes-are-immutable-occurrences-beneath-their-lineage", "closed-change-cannot-change-unnoticed"],
+    carriers: 14,
   },
-  { at: "change/far/26/09/30/02", previous: "change/far/26/09/30/01", feature: [] },
-  { at: "change/far/26/09/30/03", previous: "change/far/26/09/30/02", feature: [] },
+  { at: "change/far/26/09/30/02", previous: "change/far/26/09/30/01", feature: [], carriers: 14 },
+  { at: "change/far/26/09/30/03", previous: "change/far/26/09/30/02", feature: [], carriers: 14 },
+  {
+    at: "change/far/26/09/30/04",
+    previous: "change/far/26/09/30/03",
+    feature: [
+      "review-round-justified-by-confidence-in-responsibility",
+      "reviewing-ends-every-loop-in-one-of-four-outcomes",
+      "reviewing-is-independent-of-what-it-reviews",
+      "reviewing-is-instructions-not-a-script",
+    ],
+    carriers: 18,
+  },
 ];
 
 const identities = (file: string): string[] =>
@@ -72,11 +84,11 @@ test("each Plan written under Authorise is exactly what its Regression derives f
   // FAR-1's Suite and its twelve Carriers are untouched, yet the Carrier whose Test Cases FAR-4 superseded is not run.
   const stale = "change/far/26/09/26/01/test/genesis/changes-checked-against-seals-of-target-branch.test.ts";
   assert.equal(fs.existsSync(stale), true);
-  for (const { at } of AUTHORISE) {
+  for (const { at, carriers } of AUTHORISE) {
     const derived = testPlanProtecting(cases, "requirement", identities(`${at}/regression.md`));
     assert.ok("plan" in derived, `${at}: ${"errors" in derived ? derived.errors.join("; ") : ""}`);
     assert.equal(fs.readFileSync(`${at}/runs/01/plan.md`, "utf8"), derived.plan, at);
     assert.equal(derived.carriers.includes(stale), false, at);
-    assert.equal(derived.carriers.length, 14, at);
+    assert.equal(derived.carriers.length, carriers, at);
   }
 });
