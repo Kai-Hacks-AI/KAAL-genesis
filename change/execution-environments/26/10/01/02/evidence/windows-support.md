@@ -1,9 +1,9 @@
 ---
 requirement: windows-support
 parameters:
-  platform: win32
+  environment: windows
 ---
 
-KAAL's support for Windows is evidenced only by a Run that observed it was executing on Windows: its HOW, whichever Test Case tests windows-support, must have passed with the Run's `platform` condition equal to `win32`.
+KAAL's support for Windows is evidenced only under the execution environment `windows`: the HOW of whichever Test Case tests windows-support must have passed in a Run that provides `environment=windows`.
 
-The parameter is the name and value a Run already observes (Node's `process.platform`, which spells Windows `win32`). That it names Windows is KAAL's, never Testing's, and the Test Case stays generic.
+What realizes that condition, and how a host is observed to be Windows, is the environment adapter's. This decision names the environment in KAAL's terms and no provider's, and the Test Case stays generic.

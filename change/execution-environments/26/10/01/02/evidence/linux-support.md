@@ -1,9 +1,9 @@
 ---
 requirement: linux-support
 parameters:
-  platform: linux
+  environment: linux
 ---
 
-KAAL's support for Linux is evidenced only by a Run that observed it was executing on Linux: its HOW, whichever Test Case tests linux-support, must have passed with the Run's `platform` condition equal to `linux`.
+KAAL's support for Linux is evidenced only under the execution environment `linux`: the HOW of whichever Test Case tests linux-support must have passed in a Run that provides `environment=linux`.
 
-The parameter is the name and value a Run already observes (Node's `process.platform`). That it names Linux is KAAL's, never Testing's, and the Test Case stays generic.
+What realizes that condition, and how a host is observed to be Linux, is the environment adapter's. This decision names the environment in KAAL's terms and no provider's, and the Test Case stays generic.

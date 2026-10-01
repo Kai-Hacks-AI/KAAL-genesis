@@ -19,7 +19,7 @@ import { kaalRequirements } from "./requirements.js";
  *     ---
  *     requirement: linux-support
  *     parameters:
- *       platform: linux
+ *       environment: linux
  *     ---
  *
  *     Why this Requirement is shown under these parameters.
