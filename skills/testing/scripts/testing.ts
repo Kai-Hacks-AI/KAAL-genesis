@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
-import { carrierUnder, readTestCases, type Under } from "./test-cases.js";
 
 /** The file that makes a directory a Suite and states its concern. */
 export const SUITE_FILE = "suite.json";
@@ -13,10 +12,21 @@ export const SUITE_FILE = "suite.json";
 export const CASE = /\.test\.[cm]?[jt]s$/;
 
 /**
- * A Plan: the protection it states (its body), the Suites it collects and the Carriers it collects directly, all
- * as posix paths relative to the testing root. A Plan written before Carriers could be collected has none.
+ * What one instance is under: parameters by name, each a plain string. Testing knows no parameter, and compares
+ * a name and a value only by exact equality with what a Run's conditions state.
  */
-export type Plan = { concern: string; suites: string[]; carriers: string[] };
+export type Parameters = Record<string, string>;
+
+/** One required instance: a Carrier, as a posix path relative to the testing root, under the parameters a Run must provide to execute it. */
+export type Instance = { carrier: string; parameters: Parameters };
+
+/**
+ * A Plan: the protection it states (its body), the Suites it collects, the Carriers it collects directly and, when it
+ * states any, the Carriers it collects under parameters, all as posix paths relative to the testing root. A Plan
+ * written before Carriers could be collected has none, and one written before parameters could be stated has no
+ * `parameterized`.
+ */
+export type Plan = { concern: string; suites: string[]; carriers: string[]; parameterized?: Instance[] };
 
 /** A Suite: its place relative to the testing root, its concern, and its Cases as posix paths relative to it. */
 export type Suite = { place: string; concern: string; cases: string[] };
@@ -30,16 +40,16 @@ export type Observation = { case: string; passed: boolean; output: string };
  */
 export type Conditions = Record<string, string>;
 
-/** A Case a Run did not execute, because the conditions it stated do not hold under the Run's: those conditions. */
-export type Inapplicable = { case: string; under: Under[] };
+/** An instance a Run did not perform, because it is under parameters the Run's conditions do not provide: its identity and those parameters. */
+export type Unrun = { case: string; parameters: Parameters };
 
 /**
  * One execution of a Plan: which Cases ran against which candidate, under
  * which conditions, with which outcomes. A Run reports only what it executed:
- * the Cases that do not apply under its conditions are listed as inapplicable,
- * never as observed. The Plan holds, by this Run, only when every Case it
- * collects applied and passed; a Run in which some did not apply is not shown
- * to hold the Plan, though it need not fail it.
+ * an instance under parameters its conditions do not provide is listed as
+ * unrun, never as observed. The Plan holds, by this Run, only when every
+ * instance it requires was performed and passed; a Run that left some unrun is
+ * not shown to hold the Plan, though it need not fail it.
  */
 export type Run = {
   plan: string;
@@ -47,7 +57,7 @@ export type Run = {
   facts: Conditions;
   conditions: string;
   observations: Observation[];
-  inapplicable: Inapplicable[];
+  unrun: Unrun[];
   holds: boolean;
 };
 
@@ -62,15 +72,26 @@ export const observeConditions = (): Conditions => ({
 const describeConditions = (c: Conditions): string => `node ${c.node} ${c.platform} ${c.arch}`;
 
 /**
- * The names among `under` that `conditions` do not satisfy: every condition a
- * Case states must hold, and any one value it lists satisfies it. A condition
- * the Run does not state is not satisfied, so a Case is never evidence under
- * conditions nothing observed. None unmet means it applies.
+ * The names among `parameters` that `conditions` do not provide: every one must
+ * be stated by the Run with that very value. A name the Run does not state is
+ * never provided, so an instance is never evidence under conditions nothing
+ * observed. None unmet means the Run can perform it.
  */
-export const unmet = (under: Under[], conditions: Conditions): string[] =>
-  under
-    .filter(({ dimension, values }) => !Object.hasOwn(conditions, dimension) || !values.includes(conditions[dimension]))
-    .map(({ dimension }) => dimension);
+export const unmet = (parameters: Parameters, conditions: Conditions): string[] =>
+  Object.keys(parameters).filter((name) => !Object.hasOwn(conditions, name) || conditions[name] !== parameters[name]);
+
+/** A name or a value of a parameter: non-empty, with no whitespace and none of `,`, `=`, `[` and `]`, so an identity is never ambiguous. */
+const PARAMETER = /^[^\s,=[\]]+$/;
+
+/**
+ * The identity of a required instance as one line: its Carrier alone when it is
+ * under no parameters, exactly as a Case has always been named, and otherwise
+ * the Carrier and its parameters sorted by name, `carrier[name=value,name=value]`.
+ */
+export const instanceId = ({ carrier, parameters }: Instance): string => {
+  const names = Object.keys(parameters).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return names.length ? `${carrier}[${names.map((n) => `${n}=${parameters[n]}`).join(",")}]` : carrier;
+};
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -142,22 +163,66 @@ export function readPlan(file: string): { plan?: Plan; errors: string[] } {
       seen.add(place);
     }
   }
-  const carriers = data.carriers ?? [];
-  if (!Array.isArray(carriers)) errors.push(`${file}: carriers must be a list`);
+  const listed = data.carriers ?? [];
+  const carriers: string[] = [];
+  const parameterized: Instance[] = [];
+  if (!Array.isArray(listed)) errors.push(`${file}: carriers must be a list`);
   else {
-    for (const place of carriers) {
-      const invalid = placeError(place, "carrier");
-      if (invalid) errors.push(`${file}: ${invalid}`);
+    const stated: { id: string; what: string }[] = [];
+    for (const entry of listed) {
+      if (!isObject(entry)) {
+        const invalid = placeError(entry, "carrier");
+        if (invalid) errors.push(`${file}: ${invalid}`);
+        else carriers.push(entry as string);
+        if (typeof entry === "string") stated.push({ id: entry, what: `carrier "${entry}"` });
+        continue;
+      }
+      const read = readInstance(entry);
+      errors.push(...read.errors.map((e) => `${file}: ${e}`));
+      if (!read.instance) continue;
+      parameterized.push(read.instance);
+      const id = instanceId(read.instance);
+      stated.push({
+        id,
+        what: `carrier "${read.instance.carrier}" under ${id.slice(read.instance.carrier.length + 1, -1)}`,
+      });
     }
-    const seen = new Set<unknown>();
-    for (const place of carriers) {
-      if (seen.has(place)) errors.push(`${file}: carrier "${place}" is collected twice`);
-      seen.add(place);
+    const seen = new Set<string>();
+    for (const { id, what } of stated) {
+      if (seen.has(id)) errors.push(`${file}: ${what} is collected twice`);
+      seen.add(id);
     }
   }
   return errors.length
     ? { errors }
-    : { plan: { concern, suites: suites as string[], carriers: carriers as string[] }, errors };
+    : {
+        plan: {
+          concern,
+          suites: suites as string[],
+          carriers,
+          ...(parameterized.length && { parameterized }),
+        },
+        errors,
+      };
+}
+
+/** The required instance a `carriers` entry that is a mapping states: its `carrier` and the non-empty `parameters` it is under, or why it is not one. */
+function readInstance(entry: Record<string, unknown>): { instance?: Instance; errors: string[] } {
+  const errors: string[] = [];
+  const extra = Object.keys(entry).filter((key) => key !== "carrier" && key !== "parameters");
+  if (extra.length) errors.push(`a carrier under parameters has unknown ${extra.map((key) => `"${key}"`).join(", ")}`);
+  const invalid = placeError(entry.carrier, "carrier");
+  if (invalid) errors.push(invalid);
+  const parameters = entry.parameters;
+  if (!isObject(parameters) || !Object.keys(parameters).length)
+    errors.push("a carrier under parameters must state parameters, a non-empty mapping of names to values");
+  else
+    for (const [name, value] of Object.entries(parameters))
+      if (!PARAMETER.test(name) || typeof value !== "string" || !PARAMETER.test(value))
+        errors.push(`parameter "${name}" must be a plain name with a plain string value`);
+  return errors.length
+    ? { errors }
+    : { instance: { carrier: entry.carrier as string, parameters: parameters as Parameters }, errors };
 }
 
 /** The Suite at `place` beneath `root`: its concern and its Cases, in sorted order. */
@@ -193,7 +258,7 @@ export function readPlanSuites(root: string, plan: string): { plan?: Plan; suite
     if (suite) suites.push(suite);
     errors.push(...invalid);
   }
-  for (const place of read.plan.carriers) {
+  for (const place of [...read.plan.carriers, ...(read.plan.parameterized ?? []).map((i) => i.carrier)]) {
     const stat = fs.lstatSync(path.join(root, ...place.split("/")), { throwIfNoEntry: false });
     if (!stat?.isFile() || !CASE.test(place)) errors.push(`${place}: not a Case file`);
   }
@@ -219,6 +284,17 @@ export function planCases(plan: Plan, suites: Suite[]): string[] {
  * the Case itself prints, so a Case cannot forge it.
  */
 const count = (tap: string, name: string): number => Number(new RegExp(`^# ${name} (\\d+)$`, "m").exec(tap)?.[1] ?? 0);
+
+/**
+ * The instances a Run of the Plan performs or leaves unrun, each once: its
+ * Cases, which are under no parameters, as `planCases` has them, then the
+ * Carriers it collects under parameters, each Carrier with each distinct set of
+ * parameters one instance. The same Carrier under different parameters is the
+ * same Case, however many instances require it.
+ */
+export function planInstances(plan: Plan, suites: Suite[]): Instance[] {
+  return [...planCases(plan, suites).map((carrier) => ({ carrier, parameters: {} })), ...(plan.parameterized ?? [])];
+}
 
 /** Node options that load code before a Case runs, such as a TypeScript loader. */
 const LOADERS = ["--import", "--require", "-r", "--loader", "--experimental-loader"];
@@ -321,10 +397,9 @@ export function runCase(file: string, candidate: string): { passed: boolean; out
 
 /**
  * Runs the Plan at `plan`: reads it and its Suites from the testing root
- * `root`, and executes every Case that applies under the conditions this
- * process observes against `candidate`, by default the same directory. Refuses
- * a broken Plan or Suite, or a Case whose conditions are broken, before running
- * anything.
+ * `root`, and performs every instance it requires that this process's observed
+ * conditions provide, against `candidate`, by default the same directory.
+ * Refuses a broken Plan or Suite before running anything.
  */
 export function runPlan(plan: string, root = ".", candidate = root): Run {
   return runPlanUnder(observeConditions(), plan, root, candidate);
@@ -335,26 +410,22 @@ export function runPlan(plan: string, root = ".", candidate = root): Run {
  * for a using system's own tests of what several Runs together show, to make the
  * Run another environment would have made. Only `runPlan` observes; Testing
  * records the conditions it is given and cannot tell that they are true, so a Run
- * made here is evidence of nothing but what it computes. A Case that does not
- * apply under them is not executed.
+ * made here is evidence of nothing but what it computes. An instance under
+ * parameters these conditions do not provide is not performed.
  */
 export function runPlanUnder(conditions: Conditions, plan: string, root = ".", candidate = root): Run {
   const read = readPlanSuites(root, plan);
   if (read.errors.length) throw new Error(`refusing to run ${plan}:\n${read.errors.join("\n")}`);
-  const stated = planCases(read.plan!, read.suites).map((at) => {
-    const file = path.resolve(root, ...at.split("/"));
-    const cases = readTestCases(file, at);
-    // A Carrier that cannot be parsed states no condition: it is executed, and fails, as it always has.
-    const { under, errors } = cases.unparseable ? { under: [], errors: [] } : carrierUnder(cases.cases, at);
-    return { at, file, under, errors: cases.unparseable ? [] : [...cases.errors, ...errors] };
-  });
-  const broken = stated.flatMap((c) => c.errors);
-  if (broken.length) throw new Error(`refusing to run ${plan}:\n${broken.join("\n")}`);
   const observations: Observation[] = [];
-  const inapplicable: Inapplicable[] = [];
-  for (const { at, file, under } of stated) {
-    if (unmet(under, conditions).length) inapplicable.push({ case: at, under });
-    else observations.push({ case: at, ...runCase(file, path.resolve(candidate)) });
+  const unrun: Unrun[] = [];
+  for (const instance of planInstances(read.plan!, read.suites)) {
+    const id = instanceId(instance);
+    if (unmet(instance.parameters, conditions).length) unrun.push({ case: id, parameters: instance.parameters });
+    else
+      observations.push({
+        case: id,
+        ...runCase(path.resolve(root, ...instance.carrier.split("/")), path.resolve(candidate)),
+      });
   }
   return {
     plan,
@@ -362,59 +433,60 @@ export function runPlanUnder(conditions: Conditions, plan: string, root = ".", c
     facts: conditions,
     conditions: describeConditions(conditions),
     observations,
-    inapplicable,
-    holds: !inapplicable.length && observations.every((o) => o.passed),
+    unrun,
+    holds: !unrun.length && observations.every((o) => o.passed),
   };
 }
 
 /**
- * What a Run showed of its Plan: `does not hold` if a Case it executed failed,
- * which is true under any conditions; `holds` if every Case the Plan collects
- * applied and passed; and otherwise `incomplete`: nothing it executed failed,
- * but some Case did not apply under its conditions, so it does not show the
- * Plan, and does not show that it fails.
+ * What a Run showed of its Plan: `does not hold` if an instance it performed
+ * failed, which is so under any conditions; `holds` if every instance the Plan
+ * requires was performed and passed; and otherwise `incomplete`: nothing it
+ * performed failed, but some required instance is under parameters its
+ * conditions do not provide, so it does not show the Plan, and does not show
+ * that it fails.
  */
 export const verdict = (run: Run): "holds" | "does not hold" | "incomplete" =>
-  run.observations.some((o) => !o.passed) ? "does not hold" : run.inapplicable.length ? "incomplete" : "holds";
+  run.observations.some((o) => !o.passed) ? "does not hold" : run.unrun.length ? "incomplete" : "holds";
 
-/** A Run as lines: the plan, the candidate, the conditions, one line per Case it executed, one per Case that did not apply, then what it showed. */
+/** A Run as lines: the plan, the candidate, the conditions, one line per instance it performed, one per instance it left unrun, then what it showed. */
 export function report(run: Run): string {
   return [
     `plan ${run.plan}`,
     `candidate ${run.candidate}`,
     `conditions ${run.conditions}`,
     ...run.observations.map((o) => `${o.passed ? "pass" : "fail"} ${o.case}`),
-    ...run.inapplicable.map((i) => `inapplicable ${i.case}`),
+    ...run.unrun.map((u) => `unrun ${u.case}`),
     verdict(run),
   ].join("\n");
 }
 
-/** What each Case of a Plan came to in one Run: those that passed, those that failed, and those that did not apply. */
-export type Outcomes = { plan: string; passed: string[]; failed: string[]; inapplicable: string[] };
+/** What each instance a Plan requires came to in one Run: those that passed, those that failed, and those left unrun. */
+export type Outcomes = { plan: string; passed: string[]; failed: string[]; unrun: string[] };
 
 /** The outcomes of a Run. */
 export const outcomes = (run: Run): Outcomes => ({
   plan: run.plan,
   passed: run.observations.filter((o) => o.passed).map((o) => o.case),
   failed: run.observations.filter((o) => !o.passed).map((o) => o.case),
-  inapplicable: run.inapplicable.map((i) => i.case),
+  unrun: run.unrun.map((u) => u.case),
 });
 
-/** The outcomes a Run's `report` states, or why it is not one. Each Case is stated once. */
+/** The outcomes a Run's `report` states, or why it is not one. Each instance is stated once. */
 export function readReport(text: string): { outcomes?: Outcomes; errors: string[] } {
   const lines = text.split(/\r?\n/).filter((line) => line !== "");
   const plan = /^plan (.+)$/.exec(lines[0] ?? "")?.[1];
   if (!plan) return { errors: ["a Run's report begins with its plan"] };
-  const result: Outcomes = { plan, passed: [], failed: [], inapplicable: [] };
+  const result: Outcomes = { plan, passed: [], failed: [], unrun: [] };
   const seen = new Set<string>();
   const errors: string[] = [];
   for (const line of lines.slice(1)) {
-    const match = /^(pass|fail|inapplicable) (.+)$/.exec(line);
+    const match = /^(pass|fail|unrun) (.+)$/.exec(line);
     if (!match) continue;
     const [, kind, at] = match;
     if (seen.has(at)) errors.push(`${at} is stated twice`);
     seen.add(at);
-    result[kind === "pass" ? "passed" : kind === "fail" ? "failed" : "inapplicable"].push(at);
+    result[kind === "pass" ? "passed" : kind === "fail" ? "failed" : "unrun"].push(at);
   }
   if (!["holds", "does not hold", "incomplete"].includes(lines[lines.length - 1]))
     errors.push("a Run's report ends with what it showed");
@@ -423,25 +495,25 @@ export function readReport(text: string): { outcomes?: Outcomes; errors: string[
 
 /**
  * What several Runs of one Plan together show of it. Whether the Plan holds is
- * what one Run shows; a Plan whose Cases apply under different conditions is
- * evidenced by Runs made under each, and no Run is asked to execute what does not
- * apply to it. The Plan is **evidenced** when every Case it collects passed in
- * at least one Run and failed in none: a Run in which a Case did not apply
- * neither supports it nor counts against it. One Run of which every Case
- * applied is evidenced exactly when it holds.
+ * what one Run shows; a Plan that requires instances under different parameters
+ * is evidenced by Runs whose conditions provide each of them, and no Run is asked
+ * to perform what its conditions do not provide. The Plan is **evidenced** when
+ * every instance it requires passed in at least one Run and failed in none: a
+ * Run that left one unrun neither supports it nor counts against it. One Run that
+ * left none unrun is evidenced exactly when it holds.
  */
 export type Evidence = { evidenced: boolean; passed: string[]; failed: string[]; unevidenced: string[] };
 
 /**
  * The evidence of `runs`, each the outcomes of one Run, in one pass over them:
- * refused when there is none, or when they do not collect the same Cases, since
- * they are then not Runs of one Plan. Testing cannot tell that the Runs executed
+ * refused when there is none, or when they do not require the same instances,
+ * since they are then not Runs of one Plan. Testing cannot tell that the Runs executed
  * the same candidate, or under the conditions they state: that is the using
  * system's to ensure, as it is for one Run.
  */
 export function planEvidence(runs: Outcomes[]): { evidence?: Evidence; errors: string[] } {
   if (!runs.length) return { errors: ["no Run to show anything of the Plan"] };
-  const cases = (r: Outcomes) => [...r.passed, ...r.failed, ...r.inapplicable];
+  const cases = (r: Outcomes) => [...r.passed, ...r.failed, ...r.unrun];
   const universe = new Set(cases(runs[0]));
   const errors: string[] = [];
   const passed = new Set<string>();
@@ -449,7 +521,7 @@ export function planEvidence(runs: Outcomes[]): { evidence?: Evidence; errors: s
   runs.forEach((run, i) => {
     const these = cases(run);
     if (these.length !== universe.size || these.some((c) => !universe.has(c)))
-      errors.push(`Run ${i + 1} (${run.plan}) does not collect the Cases of Run 1 (${runs[0].plan})`);
+      errors.push(`Run ${i + 1} (${run.plan}) does not require the instances of Run 1 (${runs[0].plan})`);
     run.passed.forEach((c) => passed.add(c));
     run.failed.forEach((c) => failed.add(c));
   });
