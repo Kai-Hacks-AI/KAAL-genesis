@@ -1,0 +1,11 @@
+{
+  "unit": "ideas/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/managing-ideas.md",
+      "sha256": "2f2ee70f55ec2e80c300259b504e63302edf31a2e45e84d663e4a4e87def2320"
+    }
+  ],
+  "seal": "f0f1913be3130310c7be03a014f9f620fd9722ed6e988b1e1ba86965714a3387"
+}

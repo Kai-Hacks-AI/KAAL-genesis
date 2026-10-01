@@ -21,6 +21,11 @@
 # a skipped job still reports a check, and a skipped check counts as passing,
 # so a change's own branch must never produce a check-seals run at all.
 #
+# A pull request that is ready, into a kaal/* flight or main, must also carry
+# every Change present in its head sealed (`npm run seals:pull-request -- gate`),
+# touched relative to its base or not, so the same head has the same sealing
+# verdict whatever its base or draft state; a draft is held, not refused. seal-pull-request.yml is how that is met where CI can write.
+#
 # Verifies seals and writes nothing; the workflow that writes them on main is
 # sealing.yml, named seal.
 name: check-seals
@@ -28,10 +33,23 @@ name: check-seals
 on:
   push:
     branches: [main]
+  # The gate depends on the pull request's draft state and base, so every
+  # activity that changes either re-runs it: GitHub's default types (opened,
+  # synchronize, reopened) would leave a draft's success standing once the
+  # same head is ready, or retargeted into a flight or main.
   pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read
+
+# A pull request's runs are serialised and never cancelled, and each reads the
+# pull request's draft state, base and head from GitHub when it runs, never from
+# its own event, and judges only the merge of the head its status is for: a stale run, say a draft's after the same head turned ready, must
+# not publish over the verdict of a newer one. Pushes to main are not grouped.
+concurrency:
+  group: check-seals-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   check-seals:
@@ -39,14 +57,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
       statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      # The head this run's status is for; what it checks must be exactly this.
+      EVENT_SHA: ${{ github.event.pull_request.head.sha }}
       STATUS_URL: repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - if: github.event_name == 'pull_request_target'
         run: gh api "$STATUS_URL" -f state=pending -f context=check-seals -f target_url="$RUN_URL" -f description="Checking KAAL's seals"
+      # The pull request as it is now: the gate and the guard judge this, not the
+      # event, which may be older than the run. Values are single-line (a draft
+      # flag, a ref name) and reach the steps below only as environment variables.
+      - id: live
+        if: github.event_name == 'pull_request_target'
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '"DRAFT=\(.draft)", "BASE_REF=\(.base.ref)", "HEAD_SHA=\(.head.sha)"' >> "$GITHUB_ENV"
+      # An event for a head that is no longer the head is stale: a newer event has
+      # its own run, and this one judges nothing.
+      - if: github.event_name == 'pull_request_target'
+        run: test "$HEAD_SHA" = "$EVENT_SHA"
       - run: git config --global core.autocrlf true
       # The pushed commit on push; main's latest commit on a pull request.
       - uses: actions/checkout@v7
@@ -60,6 +92,26 @@ jobs:
           path: change
           fetch-depth: 0
           persist-credentials: false
+      # The merge ref moves with the pull request: what was checked out must be the
+      # merge of exactly the head this run's status is for into exactly the base
+      # branch it is now into, or it judges nothing.
+      - if: github.event_name == 'pull_request_target'
+        working-directory: change
+        run: |
+          test "$(git rev-parse HEAD^2)" = "$EVENT_SHA"
+          test "$(git rev-parse HEAD^1)" = "$(git rev-parse "origin/$BASE_REF")"
+      # The status head on its own, as a directory: what the gate judges, so its verdict
+      # is the head's, never a merge with a base that could supply seal state. Carrying
+      # it here is the carrier's part; the gate knows only the directory.
+      - if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+          path: head
+          persist-credentials: false
+      - if: github.event_name == 'pull_request_target'
+        working-directory: head
+        run: test "$(git rev-parse HEAD)" = "$EVENT_SHA"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -74,7 +126,38 @@ jobs:
         run: npm run seals:check -- ../change
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
-        run: npm run seals:guard -- "origin/${{ github.base_ref }}" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
+        run: npm run seals:guard -- "origin/$BASE_REF" ../change "refs/remotes/origin/${{ github.event.repository.default_branch }}"
         working-directory: trusted
+      - if: github.event_name == 'pull_request_target'
+        run: |
+          out="$(npm run -s seals:pull-request -- gate ../head)"
+          if [ "$out" = hold ]; then echo "HELD=true" >> "$GITHUB_ENV"; fi
+        working-directory: trusted
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      # Success is withheld if the pull request changed while it was checked: it
+      # is read again immediately before publishing, and a changed draft state,
+      # base or head publishes pending, which the run its change queued replaces with the
+      # verdict on the current state. GitHub offers no atomic compare-and-publish
+      # for a status, so a change in the instant between this read and the
+      # publication is left to that next run; that is a limit of the platform, and
+      # the window is that instant, no longer the length of the run.
       - if: always() && github.event_name == 'pull_request_target'
-        run: gh api "$STATUS_URL" -f state="${{ job.status == 'success' && 'success' || 'failure' }}" -f context=check-seals -f target_url="$RUN_URL" -f description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken or the change touches seal state' }}"
+        run: |
+          state="${{ job.status == 'success' && 'success' || 'failure' }}"
+          description="KAAL's seals ${{ job.status == 'success' && 'hold' || 'are broken, the change touches seal state or carries an unsealed Change' }}"
+          if [ "$state" = success ]; then
+            now="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '"\(.draft) \(.base.ref) \(.head.sha)"' || echo changed)"
+            if [ "$now" != "$DRAFT $BASE_REF $EVENT_SHA" ]; then
+              state=pending
+              description="The pull request changed while it was checked; the next run decides"
+            fi
+          fi
+          # An unsealed Change in the head of a draft, or of a pull request outside an
+          # admission, holds the status pending: success only ever means every Change in
+          # the head is sealed, which no change of draft state or base can make wrong.
+          if [ "$state" = success ] && [ "${HELD:-}" = true ]; then
+            state=pending
+            description="Held: the head has an unsealed Change, and this is a draft or not into a flight or main"
+          fi
+          gh api "$STATUS_URL" -f state="$state" -f context=check-seals -f target_url="$RUN_URL" -f description="$description"
