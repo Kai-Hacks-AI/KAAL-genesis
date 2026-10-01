@@ -86,13 +86,13 @@ export const testCasesTestingRequirement = (cases: TestCase[], id: string): stri
 export const testCasesTestingDefect = (cases: TestCase[], id: string): string[] =>
   testCasesTesting(cases, "defect", id);
 
-/** The identities of the Test Cases, among `cases`, that test the Requirement `id` and that no other Test Case supersedes. */
+/** The identities of the Test Cases, among `cases`, that are active for the Requirement `id`: those that test it and that no later Test Case of their own lineage tests too. */
 export const currentTestCasesTestingRequirement = (cases: TestCase[], id: string): string[] =>
   currentTestCasesTesting(cases, "requirement", id);
 
 // With no arguments, checks every reference and every lineage. With `<requirement|defect> <id>`,
 // prints the Test Cases that test it, one identity per line, after the same check; with `current`
-// before them, only those that no other Test Case supersedes.
+// before them, only those active for it: no later Test Case of their own lineage tests it too.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
   const current = args[0] === "current";
