@@ -1,0 +1,47 @@
+{
+  "unit": "change/adapters/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "architecture/adapter-owns-external-knowledge.md",
+      "sha256": "ab076c133a8ce057346b31613caa3cf276d139a9bf46ad314ccbe41029257e3b"
+    },
+    {
+      "path": "architecture/adapters-are-composed-never-imported-between-skills.md",
+      "sha256": "ff02c33a77e6769d942bd5c69f6de936f97ac3e01ca121e06011695385d896f9"
+    },
+    {
+      "path": "architecture/capability-flight-and-branch-are-distinct.md",
+      "sha256": "4738663936946f38695b0faaf3cd3a6241963c662646fee67acc2ed17346d93a"
+    },
+    {
+      "path": "architecture/git-is-a-carrier.md",
+      "sha256": "e97083f87a9364f6b646b5c4ed8934460217bb32f91d8cbc187916036b0f5baf"
+    },
+    {
+      "path": "architecture/github-is-a-host.md",
+      "sha256": "174ccac7e2641906eb9f7e539f28622505a613f6df3564c1fccdacd900863643"
+    },
+    {
+      "path": "architecture/provider-quirks-live-at-the-boundary.md",
+      "sha256": "e9a5bf5e0d316c7775d1b26f486fee44d8a8be0f1a9a36117553e46753cd9fa8"
+    },
+    {
+      "path": "architecture/testing-names-environment-an-adapter-realizes-it.md",
+      "sha256": "e937f97a76b2651d9fd7a26d6ad9d444826b2b7e5e7060078268df8e8b02a41c"
+    },
+    {
+      "path": "architecture/windows-and-linux-are-environments.md",
+      "sha256": "790ceb8cca917c22c3d1a118ce2b3a15369ecb716bf30a83d1718c574544ae38"
+    },
+    {
+      "path": "defect/branch-name-inferred-as-capability-owner.md",
+      "sha256": "28d8c528032d933fd62abec53613a95562b3130ed0901755bff3f020512e6c07"
+    },
+    {
+      "path": "defect/scratch-workspace-disposal-diverges-by-site.md",
+      "sha256": "9ba6ecb2e72a0c9aa400b292ce8bfecacaf2e042fad8a02da685d7cde7a8d015"
+    }
+  ],
+  "seal": "746cb5f1cbce36c66dfd632146e995d6e319335da92067b98ee3ee99dec41f3a"
+}
