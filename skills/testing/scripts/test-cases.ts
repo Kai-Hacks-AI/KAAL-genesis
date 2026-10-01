@@ -124,14 +124,16 @@ function defaultImports(program: Node): Set<string> {
  * one name, which make the identity ambiguous. Anything else, including any
  * other use of `node:test`, any other call and any other property named
  * `tests`, is ordinary syntax outside this: neither read nor refused. `file`
- * names the Carrier, in errors and in each identity.
+ * names the Carrier, in errors and in each identity, and nothing else:
+ * whether the source is TypeScript is the extension of `physical`, the path it
+ * was read from, which is `file` unless given.
  */
-export function parseTestCases(text: string, file: string): { cases: TestCase[]; errors: string[] } {
+export function parseTestCases(text: string, file: string, physical = file): { cases: TestCase[]; errors: string[] } {
   let program: Node;
   try {
     program = parse(text, {
       sourceType: "unambiguous",
-      plugins: /\.[cm]?ts$/.test(file) ? ["typescript"] : [],
+      plugins: /\.[cm]?ts$/.test(physical) ? ["typescript"] : [],
       allowAwaitOutsideFunction: true,
     }).program as unknown as Node;
   } catch (e) {
@@ -180,7 +182,7 @@ export function readTestCases(file: string, name = file): { cases: TestCase[]; e
   } catch (e) {
     return { cases: [], errors: [`${name}: unreadable carrier (${e instanceof Error ? e.message : String(e)})`] };
   }
-  return parseTestCases(text, name);
+  return parseTestCases(text, name, file);
 }
 
 /**

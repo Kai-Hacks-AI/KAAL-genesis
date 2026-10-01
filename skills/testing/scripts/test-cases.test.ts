@@ -228,6 +228,37 @@ test("refuses a Carrier that does not parse, and reads TypeScript only in a Type
   assert.deepEqual(names(typed.replace(": unknown", ""), "a.test.mjs"), ["n"]);
 });
 
+test("the name given to a Carrier only labels errors and identities: whether it is TypeScript is the physical file's extension", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "test-cases-"));
+  const typed = `${IMPORT}test("n", ${T}, (t: unknown) => {});\n`;
+  for (const physical of ["a.test.ts", "a.test.mts", "a.test.cts"]) {
+    fs.writeFileSync(path.join(dir, physical), typed);
+    // The name has no TypeScript suffix, or none at all: the physical file decides.
+    for (const label of ["change/case", "change/case.test.js", "label"])
+      assert.deepEqual(readTestCases(path.join(dir, physical), label), {
+        cases: [{ carrier: label, name: "n", tests: [{ kind: "requirement", id: "r" }] }],
+        errors: [],
+      });
+  }
+  // A JavaScript file is JavaScript, whatever its label says.
+  for (const physical of ["b.test.js", "b.test.mjs", "b.test.cjs"]) {
+    fs.writeFileSync(path.join(dir, physical), typed);
+    const result = readTestCases(path.join(dir, physical), "change/x.test.ts");
+    assert.deepEqual(result.cases, [], physical);
+    assert.match(result.errors[0], /^change\/x\.test\.ts: unparseable carrier \(/, physical);
+  }
+  // From text, the physical path is given or is the name.
+  assert.deepEqual(
+    parseTestCases(typed, "label", "a.test.ts").cases.map((c) => c.carrier),
+    ["label"],
+  );
+  assert.match(parseTestCases(typed, "label").errors[0], /^label: unparseable carrier \(/);
+  assert.deepEqual(
+    parseTestCases(typed, "a.test.ts").cases.map((c) => c.carrier),
+    ["a.test.ts"],
+  );
+});
+
 test("a Test Case's identity is one line, whatever its name holds, and names its carrier and name exactly", () => {
   const separators = [0x0a, 0x0d, 0x85, 0x2028, 0x2029].map((code) => `a${String.fromCharCode(code)}b`);
   const all = [...separators, 'quote " and \\ backslash', "::", '", "', "tab\tand unicode é\u{1f600}"];
