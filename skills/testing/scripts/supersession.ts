@@ -4,18 +4,20 @@ import { testCaseId, type TestCase } from "./test-cases.js";
  * How one Test Case's HOW supersedes another's without the earlier Test Case
  * changing. A Test Case may declare that it `supersedes` an earlier one, and
  * the declaration belongs to the newer alone: the earlier names nothing and is
- * never touched, and both stay what they were written. Supersession does not
- * delete, invalidate or unrun the earlier Test Case. It only says that, among
- * the Test Cases being considered, the newer is the current continuation of
- * its HOW. Everything here is computed from the Test Cases given, never from
- * dates, history, ordering or where they live, and nothing is stored, so
- * nothing can be stale.
+ * never touched, and both stay what they were written. Supersession records
+ * HOW history. It does not delete, invalidate or unrun the earlier Test Case,
+ * and it does not by itself make it inactive: whether a Test Case still
+ * protects something is decided per `tests` edge. A Test Case is active for a
+ * `(kind, id)` it tests unless a later Test Case of its own lineage tests that
+ * same `(kind, id)` too. So when TC₁ tests R1 and R2 and TC₂ supersedes TC₁
+ * and tests R1, TC₂ is active for R1 and TC₁ stays active for R2, the only
+ * protection it has. Everything here is computed from the Test Cases given and
+ * the edges they declare, never from dates, history, ordering, where they live
+ * or a stored flag, so nothing can be stale.
  *
- * A superseding Test Case must keep testing what its predecessor declared it
- * tested, so one HOW replaces another for the same meaning, and a Test Case is
- * superseded immediately by at most one, so the current HOW is never
- * ambiguous. Testing reads declared meaning only: it never judges whether two
- * Test Cases prove the same thing.
+ * A Test Case is superseded immediately by at most one, so a lineage is a line
+ * and which Test Case is later is never ambiguous. Testing reads declared
+ * meaning only: it never judges whether two Test Cases prove the same thing.
  */
 
 /** The Test Case that immediately supersedes each superseded one, by identity, and everything that makes the lineage refused. */
@@ -33,14 +35,9 @@ export function readSupersession(cases: TestCase[]): { superseder: Map<string, s
     else if (!before) errors.push(`${who} supersedes ${earlier}, which names no Test Case`);
     else if (superseder.has(earlier))
       errors.push(
-        `${who} supersedes ${earlier}, which another Test Case already supersedes: its current HOW would be ambiguous`,
+        `${who} supersedes ${earlier}, which another Test Case already supersedes: which is later would be ambiguous`,
       );
-    else {
-      superseder.set(earlier, id);
-      for (const { kind, id: what } of before.tests)
-        if (!c.tests.some((t) => t.kind === kind && t.id === what))
-          errors.push(`${who} supersedes ${earlier} but does not test ${kind} "${what}", which it tested`);
-    }
+    else superseder.set(earlier, id);
   }
   for (const start of superseder.keys()) {
     const seen = new Set([start]);
@@ -55,28 +52,25 @@ export function readSupersession(cases: TestCase[]): { superseder: Map<string, s
   return { superseder, errors: [...new Set(errors)] };
 }
 
-/** The identity of the current continuation of `id`: the end of its lineage, `id` itself when nothing supersedes it. */
-export function currentOf(superseder: Map<string, string>, id: string): string {
-  const seen = new Set([id]);
-  let at = id;
-  for (let next = superseder.get(at); next !== undefined && !seen.has(next); next = superseder.get(at)) {
-    seen.add(next);
-    at = next;
-  }
-  return at;
-}
-
-/** The identities of the Test Cases, among those given, that no Test Case among them supersedes, in the order given. */
-export function currentTestCases(cases: TestCase[]): string[] {
-  const { superseder } = readSupersession(cases);
-  return cases.map(testCaseId).filter((id) => !superseder.has(id));
-}
-
-/** The identities of the Test Cases, among those given, that test `id` of `kind` and that none among them supersedes: the current HOW of that meaning. */
+/**
+ * The identities of the Test Cases, among those given, that are active for
+ * `id` of `kind`, in the order given: those that test it and that no later
+ * Test Case of their own lineage, among those given, tests too. The lineage of
+ * a Test Case is the line of Test Cases that supersede it, one after another.
+ */
 export function currentTestCasesTesting(cases: TestCase[], kind: string, id: string): string[] {
-  const current = new Set(currentTestCases(cases));
+  const { superseder } = readSupersession(cases);
+  const byId = new Map(cases.map((c) => [testCaseId(c), c]));
+  const tests = (c: TestCase) => c.tests.some((t) => t.kind === kind && t.id === id);
   return cases
-    .filter((c) => c.tests.some((t) => t.kind === kind && t.id === id))
-    .map(testCaseId)
-    .filter((tc) => current.has(tc));
+    .filter(tests)
+    .filter((c) => {
+      const seen = new Set<string>();
+      for (let at = superseder.get(testCaseId(c)); at !== undefined && !seen.has(at); at = superseder.get(at)) {
+        seen.add(at);
+        if (tests(byId.get(at)!)) return false;
+      }
+      return true;
+    })
+    .map(testCaseId);
 }

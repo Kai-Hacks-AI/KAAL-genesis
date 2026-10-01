@@ -247,8 +247,8 @@ test("Testing is independent of Requirements and Defects, and they of Testing", 
     );
 });
 
-test("a later Change's Test Case supersedes an earlier one: both test the Requirement, the later is current, and the earlier Change is not touched", () => {
-  const { dir, born } = repo({ "one.test.ts": tc("how", '{ requirement: ["r1"] }') });
+test("a later Change's Test Case supersedes an earlier one per tests edge: the earlier stays active for what only it tests, and its Change is not touched", () => {
+  const { dir, born } = repo({ "one.test.ts": tc("how", '{ requirement: ["r1", "r2"] }') });
   const earlier = dirTree(born);
   const later = birthChange({ root: path.join(dir, "change"), lineage: "x", occurrence: "26/09/30/02" });
   fs.mkdirSync(path.join(later, TEST_DIR, "next"), { recursive: true });
@@ -261,21 +261,22 @@ test("a later Change's Test Case supersedes an earlier one: both test the Requir
   const [one, two] = cases.map(testCaseId);
   assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [one, two]);
   assert.deepEqual(currentTestCasesTestingRequirement(cases, "r1"), [two]);
+  assert.deepEqual(currentTestCasesTestingRequirement(cases, "r2"), [one]);
   assert.deepEqual(dirTree(born), earlier, "the earlier Change holds exactly what it held");
 });
 
-test("a lineage that names no Test Case of any Change, or drops what the earlier tested, is refused", () => {
+test("a supersession that names no Test Case of any Change is refused, and one that drops a tested Requirement is not", () => {
   const { dir, born } = repo({ "one.test.ts": tc("how", '{ requirement: ["r1"] }') });
   fs.writeFileSync(
     path.join(born, TEST_DIR, "suite", "two.test.ts"),
-    `${IMPORT}test("a", { tests: { requirement: ["r2"] }, supersedes: ["change/x/26/09/30/01/test/suite/one.test.ts", "how"] }, () => {});\n` +
-      `test("b", { tests: { requirement: ["r1"] }, supersedes: ["nowhere.test.ts", "x"] }, () => {});\n`,
+    `${IMPORT}test("a", { tests: { requirement: ["r2"] }, supersedes: ["change/x/26/09/30/01/test/suite/one.test.ts", "how"] }, () => {});\n`,
+  );
+  assert.deepEqual(kaalTestCases(dir).errors, []);
+  fs.appendFileSync(
+    path.join(born, TEST_DIR, "suite", "two.test.ts"),
+    'test("b", { tests: { requirement: ["r1"] }, supersedes: ["nowhere.test.ts", "x"] }, () => {});\n',
   );
   const { errors } = kaalTestCases(dir);
-  assert.ok(
-    errors.some((e) => /does not test requirement "r1"/.test(e)),
-    errors.join("\n"),
-  );
   assert.ok(
     errors.some((e) => /names no Test Case/.test(e)),
     errors.join("\n"),

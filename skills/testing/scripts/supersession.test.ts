@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { currentOf, currentTestCases, currentTestCasesTesting, readSupersession } from "./supersession.js";
+import { currentTestCasesTesting, readSupersession } from "./supersession.js";
 import { parseTestCases, testCaseId, type TestCase } from "./test-cases.js";
 import { report, runPlan } from "./testing.js";
 
@@ -53,29 +53,59 @@ test("supersession is computed from the newer Test Case's declaration alone, and
   const { superseder, errors } = readSupersession([one, two, three]);
   assert.deepEqual(errors, []);
   assert.equal(superseder.get(testCaseId(one)), testCaseId(two));
-  assert.equal(currentOf(superseder, testCaseId(one)), testCaseId(three));
-  assert.equal(currentOf(superseder, testCaseId(three)), testCaseId(three));
+  assert.equal(superseder.get(testCaseId(two)), testCaseId(three));
+  assert.equal(superseder.has(testCaseId(three)), false);
   assert.equal(readSupersession([one]).superseder.size, 0, "the earlier Test Case alone knows nothing of it");
   assert.equal(one.supersedes, undefined);
 });
 
-test("a Test Case is current when no Test Case among those considered supersedes it, however they are ordered", () => {
+test("a Test Case is active for a kind and id it tests unless a later Test Case of its lineage tests it too, however they are ordered", () => {
   const one = tc("one.test.ts", "how");
   const two = tc("two.test.ts", "how again", ["one.test.ts", "how"]);
   const other = tc("other.test.ts", "elsewhere");
   const ids = (...cases: TestCase[]) => cases.map(testCaseId);
-  assert.deepEqual(currentTestCases([one, two, other]), ids(two, other));
-  assert.deepEqual(currentTestCases([other, two, one]), ids(other, two));
-  assert.deepEqual(
-    currentTestCases([one, other]),
-    ids(one, other),
-    "the earlier is current in material without the later",
-  );
   assert.deepEqual(currentTestCasesTesting([one, two, other], "requirement", "r"), ids(two, other));
+  assert.deepEqual(currentTestCasesTesting([other, two, one], "requirement", "r"), ids(other, two));
+  assert.deepEqual(
+    currentTestCasesTesting([one, other], "requirement", "r"),
+    ids(one, other),
+    "alone, the earlier is active",
+  );
   assert.deepEqual(currentTestCasesTesting([one, two], "requirement", "unrelated"), []);
+  assert.deepEqual(currentTestCasesTesting([one, two], "defect", "r"), [], "a kind is part of the edge");
 });
 
-test("a lineage is refused when it names nothing, itself, a circle, a second superseder, or drops what was tested", () => {
+test("activity is per tests edge: a superseded Test Case stays active for what no later one of its lineage tests", () => {
+  const both = '{ requirement: ["r1", "r2"] }';
+  const one = tc("one.test.ts", "how", undefined, both);
+  const two = tc("two.test.ts", "how again", ["one.test.ts", "how"], '{ requirement: ["r1"] }');
+  const three = tc("three.test.ts", "once more", ["two.test.ts", "how again"], '{ requirement: ["r2", "r3"] }');
+  const ids = (...cases: TestCase[]) => cases.map(testCaseId);
+  const all = [one, two];
+  assert.deepEqual(readSupersession(all).errors, [], "dropping r2 is not refused");
+  assert.deepEqual(currentTestCasesTesting(all, "requirement", "r1"), ids(two));
+  assert.deepEqual(currentTestCasesTesting(all, "requirement", "r2"), ids(one));
+  const line = [one, two, three];
+  assert.deepEqual(
+    currentTestCasesTesting(line, "requirement", "r1"),
+    ids(two),
+    "a later one that drops r1 does not retire it",
+  );
+  assert.deepEqual(
+    currentTestCasesTesting(line, "requirement", "r2"),
+    ids(three),
+    "a later one of the lineage, not only the next",
+  );
+  assert.deepEqual(currentTestCasesTesting(line, "requirement", "r3"), ids(three));
+  const fork = tc("fork.test.ts", "unrelated lineage", undefined, '{ requirement: ["r2"] }');
+  assert.deepEqual(
+    currentTestCasesTesting([...all, fork], "requirement", "r2"),
+    ids(one, fork),
+    "another lineage does not supersede it",
+  );
+});
+
+test("a lineage is refused when it names nothing, itself, a circle, or a second superseder", () => {
   const one = tc("one.test.ts", "how");
   const refused = (cases: TestCase[], pattern: RegExp) =>
     assert.match(readSupersession(cases).errors.join("\n"), pattern);
@@ -89,14 +119,9 @@ test("a lineage is refused when it names nothing, itself, a circle, a second sup
     [one, tc("two.test.ts", "n", ["one.test.ts", "how"]), tc("three.test.ts", "m", ["one.test.ts", "how"])],
     /already supersedes/,
   );
-  refused(
-    [one, tc("two.test.ts", "n", ["one.test.ts", "how"], '{ requirement: ["else"] }')],
-    /does not test requirement "r"/,
-  );
   assert.deepEqual(
     readSupersession([one, tc("two.test.ts", "n", ["one.test.ts", "how"], '{ requirement: ["r", "more"] }')]).errors,
     [],
-    "a superseding Test Case may test more",
   );
 });
 
