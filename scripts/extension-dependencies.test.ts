@@ -7,8 +7,10 @@ import test from "node:test";
 // The dependency rules of Core, Skill and Extension, shown against the code KAAL has today.
 // Why: change/adapters/26/10/01/02/architecture, brain/learning/adapters/26/10/01/02.
 // A Skill is a directory holding SKILL.md, whichever folder holds it; Core is the machinery
-// that births KAAL; an Extension is everything else KAAL-specific, in either role, so no rule
-// here classifies a module by its folder or by the role it plays.
+// that births KAAL and can operate before KAAL exists; an Extension presupposes a KAAL to
+// extend. No rule here classifies a module by its folder or by the role it plays. That nothing
+// imports Genesis, and that the other modules under scripts/ are acyclic, are observations
+// about today's code and are deliberately not asserted: whether they are rules is not decided.
 
 /** The relative modules a source imports or re-exports, as written. */
 const relativeImports = (source: string): string[] =>
@@ -74,47 +76,17 @@ test("the rule is not vacuous: a Skill that imports out, runs git or names GitHu
   );
 });
 
-/** Everything under `scripts/` that is not a test: Core, and the Extensions, each module by what it imports. */
-const machinery = (): Map<string, string[]> =>
-  new Map(
-    typescript("scripts")
-      .filter((f) => !f.endsWith(".test.ts"))
-      .map((file) => [
-        path.relative(".", file).split(path.sep).join("/"),
-        relativeImports(fs.readFileSync(file, "utf8")).map((s) =>
-          path.relative(".", resolveImport(file, s)).split(path.sep).join("/"),
-        ),
-      ]),
+/** Core's imports: the modules `scripts/genesis.ts` reaches, resolved from the repository root. */
+const coreImports = (): string[] =>
+  relativeImports(fs.readFileSync(CORE, "utf8")).map((s) =>
+    path.relative(".", resolveImport(CORE, s)).split(path.sep).join("/"),
   );
 
 const CORE = "scripts/genesis.ts";
 
-test("Core depends on Skills only, and nothing depends on Core", () => {
-  const graph = machinery();
-  const core = graph.get(CORE);
-  assert.ok(core?.length);
-  for (const target of core) assert.match(target, /^skills\/[^/]+\//, `Core imports ${target}`);
-  for (const [file, imports] of graph) assert.ok(!imports.includes(CORE), `${file} imports Core`);
-  for (const skill of skillsIn("skills"))
-    for (const file of typescript(skill))
-      assert.ok(
-        !relativeImports(fs.readFileSync(file, "utf8")).some((s) =>
-          resolveImport(file, s).endsWith("scripts/genesis.ts"),
-        ),
-      );
-});
-
-test("Extensions depend on Skills and on one another without a cycle", () => {
-  const graph = machinery();
-  const mine = (target: string) => graph.has(target);
-  const state = new Map<string, "open" | "done">();
-  const walk = (file: string, trail: string[]) => {
-    if (state.get(file) === "done") return;
-    assert.notEqual(state.get(file), "open", `cycle: ${[...trail, file].join(" -> ")}`);
-    state.set(file, "open");
-    for (const target of graph.get(file) ?? []) if (mine(target)) walk(target, [...trail, file]);
-    state.set(file, "done");
-  };
-  for (const file of graph.keys()) walk(file, []);
-  assert.ok(state.size > 5);
+test("Core, which operates before KAAL exists, reaches Skills only", () => {
+  const imports = coreImports();
+  assert.ok(imports.length);
+  // An Extension presupposes a KAAL to extend, so Core, running before one exists, cannot be built on one.
+  for (const target of imports) assert.match(target, /^skills\/[^/]+\//, `Core imports ${target}`);
 });
