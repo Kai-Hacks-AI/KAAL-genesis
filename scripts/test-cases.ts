@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { readChanges, ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
+import { currentTestCasesTesting, readSupersession } from "../skills/testing/scripts/supersession.js";
 import { readTestCases, testCasesTesting, type TestCase } from "../skills/testing/scripts/test-cases.js";
 import { CASE } from "../skills/testing/scripts/testing.js";
 import { kaalDefects } from "./defects.js";
@@ -73,6 +74,7 @@ export function kaalTestCases(repo = "."): { cases: TestCase[]; errors: string[]
       else if (!known[kind].has(id)) errors.push(`${who} tests ${kind} "${id}", which names no ${kind}`);
     }
   }
+  errors.push(...readSupersession(cases).errors);
   return { cases, errors };
 }
 
@@ -84,22 +86,34 @@ export const testCasesTestingRequirement = (cases: TestCase[], id: string): stri
 export const testCasesTestingDefect = (cases: TestCase[], id: string): string[] =>
   testCasesTesting(cases, "defect", id);
 
-// With no arguments, checks every reference. With `<requirement|defect> <id>`,
-// prints the Test Cases that test it, one identity per line, after the same check.
+/** The identities of the Test Cases, among `cases`, that are active for the Requirement `id`: those that test it and that no later Test Case of their own lineage tests too. */
+export const currentTestCasesTestingRequirement = (cases: TestCase[], id: string): string[] =>
+  currentTestCasesTesting(cases, "requirement", id);
+
+// With no arguments, checks every reference and every lineage. With `<requirement|defect> <id>`,
+// prints the Test Cases that test it, one identity per line, after the same check; with `current`
+// before them, only those active for it: no later Test Case of their own lineage tests it too.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [kind, id, ...rest] = process.argv.slice(2);
-  if (
+  const args = process.argv.slice(2);
+  const current = args[0] === "current";
+  const [kind, id, ...rest] = current ? args.slice(1) : args;
+  if (current && kind === undefined) {
+    console.error(`usage: test-cases.ts [current] [${KINDS.join("|")} <id>]`);
+    process.exitCode = 2;
+  } else if (
     (kind !== undefined && id === undefined) ||
     rest.length ||
     (kind !== undefined && !KINDS.includes(kind as never))
   ) {
-    console.error(`usage: test-cases.ts [${KINDS.join("|")} <id>]`);
+    console.error(`usage: test-cases.ts [current] [${KINDS.join("|")} <id>]`);
     process.exitCode = 2;
   } else {
     const { cases, errors } = kaalTestCases();
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;
-    } else if (kind !== undefined) for (const c of testCasesTesting(cases, kind, id)) console.log(c);
+    } else if (kind !== undefined)
+      for (const c of current ? currentTestCasesTesting(cases, kind, id) : testCasesTesting(cases, kind, id))
+        console.log(c);
   }
 }

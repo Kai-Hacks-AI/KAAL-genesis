@@ -9,6 +9,11 @@ declare module "node:test" {
        * something Node defines. Node ignores it; the skill reads it from the source, never by running the Case.
        */
       tests?: Readonly<Record<string, readonly string[]>>;
+      /**
+       * The earlier Test Case this one supersedes, as its carrier and its name: `["old.test.ts", "old name"]`.
+       * The newer Test Case names the earlier; the earlier is never changed to learn of it.
+       */
+      supersedes?: readonly [carrier: string, name: string];
     }
   }
 }
