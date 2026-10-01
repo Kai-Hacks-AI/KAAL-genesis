@@ -12,12 +12,36 @@ Read at `3aa5c28` (main). Everything below was executed on Linux (`node v22.22.0
 
 - No Test Case declares `tests: { requirement: ["linux-support"] }`. No `tests` declaration exists outside Testing's own fixtures. `linux-support` has no traced HOW.
 - The only suite of any kind is `change/regression-testing/26/09/30/01/test/testing` (concern: Testing runs a Plan and holds only when every Case passes). It is Linux-agnostic. Its Case spawns child processes and uses `os.tmpdir()`.
-- The only platform-conditioned Case is `skills/using-skills/scripts/named-pipe.test.ts`, with `skip: process.platform === "win32"`. History: it sat inside `skills.test.ts` and made the whole carrier skip on Windows (the evidence behind the Requirement), and #102 split it out. Its own comment says the claim holds only where a named pipe can be a filesystem entry, which is POSIX. `mkfifo` is POSIX, not Linux. What it protects is a skills-birth behaviour (a SKILL.md that is not a regular file is reported, never read), not Linux support. The portable half of that behaviour is already shown on every platform in `skills.test.ts`.
+- The only Case with an explicit platform condition is `skills/using-skills/scripts/named-pipe.test.ts`, with `skip: process.platform === "win32"`. History: it sat inside `skills.test.ts` and made the whole carrier skip on Windows (the evidence behind the Requirement), and #102 split it out. Its own comment says the claim holds only where a named pipe can be a filesystem entry, which is POSIX. `mkfifo` is POSIX, not Linux. What it protects is a skills-birth behaviour (a SKILL.md that is not a regular file is reported, never read), not Linux support. The portable half of that behaviour is already shown on every platform in `skills.test.ts`.
 - Its sibling `#95` made the symlink fixture portable instead of skipping it: the same pressure, resolved by changing the HOW, not by a platform branch.
 - CI (`.github/workflows/test.yml`) runs `npm test`, R1, typecheck and format-check on a matrix of `linux` and `windows`, unselected: "Which cases run where is not selected." `npm test` globs `skills/*/scripts/*.test.ts scripts/*.test.ts`. Those Cases belong to no Suite or Plan, so the Plan-run on Linux executes exactly one Carrier.
-- Other platform-aware material is cross-platform, not Linux: case-insensitive unit aliasing (`seals.ts`), slugs that must name the same file everywhere (`create-node`, `validate`), and the checkout with `core.autocrlf=true` on every OS.
+- Other platform-aware material is cross-platform, not Linux; see "Where the platform difference is hidden" below.
 
 Executed here: `npm test` 302 pass / 0 fail / 0 skipped (named-pipe passes), R1 holds, typecheck and format-check clean.
+
+## Where the platform difference is hidden
+
+An explicit `skip` is only one of four ways the repository carries a platform difference. Read on Linux; the Windows behaviour in the third and fourth items is inference, not observed.
+
+Solution code, Windows semantics enforced on every platform:
+
+- `using-seals/scripts/seals.ts` (about lines 244-290) refuses unit names that Windows or macOS would resolve differently: reserved device names (`con`, `NUL.txt`), trailing dots and spaces, drive and stream colons, backslashes, and case aliases. `managing-defects/scripts/defects.ts` does the same for Defect ids. Paths are normalised with `path.sep` to `/` (`seals.ts` line 51).
+- `defects.ts` and `using-skills/scripts/skills.ts` parse frontmatter with `\r?\n` and tolerate a BOM. `skills.ts` runs a skill's init with `killSignal: "SIGKILL"` and a timeout, because an init can ignore SIGTERM.
+
+Test code and fixtures, silent:
+
+- Stand-ins: `SPECIAL_ENTRY` (`using-seals/scripts/test-data.ts`) fakes a FIFO or device because they "do not exist on Windows", so the classification test never touches a real one. `FAILURES` and `withFailure` simulate I/O failures "because permissions and full disks cannot be produced the same way on every platform".
+- Run-time symlinks (`linkedSkill`, `chainWith*Symlink*`, `defects.test.ts`) are created in the test because "a symlink cannot be committed portably". Whether that works on Windows depends on the runner's rights.
+- Possible trivial pass: the fixture `test-data/stuck/ignores-sigterm` installs a SIGTERM handler, and the test "an init that does not finish in time ... even if it ignores SIGTERM" has no skip. My understanding is that Windows has no POSIX signals and terminates the process regardless of a handler. If so, that test passes on Windows without exercising its claim, and nothing records it. Not verified here.
+- Spawns use `process.execPath` with no shell, with the comment "arguments reach the script exactly as given on every platform".
+
+Git and CI:
+
+- `.gitattributes` marks `brain/**`, `change/**`, `seals.json`, every `test-data/**`, `skills/*/SKILL.md` and `AGENTS.md` as `-text`, so seals and byte comparisons survive line-ending conversion. `test.yml` and `seal.yml` set `core.autocrlf true` to exercise it.
+- `seals.json.lock` is created with `wx` and heads are replaced by `renameSync`. I found no platform-specific handling or test for how either behaves on Windows.
+- Only `test.yml` runs on Windows. Every other workflow is `ubuntu-latest` only.
+
+Consequence: "no Linux-specific HOW" still holds, since Linux is the baseline everything is written against, but the platform difference is not visible as skips. It lives in stand-ins, enforced Windows rules and possibly trivial passes, none of which Testing can state.
 
 ## Classification
 
@@ -55,4 +79,4 @@ None was repaired here.
 5. Pressure: see above.
 6. Current Testing cannot represent the evidence honestly. A Suite is membership by location, a Case carries no environment, and the Run's `conditions` line is the only trace of platform; "this Requirement is demonstrated by this HOW under Linux" is unstatable. Representing it forces one of the pressures above.
 7. #146 (`parameters`, instances, `unrun`, `incomplete`) would let a Plan require one Carrier under `platform=linux` and `platform=windows` without a Linux copy of the Case or a Suite as selector, and would give `named-pipe` an honest `unrun` instead of a silent skip. It would not give `linux-support` any traced HOW, and a Suite would still collect by location.
-8. Missing, independent of #146: (a) a Plan or Suite cannot collect an existing Case without it living beneath the Suite; (b) nothing derives which Carriers carry the active Test Cases for a Requirement (already noted in `test/strategy.md`); (c) no vocabulary separates "needs POSIX to execute" from "protects Linux meaning"; (d) `npm test` Cases sit outside Suites, so a Plan-run on Linux executes one Carrier of the 28 that `npm test` runs.
+8. Missing, independent of #146: (a) a Plan or Suite cannot collect an existing Case without it living beneath the Suite; (b) nothing derives which Carriers carry the active Test Cases for a Requirement (already noted in `test/strategy.md`); (c) no vocabulary separates "needs POSIX to execute" from "protects Linux meaning"; (d) a Case that passes trivially on a platform (a possible case: the SIGTERM test on Windows) and a stand-in that replaces a platform facility are indistinguishable from real evidence in a Run; (e) `npm test` Cases sit outside Suites, so a Plan-run on Linux executes one Carrier of the 28 that `npm test` runs.
