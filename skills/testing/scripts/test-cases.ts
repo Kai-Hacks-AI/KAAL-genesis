@@ -15,7 +15,15 @@ export type TestCase = {
   name: string;
   tests: Tests[];
   supersedes?: { carrier: string; name: string };
+  under?: Under[];
 };
+
+/**
+ * One execution condition a Test Case needs in order to be evidence at all: the `dimension` it names, such as one
+ * of the conditions a Run observes, and the `values` it accepts, any one of which satisfies it. Testing knows no
+ * dimension and no value: both are plain strings compared by exact equality.
+ */
+export type Under = { dimension: string; values: string[] };
 
 /**
  * A Test Case's identity as one line: the JSON array of its carrier and its
@@ -51,44 +59,58 @@ const keyName = (member: Node): string | undefined =>
 /** A name that can stand as a kind or an id: non-blank, no whitespace. */
 const plain = (name: string | undefined): name is string => name !== undefined && name !== "" && !/\s/.test(name);
 
-/** What the `tests` value at `value` declares, or why it is not a literal of `{ kind: ["id", ...] }`. */
-function readTests(value: unknown, where: string): { tests: Tests[]; errors: string[] } {
+/** The words a literal of names, each with a list of plain strings, uses in its errors: the property that holds it, what its names are and what their lists hold. */
+type Words = { property: string; name: string; item: string };
+const TESTS: Words = { property: "tests", name: "kind", item: "id" };
+const UNDER: Words = { property: "under", name: "dimension", item: "value" };
+
+/** What the `tests` value at `value` declares, or why it is not a literal of `{ kind: ["id", ...] }`. The same literal states `under`, as `{ dimension: ["value", ...] }`. */
+function readTests(value: unknown, where: string, words = TESTS): { tests: Tests[]; errors: string[] } {
+  const { property, name: noun, item } = words;
   const tests: Tests[] = [];
   const errors: string[] = [];
   if (!isNode(value) || value.type !== "ObjectExpression")
-    return { tests, errors: [`${where}: tests must be an object literal of kinds, each a list of ids`] };
+    return { tests, errors: [`${where}: ${property} must be an object literal of ${noun}s, each a list of ${item}s`] };
   const kinds = new Set<string>();
-  for (const property of nodes(value.properties)) {
-    const kind = keyName(property);
+  for (const property_ of nodes(value.properties)) {
+    const kind = keyName(property_);
     if (!plain(kind)) {
-      errors.push(`${where}: a kind must be a plain name, never computed, spread or blank`);
+      errors.push(`${where}: a ${noun} must be a plain name, never computed, spread or blank`);
       continue;
     }
     if (kinds.has(kind)) {
-      errors.push(`${where}: tests names kind ${kind} twice`);
+      errors.push(`${where}: ${property} names ${noun} ${kind} twice`);
       continue;
     }
     kinds.add(kind);
-    const list = property.value;
+    const list = property_.value;
     if (!isNode(list) || list.type !== "ArrayExpression") {
-      errors.push(`${where}: tests ${kind} must be a list of ids`);
+      errors.push(`${where}: ${property} ${kind} must be a list of ${item}s`);
       continue;
     }
     const elements = list.elements as unknown[];
-    if (!elements.length) errors.push(`${where}: tests ${kind} must name at least one id`);
+    if (!elements.length) errors.push(`${where}: ${property} ${kind} must name at least one ${item}`);
     const seen = new Set<string>();
     for (const element of elements) {
       const id = stringLiteral(element);
-      if (!plain(id)) errors.push(`${where}: tests ${kind} ids must be string literals without whitespace`);
-      else if (seen.has(id)) errors.push(`${where}: tests ${kind} "${id}" twice`);
+      if (!plain(id)) errors.push(`${where}: ${property} ${kind} ${item}s must be string literals without whitespace`);
+      else if (seen.has(id)) errors.push(`${where}: ${property} ${kind} "${id}" twice`);
       else {
         seen.add(id);
         tests.push({ kind, id });
       }
     }
   }
-  if (!kinds.size && !errors.length) errors.push(`${where}: tests must name at least one kind`);
+  if (!kinds.size && !errors.length) errors.push(`${where}: ${property} must name at least one ${noun}`);
   return { tests, errors };
+}
+
+/** The conditions an `under` value states: a literal of `{ dimension: ["value", ...] }`, or why it is not one. */
+function readUnder(value: unknown, where: string): { under: Under[]; errors: string[] } {
+  const { tests, errors } = readTests(value, where, UNDER);
+  const byDimension = new Map<string, string[]>();
+  for (const { kind, id } of tests) byDimension.set(kind, [...(byDimension.get(kind) ?? []), id]);
+  return { under: [...byDimension].map(([dimension, values]) => ({ dimension, values })), errors };
 }
 
 /** The Test Case an `supersedes` value names: a literal list of exactly two non-empty strings, its carrier and its name, or why it is not one. */
@@ -137,21 +159,29 @@ function defaultImports(program: Node): Set<string> {
  * each a non-empty list of distinct string-literal ids. The same options may
  * also hold one plain `supersedes` property, a literal list of exactly two string
  * literals, the carrier and the name of the Test Case this one supersedes: the
- * newer Test Case names the earlier, which is never touched. The declaration says
+ * newer Test Case names the earlier, which is never touched. They may also hold
+ * one plain `under` property, a literal object of `{ dimension: ["value", ...] }`:
+ * the execution conditions under which the Test Case is evidence at all, a
+ * statement of the Test Case alone like `supersedes`. The declaration says
  * that the Test Case of that name tests those things. It does not say that
  * Node registered or ran the call: that is for a Run to show.
  *
  * Refused: a Carrier that does not parse; a canonical declaration whose `tests`
  * is not that literal, or is stated twice in its options; two declarations of
  * one name, which make the identity ambiguous; a `supersedes` that is not that
- * literal, or is stated twice. Anything else, including any
+ * literal, or is stated twice; an `under` that is not that literal, or is stated twice.
+ * Anything else, including any
  * other use of `node:test`, any other call and any other property named
  * `tests`, is ordinary syntax outside this: neither read nor refused. `file`
  * names the Carrier, in errors and in each identity, and nothing else:
  * whether the source is TypeScript is the extension of `physical`, the path it
  * was read from, which is `file` unless given.
  */
-export function parseTestCases(text: string, file: string, physical = file): { cases: TestCase[]; errors: string[] } {
+export function parseTestCases(
+  text: string,
+  file: string,
+  physical = file,
+): { cases: TestCase[]; errors: string[]; unparseable?: true } {
   let program: Node;
   try {
     program = parse(text, {
@@ -160,12 +190,21 @@ export function parseTestCases(text: string, file: string, physical = file): { c
       allowAwaitOutsideFunction: true,
     }).program as unknown as Node;
   } catch (e) {
-    return { cases: [], errors: [`${file}: unparseable carrier (${e instanceof Error ? e.message : String(e)})`] };
+    return {
+      cases: [],
+      errors: [`${file}: unparseable carrier (${e instanceof Error ? e.message : String(e)})`],
+      unparseable: true,
+    };
   }
   const locals = defaultImports(program);
   const errors: string[] = [];
-  const declared: { name: string; line: number; tests?: Tests[]; supersedes?: { carrier: string; name: string } }[] =
-    [];
+  const declared: {
+    name: string;
+    line: number;
+    tests?: Tests[];
+    supersedes?: { carrier: string; name: string };
+    under?: Under[];
+  }[] = [];
   for (const statement of nodes(program.body)) {
     const call = statement.type === "ExpressionStatement" ? statement.expression : undefined;
     if (!isNode(call) || call.type !== "CallExpression") continue;
@@ -189,12 +228,22 @@ export function parseTestCases(text: string, file: string, physical = file): { c
     const lineage = superseding.length === 1 ? readSupersedes(superseding[0].value, where) : { errors: [] as string[] };
     if (superseding.length > 1) errors.push(`${where}: supersedes is stated twice`);
     errors.push(...lineage.errors);
-    const sound = !read.errors.length && superseding.length < 2 && !lineage.errors.length;
+    const conditioned = nodes(args[1].properties).filter((p) => keyName(p) === "under");
+    const conditions = conditioned.length === 1 ? readUnder(conditioned[0].value, where) : undefined;
+    if (conditioned.length > 1) errors.push(`${where}: under is stated twice`);
+    errors.push(...(conditions?.errors ?? []));
+    const sound =
+      !read.errors.length &&
+      superseding.length < 2 &&
+      !lineage.errors.length &&
+      conditioned.length < 2 &&
+      !conditions?.errors.length;
     declared.push({
       name,
       line: at(call),
       tests: sound ? read.tests : undefined,
       supersedes: "supersedes" in lineage ? lineage.supersedes : undefined,
+      under: sound ? conditions?.under : undefined,
     });
   }
   // Two declarations of one name make its identity ambiguous, so it names no Test Case.
@@ -204,12 +253,18 @@ export function parseTestCases(text: string, file: string, physical = file): { c
     if (counts.get(d.name)! > 1) errors.push(`${file}:${d.line}: Test Case "${d.name}" is traced more than once`);
   const cases = declared
     .filter((d) => d.tests && counts.get(d.name) === 1)
-    .map((d) => ({ carrier: file, name: d.name, tests: d.tests!, ...(d.supersedes && { supersedes: d.supersedes }) }));
+    .map((d) => ({
+      carrier: file,
+      name: d.name,
+      tests: d.tests!,
+      ...(d.supersedes && { supersedes: d.supersedes }),
+      ...(d.under && { under: d.under }),
+    }));
   return { cases, errors };
 }
 
 /** The traceable Test Cases of the Carrier at `file`, or why it cannot be read. Errors and identities name it `name`, by default `file`. */
-export function readTestCases(file: string, name = file): { cases: TestCase[]; errors: string[] } {
+export function readTestCases(file: string, name = file): { cases: TestCase[]; errors: string[]; unparseable?: true } {
   let text: string;
   try {
     text = fs.readFileSync(file, "utf8");
@@ -228,4 +283,28 @@ export function readTestCases(file: string, name = file): { cases: TestCase[]; e
  */
 export function testCasesTesting(cases: TestCase[], kind: string, id: string): string[] {
   return cases.filter((c) => c.tests.some((t) => t.kind === kind && t.id === id)).map(testCaseId);
+}
+
+/**
+ * The conditions a Run must observe for the Carrier whose Test Cases are given
+ * to be executed at all: a Run executes a Carrier whole, so every condition any
+ * of its Test Cases states must hold. Per dimension the values accepted are
+ * those every one of them accepts; a dimension no value satisfies means the
+ * Carrier could never be executed anywhere, and is refused. A Carrier whose
+ * Test Cases state none applies under any conditions, as it always has.
+ */
+export function carrierUnder(cases: TestCase[], carrier: string): { under: Under[]; errors: string[] } {
+  const accepted = new Map<string, string[]>();
+  for (const { under = [] } of cases)
+    for (const { dimension, values } of under) {
+      const before = accepted.get(dimension);
+      accepted.set(dimension, before ? before.filter((v) => values.includes(v)) : values);
+    }
+  const errors = [...accepted]
+    .filter(([, values]) => !values.length)
+    .map(
+      ([dimension]) =>
+        `${carrier}: its Test Cases accept no common ${dimension}, so no Run could ever execute it: split it into Carriers`,
+    );
+  return { under: [...accepted].map(([dimension, values]) => ({ dimension, values })), errors };
 }

@@ -1,9 +1,12 @@
 import { pathToFileURL } from "node:url";
-import { report, runPlan } from "./testing.js";
+import { report, runPlan, verdict } from "./testing.js";
 
 // Runs the Plan at <plan>, read with its Suites from the current directory,
-// against [candidate], by default the current directory too. Prints the Run
-// and the output of every Case that did not pass; fails unless the Plan holds.
+// against [candidate], by default the current directory too. Prints the Run,
+// the output of every Case that did not pass and the conditions of every Case
+// that did not apply. Exits 0 only when the Plan holds, 1 when it does not, and
+// 3 when the Run is incomplete: nothing it executed failed, but a Case did not
+// apply under its conditions.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [plan, candidate, ...rest] = process.argv.slice(2);
   if (!plan || rest.length) {
@@ -13,8 +16,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     try {
       const run = runPlan(plan, ".", candidate);
       for (const o of run.observations.filter((o) => !o.passed)) console.error(`--- ${o.case}\n${o.output}`);
+      for (const i of run.inapplicable) {
+        const needs = i.under.map((u) => `${u.dimension} ${u.values.join(" | ")}`).join(", ");
+        console.error(
+          `--- ${i.case}\nnot executed: it applies only under ${needs}; this Run observed ${run.conditions}`,
+        );
+      }
       console.log(report(run));
-      if (!run.holds) process.exitCode = 1;
+      const shown = verdict(run);
+      if (shown !== "holds") process.exitCode = shown === "does not hold" ? 1 : 3;
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exitCode = 1;

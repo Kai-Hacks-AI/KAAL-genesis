@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { carrierUnder, readTestCases, type Under } from "./test-cases.js";
 
 /** The file that makes a directory a Suite and states its concern. */
 export const SUITE_FILE = "suite.json";
@@ -24,17 +25,52 @@ export type Suite = { place: string; concern: string; cases: string[] };
 export type Observation = { case: string; passed: boolean; output: string };
 
 /**
+ * The conditions a Run executed under, as facts by name: Testing observes the Node version, the platform and the
+ * architecture. A name and a value mean nothing to Testing beyond exact equality.
+ */
+export type Conditions = Record<string, string>;
+
+/** A Case a Run did not execute, because the conditions it stated do not hold under the Run's: those conditions. */
+export type Inapplicable = { case: string; under: Under[] };
+
+/**
  * One execution of a Plan: which Cases ran against which candidate, under
- * which conditions, with which outcomes. The Plan holds only when every
- * Case of every Suite it collects passed.
+ * which conditions, with which outcomes. A Run reports only what it executed:
+ * the Cases that do not apply under its conditions are listed as inapplicable,
+ * never as observed. The Plan holds, by this Run, only when every Case it
+ * collects applied and passed; a Run in which some did not apply is not shown
+ * to hold the Plan, though it need not fail it.
  */
 export type Run = {
   plan: string;
   candidate: string;
+  facts: Conditions;
   conditions: string;
   observations: Observation[];
+  inapplicable: Inapplicable[];
   holds: boolean;
 };
+
+/** What this process runs under: the conditions a Run observes. */
+export const observeConditions = (): Conditions => ({
+  node: process.version,
+  platform: process.platform,
+  arch: process.arch,
+});
+
+/** The observed conditions as the Run has always stated them: Node version, platform, architecture. */
+const describeConditions = (c: Conditions): string => `node ${c.node} ${c.platform} ${c.arch}`;
+
+/**
+ * The names among `under` that `conditions` do not satisfy: every condition a
+ * Case states must hold, and any one value it lists satisfies it. A condition
+ * the Run does not state is not satisfied, so a Case is never evidence under
+ * conditions nothing observed. None unmet means it applies.
+ */
+export const unmet = (under: Under[], conditions: Conditions): string[] =>
+  under
+    .filter(({ dimension, values }) => !Object.hasOwn(conditions, dimension) || !values.includes(conditions[dimension]))
+    .map(({ dimension }) => dimension);
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -285,33 +321,148 @@ export function runCase(file: string, candidate: string): { passed: boolean; out
 
 /**
  * Runs the Plan at `plan`: reads it and its Suites from the testing root
- * `root`, and executes every Case against `candidate`, by default the same
- * directory. Refuses a broken Plan or Suite before running anything.
+ * `root`, and executes every Case that applies under the conditions this
+ * process observes against `candidate`, by default the same directory. Refuses
+ * a broken Plan or Suite, or a Case whose conditions are broken, before running
+ * anything.
  */
 export function runPlan(plan: string, root = ".", candidate = root): Run {
+  return runPlanUnder(observeConditions(), plan, root, candidate);
+}
+
+/**
+ * `runPlan` under the `conditions` it is told rather than the ones it observes:
+ * for a using system's own tests of what several Runs together show, to make the
+ * Run another environment would have made. Only `runPlan` observes; Testing
+ * records the conditions it is given and cannot tell that they are true, so a Run
+ * made here is evidence of nothing but what it computes. A Case that does not
+ * apply under them is not executed.
+ */
+export function runPlanUnder(conditions: Conditions, plan: string, root = ".", candidate = root): Run {
   const read = readPlanSuites(root, plan);
   if (read.errors.length) throw new Error(`refusing to run ${plan}:\n${read.errors.join("\n")}`);
+  const stated = planCases(read.plan!, read.suites).map((at) => {
+    const file = path.resolve(root, ...at.split("/"));
+    const cases = readTestCases(file, at);
+    // A Carrier that cannot be parsed states no condition: it is executed, and fails, as it always has.
+    const { under, errors } = cases.unparseable ? { under: [], errors: [] } : carrierUnder(cases.cases, at);
+    return { at, file, under, errors: cases.unparseable ? [] : [...cases.errors, ...errors] };
+  });
+  const broken = stated.flatMap((c) => c.errors);
+  if (broken.length) throw new Error(`refusing to run ${plan}:\n${broken.join("\n")}`);
   const observations: Observation[] = [];
-  for (const at of planCases(read.plan!, read.suites)) {
-    const { passed, output } = runCase(path.resolve(root, ...at.split("/")), path.resolve(candidate));
-    observations.push({ case: at, passed, output });
+  const inapplicable: Inapplicable[] = [];
+  for (const { at, file, under } of stated) {
+    if (unmet(under, conditions).length) inapplicable.push({ case: at, under });
+    else observations.push({ case: at, ...runCase(file, path.resolve(candidate)) });
   }
   return {
     plan,
     candidate: path.resolve(candidate),
-    conditions: `node ${process.version} ${process.platform} ${process.arch}`,
+    facts: conditions,
+    conditions: describeConditions(conditions),
     observations,
-    holds: observations.every((o) => o.passed),
+    inapplicable,
+    holds: !inapplicable.length && observations.every((o) => o.passed),
   };
 }
 
-/** A Run as lines: the plan, the candidate, the conditions, one line per Case, then whether the Plan holds. */
+/**
+ * What a Run showed of its Plan: `does not hold` if a Case it executed failed,
+ * which is true under any conditions; `holds` if every Case the Plan collects
+ * applied and passed; and otherwise `incomplete`: nothing it executed failed,
+ * but some Case did not apply under its conditions, so it does not show the
+ * Plan, and does not show that it fails.
+ */
+export const verdict = (run: Run): "holds" | "does not hold" | "incomplete" =>
+  run.observations.some((o) => !o.passed) ? "does not hold" : run.inapplicable.length ? "incomplete" : "holds";
+
+/** A Run as lines: the plan, the candidate, the conditions, one line per Case it executed, one per Case that did not apply, then what it showed. */
 export function report(run: Run): string {
   return [
     `plan ${run.plan}`,
     `candidate ${run.candidate}`,
     `conditions ${run.conditions}`,
     ...run.observations.map((o) => `${o.passed ? "pass" : "fail"} ${o.case}`),
-    run.holds ? "holds" : "does not hold",
+    ...run.inapplicable.map((i) => `inapplicable ${i.case}`),
+    verdict(run),
   ].join("\n");
+}
+
+/** What each Case of a Plan came to in one Run: those that passed, those that failed, and those that did not apply. */
+export type Outcomes = { plan: string; passed: string[]; failed: string[]; inapplicable: string[] };
+
+/** The outcomes of a Run. */
+export const outcomes = (run: Run): Outcomes => ({
+  plan: run.plan,
+  passed: run.observations.filter((o) => o.passed).map((o) => o.case),
+  failed: run.observations.filter((o) => !o.passed).map((o) => o.case),
+  inapplicable: run.inapplicable.map((i) => i.case),
+});
+
+/** The outcomes a Run's `report` states, or why it is not one. Each Case is stated once. */
+export function readReport(text: string): { outcomes?: Outcomes; errors: string[] } {
+  const lines = text.split(/\r?\n/).filter((line) => line !== "");
+  const plan = /^plan (.+)$/.exec(lines[0] ?? "")?.[1];
+  if (!plan) return { errors: ["a Run's report begins with its plan"] };
+  const result: Outcomes = { plan, passed: [], failed: [], inapplicable: [] };
+  const seen = new Set<string>();
+  const errors: string[] = [];
+  for (const line of lines.slice(1)) {
+    const match = /^(pass|fail|inapplicable) (.+)$/.exec(line);
+    if (!match) continue;
+    const [, kind, at] = match;
+    if (seen.has(at)) errors.push(`${at} is stated twice`);
+    seen.add(at);
+    result[kind === "pass" ? "passed" : kind === "fail" ? "failed" : "inapplicable"].push(at);
+  }
+  if (!["holds", "does not hold", "incomplete"].includes(lines[lines.length - 1]))
+    errors.push("a Run's report ends with what it showed");
+  return errors.length ? { errors } : { outcomes: result, errors };
+}
+
+/**
+ * What several Runs of one Plan together show of it. Whether the Plan holds is
+ * what one Run shows; a Plan whose Cases apply under different conditions is
+ * evidenced by Runs made under each, and no Run is asked to execute what does not
+ * apply to it. The Plan is **evidenced** when every Case it collects passed in
+ * at least one Run and failed in none: a Run in which a Case did not apply
+ * neither supports it nor counts against it. One Run of which every Case
+ * applied is evidenced exactly when it holds.
+ */
+export type Evidence = { evidenced: boolean; passed: string[]; failed: string[]; unevidenced: string[] };
+
+/**
+ * The evidence of `runs`, each the outcomes of one Run, in one pass over them:
+ * refused when there is none, or when they do not collect the same Cases, since
+ * they are then not Runs of one Plan. Testing cannot tell that the Runs executed
+ * the same candidate, or under the conditions they state: that is the using
+ * system's to ensure, as it is for one Run.
+ */
+export function planEvidence(runs: Outcomes[]): { evidence?: Evidence; errors: string[] } {
+  if (!runs.length) return { errors: ["no Run to show anything of the Plan"] };
+  const cases = (r: Outcomes) => [...r.passed, ...r.failed, ...r.inapplicable];
+  const universe = new Set(cases(runs[0]));
+  const errors: string[] = [];
+  const passed = new Set<string>();
+  const failed = new Set<string>();
+  runs.forEach((run, i) => {
+    const these = cases(run);
+    if (these.length !== universe.size || these.some((c) => !universe.has(c)))
+      errors.push(`Run ${i + 1} (${run.plan}) does not collect the Cases of Run 1 (${runs[0].plan})`);
+    run.passed.forEach((c) => passed.add(c));
+    run.failed.forEach((c) => failed.add(c));
+  });
+  if (errors.length) return { errors };
+  const order = (cs: Iterable<string>) => [...cs].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const unevidenced = [...universe].filter((c) => !passed.has(c) && !failed.has(c));
+  return {
+    evidence: {
+      evidenced: !failed.size && !unevidenced.length,
+      passed: order([...passed].filter((c) => !failed.has(c))),
+      failed: order(failed),
+      unevidenced: order(unevidenced),
+    },
+    errors,
+  };
 }
