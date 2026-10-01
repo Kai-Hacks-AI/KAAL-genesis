@@ -37,6 +37,12 @@
     ],
     "seal": "fe359e596d608ab2ba53e483baeec56a39aeb3f36b3e2868843a6b60aafad3e2"
   },
+  "far-integration": {
+    "units": [
+      "change/far-integration/26/10/01/01"
+    ],
+    "seal": "1710db6997d23025a6483948b1756b1d0390bc599289a0eee7ec18b210443426"
+  },
   "git-independence": {
     "units": [
       "change/git-independence/26/10/01/01"

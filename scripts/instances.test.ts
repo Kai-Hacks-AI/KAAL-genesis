@@ -220,3 +220,15 @@ test("decisions are test material: beneath a Change's test/, they are no Carrier
     ["r1"],
   );
 });
+
+test("a Plan that requires nothing under parameters is worded as before parameters existed, so a stored Plan is made again byte for byte", () => {
+  const dir = repo({ "r1.md": decision("r1", "  environment: linux") });
+  const { required } = kaalInstanceRequirements(dir);
+  const cases = kaalTestCases(dir).cases;
+  const plain = testPlanProtecting(cases, "requirement", ["r2"], required);
+  const parameterised = testPlanProtecting(cases, "requirement", ["r1"], required);
+  assert.ok("plan" in plain && "plan" in parameterised);
+  assert.match(plain.plan, /each Carrier once, computed from the Test Cases and the `tests`/);
+  assert.doesNotMatch(plain.plan, /parameters/);
+  assert.match(parameterised.plan, /once under each set of parameters its requirement's instances are required under/);
+});

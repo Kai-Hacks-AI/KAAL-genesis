@@ -245,6 +245,17 @@ export function requiredInstances(entries: readonly PlanEntry[], required: reado
 }
 
 /**
+ * What a derived Plan says of itself. A Plan that requires no instance under
+ * parameters is worded as it was before instances had parameters, so a Plan
+ * stored under an earlier Authorise is made again byte for byte; wording about
+ * parameters appears only in a Plan that has some.
+ */
+const unparameterisedNote = (kind: string): string =>
+  `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once, computed from the Test Cases and the \`tests\` and \`supersedes\` they declare. Made again from them, it is the same.`;
+const parameterisedNote = (kind: string): string =>
+  `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once under each set of parameters its ${kind}'s instances are required under, computed from the Test Cases, the \`tests\` and \`supersedes\` they declare and the instances the Changes require. Made again from them, it is the same.`;
+
+/**
  * The Test Plan that demonstrates the protection of the Requirements or
  * Defects `ids` of `kind`: each Test Case active for any of them once, with
  * the ids that select it, and the instances a Run executes, each Carrier under
@@ -267,6 +278,7 @@ export function testPlanProtecting(
   if ("errors" in answer) return answer;
   const instances = requiredInstances(answer.entries, required);
   const carriers = [...new Set(instances.map((i) => i.carrier))];
+  const parameterised = instances.some((i) => Object.keys(i.parameters).length > 0);
   const protectedIds = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const plan = [
     "---",
@@ -278,7 +290,7 @@ export function testPlanProtecting(
     ),
     "---",
     "",
-    `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once under each set of parameters its ${kind}'s instances are required under, computed from the Test Cases, the \`tests\` and \`supersedes\` they declare and the instances the Changes require. Made again from them, it is the same.`,
+    parameterised ? parameterisedNote(kind) : unparameterisedNote(kind),
     "",
     ...protectedIds.map((id) => `- ${id}`),
     "",

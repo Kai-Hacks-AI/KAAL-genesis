@@ -1,0 +1,11 @@
+{
+  "unit": "change/far-integration/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "defect/plan-derivation-rewrites-stored-plans.md",
+      "sha256": "a4cfbf73aa491a7c8a3bfad4c1d97e3b6c7ee198b6d2451c31f7aa8b6a83bbb1"
+    }
+  ],
+  "seal": "1710db6997d23025a6483948b1756b1d0390bc599289a0eee7ec18b210443426"
+}
