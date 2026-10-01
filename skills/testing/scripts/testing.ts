@@ -17,7 +17,12 @@ export const CASE = /\.test\.[cm]?[jt]s$/;
  */
 export type Parameters = Record<string, string>;
 
-/** One required instance: a Carrier, as a posix path relative to the testing root, under the parameters a Run must provide to execute it. */
+/**
+ * One required instance. What is instantiated is the HOW, a Test Case, under the parameters a Run must provide;
+ * Testing can name only the file that executes it, so it names the Carrier, a posix path relative to the testing
+ * root, and a Run performs that Carrier whole. That is the Runner's projection and its limit, not what an instance
+ * means: Test Cases sharing a Carrier are not thereby parameterized together.
+ */
 export type Instance = { carrier: string; parameters: Parameters };
 
 /**
@@ -289,8 +294,8 @@ const count = (tap: string, name: string): number => Number(new RegExp(`^# ${nam
  * The instances a Run of the Plan performs or leaves unrun, each once: its
  * Cases, which are under no parameters, as `planCases` has them, then the
  * Carriers it collects under parameters, each Carrier with each distinct set of
- * parameters one instance. The same Carrier under different parameters is the
- * same Case, however many instances require it.
+ * parameters one instance. The same Carrier under different parameters is one
+ * HOW, however many instances require it.
  */
 export function planInstances(plan: Plan, suites: Suite[]): Instance[] {
   return [...planCases(plan, suites).map((carrier) => ({ carrier, parameters: {} })), ...(plan.parameterized ?? [])];

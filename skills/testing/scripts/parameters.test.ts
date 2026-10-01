@@ -22,7 +22,7 @@ import {
   verdict,
 } from "./testing.js";
 
-// A Plan may require one Carrier under parameters, and each distinct Carrier-and-parameters is one required
+// A Plan may require what a Carrier carries under parameters, and each distinct Carrier-and-parameters is one required
 // instance. A Run performs those its conditions provide and leaves the rest unrun; several Runs evidence the
 // Plan. The reproduction of FAR-9's pressure is synthetic and neutral: one HOW, required under two sets of
 // parameters, where no Case, Plan or id names a platform's meaning.
@@ -153,7 +153,7 @@ test("a Plan that states no parameters is the simple case: one Run provides all 
   assert.equal("parameterized" in read!, false, "a Plan written before parameters could be stated has none");
 });
 
-test("a Carrier is the same Case under any parameters, and the same Carrier under the same parameters is one instance however it is stated", () => {
+test("one HOW under different parameters is as many instances, and the same Carrier under the same parameters is one instance however it is stated", () => {
   const dir = scratch({
     "plan.md": `---\nsuites:\n  - s\ncarriers:\n  - s/one.test.ts\n  - carrier: s/one.test.ts\n    parameters:\n      b: "1"\n      a: "2"\n  - carrier: s/one.test.ts\n    parameters:\n      a: "2"\n---\n\nTwo parameters.\n`,
     "s/suite.json": JSON.stringify({ concern: "Scratch." }),
