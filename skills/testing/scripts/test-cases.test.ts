@@ -755,3 +755,80 @@ test("a member reached by a literal computed key is the member: duplicates throu
   // An unbound object's computed members are not node:test's.
   assert.deepEqual(parse(`${traced}other[k]("b", () => {});`).errors, []);
 });
+
+// Review round 6 of #121. Each finding was reproduced first, then its class repaired.
+
+test("a call to node:test whose arguments are not written out is refused, once, wherever the spread is", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const spread = "arguments must not be spread, since that could carry tests";
+  for (const call of [
+    `test("claim", ...[${T}, () => {}]);`,
+    `test(...["claim", ${T}, () => {}]);`,
+    `test("claim", ...[${T}], () => {});`,
+    `test(...args);`,
+    `test.skip("claim", ...rest);`,
+    `test?.("claim", ...rest);`,
+    `await test("claim", ...rest);`,
+    `function r() { test("claim", ...[${T}, () => {}]); }`,
+    `test("p", async (t) => { await t.test("claim", ...rest); });`,
+  ]) {
+    const read = parse(call);
+    // The outer test of a spread subtest is a Test Case of its own; the spread call itself is none.
+    assert.deepEqual(
+      read.cases.filter((c) => c.name !== "p"),
+      [],
+      call,
+    );
+    assert.deepEqual(
+      read.errors.map((e) => e.replace(/^[^:]+:\d+: /, "")),
+      [spread],
+      call,
+    );
+  }
+  // A spread elsewhere is not a test call's argument list, and a written-out list is read as before.
+  assert.deepEqual(parse("console.log(...args);\nfoo(...args);\n").errors, []);
+  assert.deepEqual(
+    parse(`test("claim", ${T}, () => {});`).cases.map((c) => c.name),
+    ["claim"],
+  );
+  // An argument that is a name could be the function or the options: it is taken to be the function, never evaluated.
+  assert.deepEqual(
+    parse("test('n', handler);").cases.map((c) => c.name),
+    ["n"],
+  );
+});
+
+test("a specifier built from literals, templates, + and program-level consts is node:test, and any other is not evaluated", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const claim = `test.only("claim", ${T}, () => {});`;
+  const route =
+    /node:test is reached other than by the Carrier's own import or const require, at line \d+, so it is not trusted to be node:test\)$/;
+  for (const head of [
+    'require("node:" + "test").only = helper;',
+    'require("no" + "de:" + "te" + "st").only = helper;',
+    'require(`node:${"test"}`).only = helper;',
+    "require(`${'node'}:${'test'}`).only = helper;",
+    'const a = "node:";\nconst b = a + "test";\nrequire(b).only = helper;',
+    'const p = "node";\nconst s = `${p}:test`;\nrequire(s).only = helper;',
+    'import("node:" + "test");',
+    'process.getBuiltinModule("node:" + "test").only = helper;',
+    'const spec = "node:test";',
+  ]) {
+    const read = parseTestCases(`import test from "node:test";\n${head}\n${claim}`, "a.test.ts");
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(read.errors[0], route, head);
+  }
+  // Not a route: other modules, near misses, and a specifier that would have to be run to be known (the stated limit).
+  for (const head of [
+    'require("node:" + "fs");',
+    'require("node:te" + "sts");',
+    'const a = "node:";\nconst b = a + "fs";\nrequire(b);',
+    'let a = "node:";\nconst b = a + "test";',
+    'require(["node", "test"].join(":"));',
+    "process.getBuiltinModule(spec());",
+    'function f(x) { return require("node:" + x); }',
+    'require("node:" + 1);',
+  ])
+    assert.equal(parseTestCases(`import test from "node:test";\n${head}\n${claim}`, "a.test.ts").cases.length, 1, head);
+});

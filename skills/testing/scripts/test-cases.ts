@@ -321,15 +321,64 @@ function usedOtherwise(program: Node, names: Set<string>): Map<string, number> {
 }
 
 /**
+ * The string an expression is by its syntax alone: a string literal, a template
+ * of such, or a `+` of such, with the program-level `const` names of those.
+ * Nothing that has to be run is evaluated.
+ */
+function fold(node: unknown, consts: Map<string, string>): string | undefined {
+  if (!isNode(node)) return undefined;
+  if (node.type === "StringLiteral") return node.value as string;
+  if (node.type === "Identifier") return consts.get(node.name as string);
+  if (node.type === "TemplateLiteral") {
+    const quasis = node.quasis as { value: { cooked?: string | null } }[];
+    const parts = nodes(node.expressions);
+    let out = "";
+    for (const [index, quasi] of quasis.entries()) {
+      if (quasi.value.cooked === undefined || quasi.value.cooked === null) return undefined;
+      out += quasi.value.cooked;
+      if (index < parts.length) {
+        const part = fold(parts[index], consts);
+        if (part === undefined) return undefined;
+        out += part;
+      }
+    }
+    return out;
+  }
+  if (node.type === "BinaryExpression" && node.operator === "+") {
+    const left = fold(node.left, consts);
+    const right = fold(node.right, consts);
+    return left !== undefined && right !== undefined ? left + right : undefined;
+  }
+  return undefined;
+}
+
+/** The program-level `const` names whose value is a string by syntax alone, in the order they are declared. */
+function constants(program: Node): Map<string, string> {
+  const consts = new Map<string, string>();
+  for (const statement of nodes(program.body))
+    if (statement.type === "VariableDeclaration" && statement.kind === "const")
+      for (const d of nodes(statement.declarations)) {
+        const value = isNode(d.id) && d.id.type === "Identifier" ? fold(d.init, consts) : undefined;
+        if (value !== undefined) consts.set((d.id as Node).name as string, value);
+      }
+  return consts;
+}
+
+/**
  * Where the Carrier names `node:test` other than in the declarations that bind
- * it: another `require`, a dynamic import, a re-export, a lookup by name.
- * Each reaches the same functions the bound names do.
+ * it: another `require`, a dynamic import, a re-export, a lookup by name, with
+ * the specifier written out or built from literals, templates, `+` and
+ * program-level `const` names. Each reaches the same functions the bound names
+ * do. A specifier built by anything else, such as a call, a join or a
+ * parameter, is not evaluated.
  */
 function otherRoute(program: Node, recognized: Set<Node>): number | undefined {
+  const consts = constants(program);
   let line: number | undefined;
   const visit = (node: Node) => {
     if (line !== undefined) return;
-    if (!recognized.has(node) && literal(node) === "node:test") line = at(node);
+    const text = ["StringLiteral", "TemplateLiteral", "BinaryExpression"].includes(node.type);
+    if (text && !recognized.has(node) && fold(node, consts) === "node:test") line = at(node);
     else for (const value of Object.values(node)) for (const child of nodes(value)) visit(child);
   };
   visit(program);
@@ -591,6 +640,11 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
     }
     const args = nodes(call.arguments);
     const where = `${file}:${at(call)}`;
+    // An argument list that is not written out cannot be read for its options; the walk below refuses it, once.
+    if (args.some((a) => a.type === "SpreadElement")) {
+      top.set(call, undefined);
+      continue;
+    }
     // Options are the second argument, before the function; with a third they must be a literal object.
     const options =
       args.length >= 3 || (args.length === 2 && args[1].type === "ObjectExpression") ? args[1] : undefined;
@@ -638,6 +692,10 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
         if (isCall(child)) {
           const registers = role(child.callee, bound) !== undefined;
           for (const arg of nodes(child.arguments)) {
+            if (registers && arg.type === "SpreadElement") {
+              errors.push(`${file}:${at(child)}: arguments must not be spread, since that could carry tests`);
+              continue;
+            }
             if (arg.type !== "ObjectExpression" || (top.has(child) && top.get(child) === arg)) continue;
             const hidden = registers ? optionsTests(arg).error : undefined;
             if (hidden) errors.push(`${file}:${at(child)}: ${hidden}`);

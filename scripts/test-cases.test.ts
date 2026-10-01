@@ -365,3 +365,19 @@ test("an exported require declaration, or a computed member call through node:te
     "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (require is declared in the Carrier, so it is not trusted to be node:test)",
   ]);
 });
+
+// Review round 6 of #121: the findings as KAAL meets them.
+test("a spread argument list or a constant-built route to node:test cannot vouch for a reference", () => {
+  const { dir, born } = repo({
+    "a.test.ts": 'test("claim", ...[{ tests: { requirement: ["missing"] } }, () => {}]);\n',
+  });
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "b.test.cjs"),
+    'const test = require("node:test");\nrequire("node:" + "test").only = helper;\ntest.only("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const errors = kaalTestCases(dir).errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": "));
+  assert.deepEqual([...errors].sort(), [
+    "a.test.ts: arguments must not be spread, since that could carry tests",
+    "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (node:test is reached other than by the Carrier's own import or const require, at line 2, so it is not trusted to be node:test)",
+  ]);
+});
