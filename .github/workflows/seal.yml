@@ -100,6 +100,18 @@ jobs:
         run: |
           test "$(git rev-parse HEAD^2)" = "$EVENT_SHA"
           test "$(git rev-parse HEAD^1)" = "$(git rev-parse "origin/$BASE_REF")"
+      # The status head on its own, as a directory: what the gate judges, so its verdict
+      # is the head's, never a merge with a base that could supply seal state. Carrying
+      # it here is the carrier's part; the gate knows only the directory.
+      - if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+          path: head
+          persist-credentials: false
+      - if: github.event_name == 'pull_request_target'
+        working-directory: head
+        run: test "$(git rev-parse HEAD)" = "$EVENT_SHA"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -118,7 +130,7 @@ jobs:
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
         run: |
-          out="$(npm run -s seals:pull-request -- gate ../change HEAD^2)"
+          out="$(npm run -s seals:pull-request -- gate ../head)"
           if [ "$out" = hold ]; then echo "HELD=true" >> "$GITHUB_ENV"; fi
         working-directory: trusted
         env:

@@ -2,17 +2,21 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { ROOT as CHANGE_ROOT } from "../skills/managing-change/scripts/changes.js";
 import { isSealed } from "../skills/using-seals/scripts/seals.js";
-import { changeChains, sealChange } from "./change-seals.js";
+import { changeChains, changeErrors, sealChange } from "./change-seals.js";
 import type { PullRequestOrigin } from "./guard-branch.js";
 
 /**
- * KAAL's policy for when Change Sealing runs on a pull request into a flight
- * or main: CI, not the agent, invokes it, whenever it can write the result back.
- * Where it cannot, the Changes must arrive sealed and CI refuses them unsealed. This decides which Changes are the pull request's
- * and whether CI may write the result back; what sealing means, and the bytes
- * it writes, stay with `sealChange` in change-seals.ts, which this only calls.
- * Nothing here knows of GitHub: the workflow hands the pull request's facts in
- * as arguments and the environment.
+ * KAAL's policy for when Change Sealing runs on a pull request into a flight or
+ * main: CI, not the agent, invokes it, whenever it can write the result back.
+ * Where it cannot, the Changes must arrive sealed and CI refuses them unsealed.
+ * This decides which Changes are the pull request's, whether CI may write the
+ * result back, and whether a head may be admitted; what a Change is, what sealing
+ * means, the bytes it writes and whether a seal is valid stay with the existing
+ * capabilities (`sealChange`, `changeErrors`, `isSealed`), which this only calls.
+ * Nothing here knows of GitHub: the workflow hands the pull request's facts in as
+ * arguments and the environment, and the head as a directory. Only
+ * `unsealedOccurrences` knows Git, as the carrier's mapping from a pull request
+ * to the Changes it touches; judging a head needs no carrier.
  */
 
 /** A Change occurrence as `change:list` names it: `<lineage>/YY/MM/DD/CC`. */
@@ -115,41 +119,33 @@ export function sealPullRequest(options: {
 }
 
 /**
- * Every Change in the tree of `rev` at `repo` that is not sealed, read from git
- * so that it is exactly that commit's tree: the Changes the head holds, touched
- * relative to any base or not, and no seal a merge with a base brought in.
- */
-export function unsealedAt(repo: string, rev: string): string[] {
-  const listed = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", "-z", rev, "--", CHANGE_ROOT], {
-    encoding: "utf8",
-  })
-    .split("\0")
-    .filter(Boolean);
-  const files = new Set(listed);
-  return touchedOccurrences(listed).filter((occurrence) => !files.has(`${CHANGE_ROOT}/${occurrence}/seal.json`));
-}
-
-/**
  * How the gate judges a pull request's head: `check-seals` requires every Change
- * present in the head, `rev` at `repo` (in CI the merge's second parent), to be
- * sealed, whatever the base, so the same head has the same sealing verdict. It
- * passes only then. Otherwise a ready pull request into a flight or main is
- * refused, and a draft, or one against a base that is no admission, is held,
- * never refused and never passed, a held status staying pending. Draft state and
- * base therefore choose only between refusal and holding, never make a success,
- * so no change of either can leave a success that is wrong. That a seal is valid,
- * not only present, is the existing verification's, over the merge. This is the
- * requirement; CI's sealing is how it is met where it can write.
+ * present in the head to be sealed, whatever the base, so the same head has the
+ * same sealing verdict. `repo` is the head, a directory holding exactly the status
+ * head's tree, however the carrier brought it there; this knows nothing of Git or
+ * of a repository host. What a Change is, what sealed means and whether a seal is
+ * valid are the existing capabilities': the head's Changes and seals must pass
+ * `changeErrors`, the checks sealing itself runs, and a Change is sealed as
+ * `isSealed` says. It passes only when both hold. A head with an invalid or broken
+ * Change or seal is refused. Otherwise a ready pull request into a flight or main
+ * whose head holds an unsealed Change is refused, and a draft, or one against a
+ * base that is no admission, is held, never refused and never passed, a held
+ * status staying pending. Draft state and base therefore choose only between
+ * refusal and holding, never make a success, so no change of either can leave a
+ * success that is wrong. This is the requirement; CI's sealing is how it is met
+ * where it can write.
  */
-export function gateOutcome(options: { repo?: string; head?: string; draft: boolean; admitted: boolean }): {
+export function gateOutcome(options: { repo?: string; draft: boolean; admitted: boolean }): {
   outcome: "pass" | "hold" | "refuse";
   errors: string[];
 } {
-  const { repo = ".", head = "HEAD", draft, admitted } = options;
-  const errors = unsealedAt(repo, head).map(
-    (occurrence) =>
-      `${CHANGE_ROOT}/${occurrence}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
-  );
+  const { repo = ".", draft, admitted } = options;
+  const invalid = changeErrors(repo);
+  if (invalid.length) return { outcome: "refuse", errors: invalid };
+  const errors = [...changeChains(repo).values()]
+    .flat()
+    .filter((unit) => !isSealed(repo, unit))
+    .map((unit) => `${unit}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`);
   if (!errors.length) return { outcome: "pass", errors };
   return { outcome: draft || !admitted ? "hold" : "refuse", errors };
 }
@@ -168,7 +164,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
     const { outcome, errors } = gateOutcome({
       repo: args[0],
-      head: args[1],
       draft,
       admitted: admission(BASE_REF, DEFAULT_BRANCH) !== undefined,
     });
@@ -192,7 +187,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exitCode = 1;
     }
   } else {
-    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate [repo] [head]");
+    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate [head directory]");
     process.exitCode = 2;
   }
 }

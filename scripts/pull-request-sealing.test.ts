@@ -6,7 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { birthChange } from "../skills/managing-change/scripts/birth.js";
-import { sealChange, sealChanges } from "./change-seals.js";
+import { changeErrors, sealChange, sealChanges } from "./change-seals.js";
 import { kaalSealErrors, kaalSealingOutputErrors } from "./kaal-seals.js";
 import {
   admission,
@@ -69,6 +69,13 @@ function authored(repo: string, lineage: string, occurrence: string) {
   const dir = birthChange({ root: path.join(repo, "change"), lineage, occurrence });
   fs.writeFileSync(path.join(dir, "owned.txt"), `${lineage}/${occurrence}\n`);
   commit(repo, `author ${lineage}/${occurrence}`);
+}
+
+/** A head as a directory: a copy of test-data/changes/history with every Change sealed, as sealing writes it. */
+function sealedHistory(): string {
+  const repo = scratchRepo("history");
+  sealChanges(repo);
+  return repo;
 }
 
 /**
@@ -272,24 +279,41 @@ test("check-seals requires every Change present in the head sealed, whatever the
   assert.equal(gateOutcome({ repo: plain, draft: false, admitted: true }).outcome, "pass");
 });
 
-test("the gate judges the head's own tree, never a merge with the base that could supply a seal", () => {
-  const repo = mainAndBranch();
-  git(repo, "checkout", "-q", "main");
-  authored(repo, "earlier", "26/10/01/01");
-  git(repo, "checkout", "-q", "kaal/work");
-  git(repo, "merge", "-q", "--no-ff", "--no-edit", "main");
-  // Main later seals the Change the head inherited, and the pull request's merge is formed.
-  git(repo, "checkout", "-q", "main");
-  sealChange(repo, "earlier/26/10/01/01");
-  commit(repo, "main seals what the head inherited");
-  git(repo, "merge", "-q", "--no-ff", "--no-edit", "kaal/work");
-  assert.equal(git(repo, "rev-parse", "HEAD^2"), git(repo, "rev-parse", "kaal/work"));
+test("the gate judges the head as a directory through the existing checks: a seal that is present but not valid never passes", () => {
+  const states = [{}, { draft: true }, { admitted: false }, { draft: true, admitted: false }];
+  const gate = (repo: string, over: { draft?: boolean; admitted?: boolean } = {}) =>
+    gateOutcome({ repo, draft: false, admitted: true, ...over });
 
-  // The merge looks sealed; the head, which retargeted to a base without that seal would hold unsealed, is not.
-  assert.equal(gateOutcome({ repo, draft: false, admitted: true }).outcome, "pass");
-  const judged = gateOutcome({ repo, head: "HEAD^2", draft: false, admitted: true });
-  assert.equal(judged.outcome, "refuse");
-  assert.match(judged.errors.join(), /change\/earlier\/26\/10\/01\/01: Change is not sealed/);
+  // A head whose Changes are all sealed, with the chain heads those seals need, passes in every state.
+  const sealed = sealedHistory();
+  for (const over of states) assert.equal(gate(sealed, over).outcome, "pass", JSON.stringify(over));
+
+  // The same head with the chain heads missing: every unit's seal.json is present, but the seals are not valid.
+  // That a base could supply the heads in a merge changes nothing: the head's own directory is judged.
+  const withoutHeads = sealedHistory();
+  fs.rmSync(path.join(withoutHeads, "seals.json"));
+  const merged = sealedHistory();
+  assert.equal(gate(merged).outcome, "pass");
+  for (const over of states) {
+    const judged = gate(withoutHeads, over);
+    assert.equal(judged.outcome, "refuse", JSON.stringify(over));
+    assert.notDeepEqual(judged.errors, []);
+  }
+
+  // Edited sealed material, an edited seal and a stray seal are not valid seals either, so the gate refuses
+  // exactly what the existing verification does and reproduces none of its semantics.
+  for (const sabotage of [
+    (r: string) => fs.writeFileSync(path.join(r, "change/change/26/09/30/01/owned.txt"), "rewritten\n"),
+    (r: string) => fs.writeFileSync(path.join(r, "change/change/26/09/30/01/seal.json"), '{"forged":true}\n'),
+    (r: string) => fs.writeFileSync(path.join(r, "change/change/26/09/30/01/nested/seal.json"), "{}\n"),
+  ]) {
+    const head = sealedHistory();
+    fs.mkdirSync(path.join(head, "change/change/26/09/30/01/nested"), { recursive: true });
+    sabotage(head);
+    assert.equal(gate(head).outcome, "refuse");
+    assert.equal(gate(head, { draft: true, admitted: false }).outcome, "refuse");
+    assert.deepEqual(gateOutcome({ repo: head, draft: false, admitted: true }).errors, changeErrors(head));
+  }
 });
 
 test("CI writes seal state back only to a claude/* or kaal/* branch of this repository", () => {
@@ -557,7 +581,13 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
   const gate = steps.find((s) => /seals:pull-request -- gate/.test(s.run ?? ""))!;
   assert.equal(gate["working-directory"], "trusted");
   assert.equal(gate.if, "github.event_name == 'pull_request_target'");
-  assert.match(gate.run!, /gate \.\.\/change HEAD\^2\)"/);
+  assert.match(gate.run!, /gate \.\.\/head\)"/);
+  // The head is carried into a directory of its own, bound to the status SHA, before the gate runs.
+  const head = steps.findIndex((s) => s.with?.path === "head");
+  assert.equal(steps[head].with?.ref, "refs/pull/${{ github.event.pull_request.number }}/head");
+  assert.equal(steps[head].with?.["persist-credentials"], false);
+  assert.equal(steps[head + 1].run, 'test "$(git rev-parse HEAD)" = "$EVENT_SHA"');
+  assert.ok(head > 0 && head + 1 < steps.indexOf(gate));
   // A held Change keeps the status pending, so success never stands where a later change of draft
   // state or base could turn it into an unsealed admission.
   assert.match(gate.run!, /if \[ "\$out" = hold \]; then echo "HELD=true" >> "\$GITHUB_ENV"; fi/);
