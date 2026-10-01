@@ -1,25 +1,25 @@
 # Change Sealing in CI: brain/learning/change/26/09/30/02/nodes/managing-change.md
 #
 # A Change is admitted to KAAL twice: from an agent's claude/* branch into a
-# kaal/* flight branch, and from the flight into main. At both, trusted CI makes
-# valid Change Sealing unavoidable, and performs the mechanical sealing itself
-# whenever safe writeback is available: it invokes the existing Change Sealing
-# (scripts/change-seals.ts, through scripts/pull-request-sealing.ts), commits
-# only the seal state that wrote to the pull request's branch, and publishes the
-# seal-change commit status, success only for a head whose Changes are all
-# sealed and verified. Where writeback is not available, such as a fork or any
-# branch CI may not write, the Changes must arrive sealed and are refused
-# otherwise. Into the flight that seals the Change; into main it normally finds
-# them sealed and verifies them without rewriting anything. What sealing means,
-# the bytes it writes and how they are verified are not decided here: check-seals
-# and the seal guard judge the result as they judge any change.
+# kaal/* flight branch, and from the flight into main. check-seals requires, at
+# both, that a ready pull request carries every Change it touches sealed, so
+# Change Sealing is unavoidable; this workflow is how that is met wherever CI
+# can write the result back. It invokes the existing Change Sealing
+# (scripts/change-seals.ts, through scripts/pull-request-sealing.ts) and commits
+# only the seal state that wrote to the pull request's branch; it publishes no
+# verdict, because check-seals re-verifies the sealed head. Where writeback is
+# not available, such as a fork or any branch CI may not write, the Changes
+# must arrive sealed and check-seals stays red. Into the flight this seals the
+# Change; into main it normally finds them sealed and writes nothing. What
+# sealing means, the bytes it writes and how they are verified are not decided
+# here.
 #
-# A draft is investigatory: nothing is sealed and seal-change stays pending,
-# which blocks merging. A pull request that is ready has every Change it touches
-# sealed, or fails where one cannot be sealed: an invalid Change, a broken seal,
-# or a Change that would drag an unrelated one in.
+# A draft is investigatory: nothing is sealed, and check-seals does not require
+# it. A pull request that is ready has every Change it touches sealed, or
+# fails where one cannot be sealed: an invalid Change, a broken seal, or a
+# Change that would drag an unrelated one in.
 #
-# Runs as workflow_run after request-seal-change, which is the only trigger
+# Runs as workflow_run after request-sealing, which is the only trigger
 # that can see a change's pull request into every branch: GitHub always takes a
 # workflow_run workflow from the default branch, so this workflow, the code that
 # seals and verifies, and the sealing App's secrets come from main whatever
@@ -33,11 +33,11 @@
 #
 # Sealing on main (sealing.yml) stays the writer of everything else, BRAIN
 # included, and still seals what reaches main unsealed.
-name: seal-change
+name: seal-pull-request
 
 on:
   workflow_run:
-    workflows: [request-seal-change]
+    workflows: [request-sealing]
     types: [completed]
 
 permissions:
@@ -46,20 +46,18 @@ permissions:
 # Runs are queued, never cancelled: a newer push queues its own run, and a
 # push of seal state that finds the branch moved is refused, not forced.
 concurrency:
-  group: seal-change-${{ github.event.workflow_run.display_title }}
+  group: seal-pull-request-${{ github.event.workflow_run.display_title }}
   cancel-in-progress: false
 
 jobs:
-  seal-change:
-    name: seal-change
+  seal-pull-request:
+    name: seal-pull-request
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
-      statuses: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       THIS_REPO: ${{ github.repository }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       # Only these two come from the trigger; the rest is read from GitHub.
@@ -99,7 +97,6 @@ jobs:
             echo "BASE_REF=$(jq -r .base.ref "$RUNNER_TEMP/pr.json")"
             echo "AUTHOR=$(jq -r .user.login "$RUNNER_TEMP/pr.json")"
             echo "DRAFT=$(jq -r .draft "$RUNNER_TEMP/pr.json")"
-            echo "STATUS_URL=repos/$THIS_REPO/statuses/$REQUEST_SHA"
           } >> "$GITHUB_ENV"
           echo "admitted=true" >> "$GITHUB_OUTPUT"
       # Where the base admits the pull request: a kaal/* flight or main.
@@ -112,8 +109,6 @@ jobs:
           else
             echo "admitted=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.admission.outputs.admitted == 'true'
-        run: gh api "$STATUS_URL" -f state=pending -f context=seal-change -f target_url="$RUN_URL" -f description="Sealing this pull request's Changes"
       # The change, exactly the head that was reported, as data: GitHub's own
       # ref for the pull request's head, which holds for a fork too. Not a
       # draft's: a draft is never sealed, so nothing of it is read.
@@ -188,17 +183,5 @@ jobs:
           git push --force-with-lease="refs/heads/${HEAD_REF}:${HEAD_SHA}" \
             "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
-      # The push starts the checks again on the sealed head, which finds
-      # nothing to seal and reports success.
-      - if: always() && steps.admission.outputs.admitted == 'true'
-        env:
-          OK: ${{ job.status == 'success' }}
-          PUSHED: ${{ steps.push.outputs.pushed == 'true' }}
-        run: |
-          if line="$(cd trusted && npm run -s seals:pull-request -- status)"; then
-            IFS=$'\t' read -r state description <<< "$line"
-          else
-            state=failure
-            description="seal-change could not run"
-          fi
-          gh api "$STATUS_URL" -f state="$state" -f context=seal-change -f target_url="$RUN_URL" -f description="$description"
+      # The push starts the checks again on the sealed head: check-seals, which
+      # requires every Change this pull request carries to be sealed, passes.
