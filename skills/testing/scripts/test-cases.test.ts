@@ -657,3 +657,101 @@ test("every name of node:test, and every other route to it, shares one verdict: 
   assert.equal(cjs.cases.length, 1);
   assert.deepEqual(cjs.errors, []);
 });
+
+// Review round 5 of #121. Each finding was reproduced first, then its class repaired.
+
+test("require is trusted only if the Carrier declares it nowhere in its own scope: exported, hoisted or enum-like declarations all count", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const cjs = (head: string, file = "a.test.cjs") =>
+    parseTestCases(`${head}\nconst test = require("node:test");\ntest("claim", ${T}, () => {});`, file);
+  const declared = /require is declared in the Carrier, so it is not trusted to be node:test\)$/;
+  for (const head of [
+    "export const require = () => helper;",
+    "export let require;",
+    "export var require = 1;",
+    "export function require() {}",
+    "export default function require() {}",
+    "export class require {}",
+    "var require = helper;",
+    "if (x) { var require = helper; }",
+    "for (var require of [1]) {}",
+    "try { var require = 1; } catch {}",
+    "{ function require() {} }",
+    "label: { var { require } = helper; }",
+    "const [require] = [helper];",
+    'import require from "./helper.js";',
+    'import { helper as require } from "./helper.js";',
+    "enum require { A }",
+    "namespace require { export const a = 1; }",
+    "import require = helper.require;",
+  ]) {
+    const read = cjs(head, "a.test.cts");
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(read.errors[0], declared, head);
+  }
+  // What does not declare it in this scope leaves it trusted: types, blocks' lexical names, other functions, members.
+  for (const head of [
+    "declare const require: NodeRequire;",
+    "declare function require(id: string): any;",
+    "declare var require: any;",
+    "{ let require = 1; }",
+    "{ const require = 1; }",
+    "{ class require {} }",
+    "function f(require) { var require = 1; return require(2); }",
+    "function g() { var require = 1; }",
+    "const h = () => { var require = 1; };",
+    "try {} catch (require) {}",
+    "class C { require() {} }",
+    "const o = { require: 1, require2() {} };",
+    "o.require = 1;",
+  ]) {
+    const read = cjs(head, "a.test.cts");
+    assert.deepEqual(read.errors, [], head);
+    assert.equal(read.cases.length, 1, head);
+  }
+});
+
+test("a member reached by a literal computed key is the member: duplicates through it are seen, and an unknown member is refused when traced", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const dup = ["same"].flatMap((name) => [
+    `test(${JSON.stringify(name)}, ${T}, () => {});\ntest["test"](${JSON.stringify(name)}, () => {});`,
+    `test(${JSON.stringify(name)}, ${T}, () => {});\ntest["skip"](${JSON.stringify(name)}, () => {});`,
+    `test(${JSON.stringify(name)}, ${T}, () => {});\ntest?.["it"](${JSON.stringify(name)}, () => {});`,
+    `test(${JSON.stringify(name)}, ${T}, () => {});\ntest[\`only\`](${JSON.stringify(name)}, () => {});`,
+    `test["test"]["skip"](${JSON.stringify(name)}, ${T}, () => {});\ntest(${JSON.stringify(name)}, () => {});`,
+  ]);
+  for (const body of dup) {
+    const read = parse(body);
+    assert.deepEqual(read.cases, [], body);
+    assert.equal(read.errors.length, 1, body);
+    assert.match(read.errors[0], /Test Case "same" is named more than once$/, body);
+  }
+  // A literal computed key defines a Test Case like the dot.
+  assert.deepEqual(
+    parse(`test["skip"]("n", ${T}, () => {});`).cases.map((c) => c.name),
+    ["n"],
+  );
+  // A member known only by evaluating it could be any function node:test offers: traced Carriers refuse it, untraced are as before.
+  const traced = `test("a", ${T}, () => {});\n`;
+  const unknown = "a Carrier with traced Test Cases must not call node:test through a computed member";
+  for (const call of [
+    'test[k]("b", () => {});',
+    'test["te" + "st"]("b", () => {});',
+    'test[`t${x}`]("b", () => {});',
+    'test.mock[k]("b");',
+  ]) {
+    const read = parse(`${traced}${call}`);
+    assert.deepEqual(
+      read.errors.map((e) => e.replace(/^[^:]+:\d+: /, "")),
+      call.startsWith("test.mock") ? [] : [unknown],
+      call,
+    );
+  }
+  assert.deepEqual(parse('test("a", () => {});\ntest[k]("b", () => {});'), {
+    cases: [{ carrier: "a.test.ts", name: "a", tests: [] }],
+    errors: [],
+  });
+  // An unbound object's computed members are not node:test's.
+  assert.deepEqual(parse(`${traced}other[k]("b", () => {});`).errors, []);
+});

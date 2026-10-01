@@ -349,3 +349,19 @@ test("a call before its const require, or beside a second route to node:test, ca
     "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (test is used before its declaration at line 2, so it is not trusted to be node:test)",
   ]);
 });
+
+// Review round 5 of #121: the findings as KAAL meets them.
+test("an exported require declaration, or a computed member call through node:test, cannot vouch for a reference or hide a duplicate", () => {
+  const { dir, born } = repo({
+    "a.test.ts": 'test("same", { tests: { requirement: ["r1"] } }, () => {});\ntest["test"]("same", () => {});\n',
+  });
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "b.test.cjs"),
+    'export const require = () => helper;\nconst test = require("node:test");\ntest("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const errors = kaalTestCases(dir).errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": "));
+  assert.deepEqual([...errors].sort(), [
+    'a.test.ts: Test Case "same" is named more than once',
+    "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (require is declared in the Carrier, so it is not trusted to be node:test)",
+  ]);
+});

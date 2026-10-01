@@ -41,6 +41,10 @@ const at = (node: Node): number => node.loc?.start.line ?? 0;
  * an `other` call opens a context (a suite) that is not one; `ignored` defines
  * neither. A test of this skill consults the running Node and fails on any
  * export or member this does not classify, so one Node adds cannot go unread.
+ * The table is what Node offers across the versions it was checked against
+ * (20, 22 and 24), not what the Node that reads a Carrier offers: an entry point
+ * a given Node lacks, such as `expectFailure` before Node 24, fails the Carrier
+ * where it runs, which is a condition of that Run and not of reading it.
  */
 export const NODE_TEST = {
   test: ["test", "it", "skip", "only", "todo", "expectFailure"],
@@ -166,17 +170,42 @@ function patternNames(pattern: unknown): string[] {
   return [];
 }
 
-/** Whether the top of the Carrier declares `name`, in any way a name is declared. */
+/**
+ * Whether the Carrier declares `name` in the scope its top-level code runs in,
+ * in any way a name is declared there: a lexical declaration, class, import,
+ * enum, namespace or import-equals at the top (exported or not), and a `var` or
+ * a function declaration at any depth short of another function, since those
+ * hoist out of blocks. An ambient `declare` has no runtime effect and declares
+ * nothing.
+ */
 function declares(program: Node, name: string): boolean {
-  return nodes(program.body).some((s) => {
-    const declared =
-      s.type === "VariableDeclaration"
-        ? nodes(s.declarations).flatMap((d) => patternNames(d.id))
-        : s.type === "ImportDeclaration"
-          ? nodes(s.specifiers).flatMap((x) => patternNames(x.local))
-          : [...patternNames(s.id)];
-    return declared.includes(name);
-  });
+  const here = (declaration: Node, direct: boolean): string[] => {
+    if (declaration.declare === true || declaration.type === "TSDeclareFunction") return [];
+    if (declaration.type === "VariableDeclaration")
+      return declaration.kind === "var" || direct
+        ? nodes(declaration.declarations).flatMap((d) => patternNames(d.id))
+        : [];
+    if (declaration.type === "FunctionDeclaration") return patternNames(declaration.id);
+    if (!direct) return [];
+    if (declaration.type === "ImportDeclaration")
+      return nodes(declaration.specifiers).flatMap((x) => patternNames(x.local));
+    return patternNames(declaration.id);
+  };
+  let found = false;
+  const visit = (node: Node, direct: boolean) => {
+    if (found) return;
+    const wrapped = node.type.startsWith("Export") && isNode(node.declaration) ? node.declaration : node;
+    if (here(wrapped, direct).includes(name)) {
+      found = true;
+      return;
+    }
+    // Another function's own scope is not this one; a block's `let`, `const` and `class` stay in the block.
+    if (FUNCTION.has(wrapped.type)) return;
+    for (const value of Object.values(wrapped))
+      for (const child of nodes(value)) visit(child, direct && wrapped.type === "Program");
+  };
+  visit(program, true);
+  return found;
 }
 
 /** One step down a syntax tree: a node, and the key under which the next one hangs on it. */
@@ -363,21 +392,22 @@ function trusted(program: Node): {
  * context (`describe`, `suite`, their `skip`, `only` and `todo`, and a
  * `t.test(...)` subtest), nothing for any other call. A chain is followed
  * member by member through what `node:test` offers, and is nothing where it
- * leaves it.
+ * leaves it; a member computed from an expression is `unknown`, since which
+ * function it names is not known without evaluating it.
  */
-function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | undefined {
-  const chain: string[] = [];
+function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | "unknown" | undefined {
+  // Each member of the chain by name; a computed one that is a literal names its member just as a dot does.
+  const chain: (string | undefined)[] = [];
   let root: unknown = callee;
   while (isNode(root) && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression")) {
-    const property = root.computed ? undefined : nameOf(root.property);
-    if (property === undefined) return undefined;
-    chain.unshift(property);
+    chain.unshift(root.computed ? literal(root.property) : nameOf(root.property));
     root = root.object;
   }
   if (!isNode(root) || root.type !== "Identifier") return undefined;
   const binding = bound.get(root.name as string);
+  const last = chain[chain.length - 1];
   // Unbound, a chain ending in a `node:test` name is a subtest or nested suite opened through some context, such as `t.test(...)`.
-  if (binding === undefined) return chain.length && EXPORTS.has(chain[chain.length - 1]) ? "other" : undefined;
+  if (binding === undefined) return last !== undefined && EXPORTS.has(last) ? "other" : undefined;
   // Where the chain stands: at the module, `test` or `it` (which offer the same members); at a test to call; at a context; at one to call.
   type At = "module" | "test" | "context" | "other";
   const start: Record<Binding, At> = {
@@ -405,6 +435,8 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
         : undefined;
   let at: At | undefined = start[binding];
   for (const member of chain) {
+    // A member known only by evaluating it could be any function `node:test` offers.
+    if (member === undefined) return "unknown";
     at = step(at, member);
     if (!at) return undefined;
   }
@@ -541,9 +573,15 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   const found: { name: string; tests: Tests[]; annotated: boolean; line: number }[] = [];
   /** Top-level tests whose name Node reports by what they are, not by a literal: known only by running them. */
   const unresolved: number[] = [];
+  /** Top-level calls through `node:test` by a member known only by evaluating it: which function runs is not known. */
+  const unclassified: number[] = [];
   for (const [index, statement] of nodes(program.body).entries()) {
     let call: unknown = statement.type === "ExpressionStatement" ? statement.expression : undefined;
     while (isNode(call) && call.type === "AwaitExpression") call = call.argument;
+    if (isNode(call) && call.type !== "NewExpression" && isCall(call) && role(call.callee, bound) === "unknown") {
+      unclassified.push(at(call));
+      continue;
+    }
     if (!isNode(call) || call.type === "NewExpression" || !isCall(call) || role(call.callee, bound) !== "test")
       continue;
     const where_ = declared.get(rootName(call.callee) ?? "");
@@ -582,6 +620,11 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   }
   // Node reports a test without a literal, non-empty name as its function's name or `<anonymous>`, so such a
   // name could be any other's: traced Test Cases need every top-level test named, or their identity is not known.
+  if (found.some((f) => f.annotated))
+    for (const line of unclassified)
+      errors.push(
+        `${file}:${line}: a Carrier with traced Test Cases must not call node:test through a computed member`,
+      );
   if (found.some((f) => f.annotated))
     for (const line of unresolved)
       errors.push(
