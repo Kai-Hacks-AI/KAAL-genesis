@@ -9,9 +9,10 @@
     "units": [
       "change/far/26/09/25/01",
       "change/far/26/09/26/01",
-      "change/far/26/09/26/02"
+      "change/far/26/09/26/02",
+      "change/far/26/09/26/03"
     ],
-    "seal": "b3c11d782fc61462ad5e87db8083f0d077f331b46df590964ade34a3c56b0a62"
+    "seal": "c72356ee79083b8531448df464a743181b11cfb3082fd3f56baee8ee9540a1f9"
   },
   "regression-testing": {
     "units": [
