@@ -1,13 +1,13 @@
-# Asks for Change Sealing: names the pull request whose Changes seal-change.yml
+# Asks for Change Sealing: names the pull request whose Changes seal-pull-request.yml
 # should seal or verify. It is the trigger only and decides nothing.
 #
 # Runs as pull_request, so GitHub takes this file from the change, and a change
-# may edit or delete it: that only means seal-change never reports for its
-# head, which blocks it. Nothing here has a secret, a write permission or a
+# may edit or delete it: that only means nothing seals its
+# head, and check-seals, which requires its Changes sealed, blocks it. Nothing here has a secret, a write permission or a
 # checkout. The pull request's number is all it passes on, through the run
-# name, and seal-change.yml, which runs from the default branch, re-derives
+# name, and seal-pull-request.yml, which runs from the default branch, re-derives
 # everything else from GitHub and trusts nothing this file says.
-name: request-seal-change
+name: request-sealing
 
 on:
   pull_request:
@@ -18,8 +18,8 @@ run-name: pr=${{ github.event.pull_request.number }}
 permissions: {}
 
 jobs:
-  request-seal-change:
-    name: request-seal-change
+  request-sealing:
+    name: request-sealing
     runs-on: ubuntu-latest
     steps:
       - run: echo "Change Sealing requested for pull request ${{ github.event.pull_request.number }}."
