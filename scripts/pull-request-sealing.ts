@@ -115,45 +115,60 @@ export function sealPullRequest(options: {
 }
 
 /**
- * How the gate judges the change at `repo`'s HEAD. For a ready pull request into
- * a flight or main, a Change it touches and has not sealed is refused; a draft's
- * is held, never refused and never passed, and a held status stays pending. A
- * pull request against a base that is no admission is not judged and is always
- * held: what it touches, and whether a seal in it is valid, depend on the base, so
- * no verdict about it could be kept from becoming wrong if it were retargeted.
- * Success is therefore published only for an admitted base where every Change the
- * pull request touches is sealed, however its draft state changes. This is the
+ * Every Change in the tree of `rev` at `repo` that is not sealed, read from git
+ * so that it is exactly that commit's tree: the Changes the head holds, touched
+ * relative to any base or not, and no seal a merge with a base brought in.
+ */
+export function unsealedAt(repo: string, rev: string): string[] {
+  const listed = execFileSync("git", ["-C", repo, "ls-tree", "-r", "--name-only", "-z", rev, "--", CHANGE_ROOT], {
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter(Boolean);
+  const files = new Set(listed);
+  return touchedOccurrences(listed).filter((occurrence) => !files.has(`${CHANGE_ROOT}/${occurrence}/seal.json`));
+}
+
+/**
+ * How the gate judges a pull request's head: `check-seals` requires every Change
+ * present in the head, `rev` at `repo` (in CI the merge's second parent), to be
+ * sealed, whatever the base, so the same head has the same sealing verdict. It
+ * passes only then. Otherwise a ready pull request into a flight or main is
+ * refused, and a draft, or one against a base that is no admission, is held,
+ * never refused and never passed, a held status staying pending. Draft state and
+ * base therefore choose only between refusal and holding, never make a success,
+ * so no change of either can leave a success that is wrong. That a seal is valid,
+ * not only present, is the existing verification's, over the merge. This is the
  * requirement; CI's sealing is how it is met where it can write.
  */
-export function gateOutcome(options: { base: string; repo?: string; draft: boolean; admitted: boolean }): {
+export function gateOutcome(options: { repo?: string; head?: string; draft: boolean; admitted: boolean }): {
   outcome: "pass" | "hold" | "refuse";
   errors: string[];
 } {
-  const { base, repo, draft, admitted } = options;
-  if (!admitted) return { outcome: "hold", errors: [] };
-  const errors = unsealedOccurrences(base, repo).map(
+  const { repo = ".", head = "HEAD", draft, admitted } = options;
+  const errors = unsealedAt(repo, head).map(
     (occurrence) =>
       `${CHANGE_ROOT}/${occurrence}: Change is not sealed (CI seals it where it can write; otherwise npm run seal:change)`,
   );
   if (!errors.length) return { outcome: "pass", errors };
-  return { outcome: draft ? "hold" : "refuse", errors };
+  return { outcome: draft || !admitted ? "hold" : "refuse", errors };
 }
 
 // `seal <base> [repo]` seals the pull request's Changes; `admission` names
-// where its base admits it; `gate` refuses a ready, admitted pull request with an unsealed Change and holds a draft's and any outside an admission. The pull request reaches it as environment variables, never
+// where its base admits it; `gate` refuses a ready, admitted pull request whose head holds an unsealed Change and holds a draft's and any outside an admission. The pull request reaches it as environment variables, never
 // as arguments or script text, so a branch name cannot inject anything.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { HEAD_REF = "", HEAD_REPO = "", AUTHOR = "", THIS_REPO = "", DRAFT = "" } = process.env;
-  const [command, base, repo] = process.argv.slice(2);
+  const [command, ...args] = process.argv.slice(2);
   const draft = DRAFT === "true";
   if (command === "admission") {
     const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
     console.log(admission(BASE_REF, DEFAULT_BRANCH) ?? "none");
-  } else if (command === "gate" && base) {
+  } else if (command === "gate") {
     const { BASE_REF = "", DEFAULT_BRANCH = "" } = process.env;
     const { outcome, errors } = gateOutcome({
-      base,
-      repo,
+      repo: args[0],
+      head: args[1],
       draft,
       admitted: admission(BASE_REF, DEFAULT_BRANCH) !== undefined,
     });
@@ -162,11 +177,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.error(errors.join("\n"));
       process.exitCode = 1;
     }
-  } else if (command === "seal" && base) {
+  } else if (command === "seal" && args[0]) {
     try {
       const outcome = sealPullRequest({
-        base,
-        repo,
+        base: args[0],
+        repo: args[1],
         draft,
         origin: { headRef: HEAD_REF, headRepo: HEAD_REPO, author: AUTHOR, thisRepo: THIS_REPO },
       });
@@ -177,7 +192,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exitCode = 1;
     }
   } else {
-    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate <base> [repo]");
+    console.error("usage: pull-request-sealing.ts seal <base> [repo] | admission | gate [repo] [head]");
     process.exitCode = 2;
   }
 }

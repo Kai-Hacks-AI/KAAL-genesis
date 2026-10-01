@@ -22,8 +22,9 @@
 # so a change's own branch must never produce a check-seals run at all.
 #
 # A pull request that is ready, into a kaal/* flight or main, must also carry
-# every Change it touches sealed (`npm run seals:pull-request -- gate`); a draft is
-# not held to it. seal-pull-request.yml is how that is met where CI can write.
+# every Change present in its head sealed (`npm run seals:pull-request -- gate`),
+# touched relative to its base or not, so the same head has the same sealing
+# verdict whatever its base or draft state; a draft is held, not refused. seal-pull-request.yml is how that is met where CI can write.
 #
 # Verifies seals and writes nothing; the workflow that writes them on main is
 # sealing.yml, named seal.
@@ -117,7 +118,7 @@ jobs:
         working-directory: trusted
       - if: github.event_name == 'pull_request_target'
         run: |
-          out="$(npm run -s seals:pull-request -- gate "origin/$BASE_REF" ../change)"
+          out="$(npm run -s seals:pull-request -- gate ../change HEAD^2)"
           if [ "$out" = hold ]; then echo "HELD=true" >> "$GITHUB_ENV"; fi
         working-directory: trusted
         env:
@@ -140,11 +141,11 @@ jobs:
               description="The pull request changed while it was checked; the next run decides"
             fi
           fi
-          # A draft's unsealed Change and any pull request outside an admission hold the
-          # status pending, so no success stands that a later change of draft state or
-          # base could turn into an unsealed admission.
+          # An unsealed Change in the head of a draft, or of a pull request outside an
+          # admission, holds the status pending: success only ever means every Change in
+          # the head is sealed, which no change of draft state or base can make wrong.
           if [ "$state" = success ] && [ "${HELD:-}" = true ]; then
             state=pending
-            description="Held: a draft with an unsealed Change, or not into a flight or main"
+            description="Held: the head has an unsealed Change, and this is a draft or not into a flight or main"
           fi
           gh api "$STATUS_URL" -f state="$state" -f context=check-seals -f target_url="$RUN_URL" -f description="$description"
