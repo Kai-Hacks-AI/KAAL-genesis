@@ -3,7 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { carriersCurrentlyTesting, currentTestCasesTesting, readSupersession } from "./supersession.js";
+import {
+  carriersCurrentlyTesting,
+  currentTestCasesTesting,
+  readSupersession,
+  testCasesProtecting,
+} from "./supersession.js";
 import { parseTestCases, testCaseId, type TestCase } from "./test-cases.js";
 import { report, runPlan } from "./testing.js";
 
@@ -264,4 +269,72 @@ test("a refused lineage answers nothing but its errors, and the pass is linear i
   const started = Date.now();
   assert.deepEqual(carriers(long, target("requirement", "r0")), ["c0.test.ts"]);
   assert.ok(Date.now() - started < 5000, "a pairwise walk of the lineage would not finish here");
+});
+
+const entries = (cases: TestCase[], ...targets: { kind: string; id: string }[]) => {
+  const answer = testCasesProtecting(cases, targets);
+  assert.ok("entries" in answer, "errors" in answer ? answer.errors.join("\n") : "");
+  return answer.entries.map((e) => [e.carrier, e.name, e.targets.map((t) => t.id)]);
+};
+
+test("a Test Case selected by several protected identities is one entry of the Test Plan, carrying them all", () => {
+  const one = tc("one.test.ts", "tc1", undefined, '{ requirement: ["r1", "r2"] }');
+  const two = tc("two.test.ts", "tc2", undefined, '{ requirement: ["r3"] }');
+  const r = (id: string) => target("requirement", id);
+  assert.deepEqual(entries([two, one], r("r1"), r("r2"), r("r3")), [
+    ["one.test.ts", "tc1", ["r1", "r2"]],
+    ["two.test.ts", "tc2", ["r3"]],
+  ]);
+  assert.deepEqual(entries([one, two], r("r3"), r("r2"), r("r2")), [
+    ["one.test.ts", "tc1", ["r2"]],
+    ["two.test.ts", "tc2", ["r3"]],
+  ]);
+  assert.deepEqual(entries([one, two]), [], "nothing protected, nothing planned");
+});
+
+test("the entries are the active Test Cases per target: a superseded one stays for what only it tests", () => {
+  const old = tc("old.test.ts", "how", undefined, '{ requirement: ["r1", "r2"], defect: ["d"] }');
+  const now = tc("new.test.ts", "how again", ["old.test.ts", "how"], '{ requirement: ["r1"] }');
+  const t = [target("requirement", "r1"), target("requirement", "r2"), target("defect", "d"), target("defect", "x")];
+  assert.deepEqual(entries([old, now], ...t), [
+    ["new.test.ts", "how again", ["r1"]],
+    ["old.test.ts", "how", ["d", "r2"]],
+  ]);
+  for (const id of ["r1", "r2"]) {
+    const expected = currentTestCasesTesting([old, now], "requirement", id).sort();
+    const found = (entries([old, now], target("requirement", id)) as [string, string, string[]][]).map(([c, n]) =>
+      testCaseId({ carrier: c, name: n }),
+    );
+    assert.deepEqual(found.sort(), expected);
+  }
+});
+
+test("the Test Plan is derived: the same whatever the order, rebuilt exactly from the sources, refusing a refused lineage", () => {
+  const cases = [
+    tc("b.test.ts", "two", undefined, '{ requirement: ["r2"] }'),
+    tc("b.test.ts", "one", undefined, '{ requirement: ["r1", "r2"] }'),
+    tc("a.test.ts", "one", ["b.test.ts", "one"], '{ requirement: ["r1"] }'),
+  ];
+  const t = [target("requirement", "r1"), target("requirement", "r2")];
+  const first = testCasesProtecting(cases, t);
+  assert.deepEqual(testCasesProtecting([...cases].reverse(), [...t].reverse()), first);
+  assert.deepEqual(first, {
+    entries: [
+      { carrier: "a.test.ts", name: "one", targets: [target("requirement", "r1")] },
+      { carrier: "b.test.ts", name: "one", targets: [target("requirement", "r2")] },
+      { carrier: "b.test.ts", name: "two", targets: [target("requirement", "r2")] },
+    ],
+  });
+  const gone = tc("c.test.ts", "n", ["gone.test.ts", "x"]);
+  assert.deepEqual(testCasesProtecting([gone], t), { errors: readSupersession([gone]).errors });
+});
+
+test("the Test Plan is one pass: a long lineage, and many Test Cases, finish at once", () => {
+  const long: TestCase[] = [];
+  for (let i = 0; i < 20000; i++)
+    long.push(tc(`c${i}.test.ts`, "t", i ? [`c${i - 1}.test.ts`, "t"] : undefined, `{ requirement: ["r${i % 3}"] }`));
+  const started = Date.now();
+  const answer = testCasesProtecting(long, [target("requirement", "r0"), target("requirement", "r1")]);
+  assert.ok("entries" in answer);
+  assert.ok(Date.now() - started < 5000, "a pairwise comparison of the Test Cases would not finish here");
 });

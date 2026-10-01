@@ -82,6 +82,56 @@ export function currentTestCasesTesting(cases: TestCase[], kind: string, id: str
 }
 
 /**
+ * One Test Case of a Test Plan, once, and the `targets` it is active for: the
+ * protected identities that select it. Whatever is relevant to its execution
+ * for them is keyed by these, not by the Test Case.
+ */
+export type PlanEntry = { carrier: string; name: string; targets: Tests[] };
+
+/**
+ * The Test Cases, among those given, that are active for at least one of
+ * `targets`, each a `kind` and `id`, each once whatever number of targets
+ * select it, with the targets it is active for: the Test Cases of a Test Plan
+ * for the protection `targets` state. Activity is `currentTestCasesTesting`'s
+ * rule, per edge. The entries are sorted by carrier and name, and the targets
+ * of each by kind and id, by code unit. The answer is computed from the Test
+ * Cases given and the edges they declare, never stored, so discarding it and
+ * asking again gives the same one, and it is a single pass over them: each
+ * lineage, a line, is walked from its latest Test Case back, remembering what
+ * the later ones test. Nothing is answered from a lineage that is refused: the
+ * errors of `readSupersession` are returned instead.
+ */
+export function testCasesProtecting(
+  cases: TestCase[],
+  targets: readonly Tests[],
+): { entries: PlanEntry[] } | { errors: string[] } {
+  const { superseder, errors } = readSupersession(cases);
+  if (errors.length) return { errors };
+  const key = ({ kind, id }: Tests) => JSON.stringify([kind, id]);
+  const wanted = new Map(targets.map((t) => [key(t), { kind: t.kind, id: t.id }]));
+  const byId = new Map(cases.map((c) => [testCaseId(c), c]));
+  const entries = new Map<string, PlanEntry>();
+  for (const head of cases.filter((c) => !superseder.has(testCaseId(c)))) {
+    const later = new Set<string>();
+    for (let at: TestCase | undefined = head; at; at = at.supersedes && byId.get(testCaseId(at.supersedes))) {
+      const edges = at.tests.map(key);
+      const active = edges.filter((e) => wanted.has(e) && !later.has(e));
+      if (active.length)
+        entries.set(testCaseId(at), {
+          carrier: at.carrier,
+          name: at.name,
+          targets: active.map((e) => wanted.get(e)!).sort(byTarget),
+        });
+      for (const e of edges) later.add(e);
+    }
+  }
+  return { entries: [...entries.values()].sort((a, b) => compare(a.carrier, b.carrier) || compare(a.name, b.name)) };
+}
+
+const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+const byTarget = (a: Tests, b: Tests): number => compare(a.kind, b.kind) || compare(a.id, b.id);
+
+/**
  * The Carriers that hold the Test Cases, among those given, that are active
  * for at least one of `targets`, each a `kind` and `id`: a Test Case counts
  * when it is active for a target it tests, by the same rule as
@@ -90,32 +140,14 @@ export function currentTestCasesTesting(cases: TestCase[], kind: string, id: str
  * whose Test Case is superseded for one target but active for another stays
  * selected, and one whose every Test Case is superseded for every target does
  * not appear. The Carriers are paths, sorted by code unit and each once; a
- * Test Case contains its Carrier and nothing else is inferred.
- *
- * It is computed from the Test Cases given and the edges they declare, so
- * discarding the answer and asking again gives the same one, and it is a
- * single pass over them: each lineage, a line, is walked from its latest Test
- * Case back, remembering what the later ones test. Nothing is answered from a
- * lineage that is refused: the errors of `readSupersession` are returned
- * instead.
+ * Test Case contains its Carrier and nothing else is inferred. They are the
+ * Carriers of `testCasesProtecting`, and a refused lineage answers its errors.
  */
 export function carriersCurrentlyTesting(
   cases: TestCase[],
   targets: readonly Tests[],
 ): { carriers: string[] } | { errors: string[] } {
-  const { superseder, errors } = readSupersession(cases);
-  if (errors.length) return { errors };
-  const key = ({ kind, id }: Tests) => JSON.stringify([kind, id]);
-  const wanted = new Set(targets.map(key));
-  const byId = new Map(cases.map((c) => [testCaseId(c), c]));
-  const carriers = new Set<string>();
-  for (const head of cases.filter((c) => !superseder.has(testCaseId(c)))) {
-    const later = new Set<string>();
-    for (let at: TestCase | undefined = head; at; at = at.supersedes && byId.get(testCaseId(at.supersedes))) {
-      const edges = at.tests.map(key);
-      if (edges.some((e) => wanted.has(e) && !later.has(e))) carriers.add(at.carrier);
-      for (const e of edges) later.add(e);
-    }
-  }
-  return { carriers: [...carriers].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) };
+  const answer = testCasesProtecting(cases, targets);
+  if ("errors" in answer) return answer;
+  return { carriers: [...new Set(answer.entries.map((e) => e.carrier))].sort(compare) };
 }
