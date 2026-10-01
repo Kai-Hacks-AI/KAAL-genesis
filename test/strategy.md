@@ -23,6 +23,8 @@ Whether a Change's Regression Test Plan follows from the one it supersedes, with
 
 A Case reaches what it tests through its working directory, the candidate, and the candidate's public entry points, never through its own location, so a sealed Case can judge candidates written after it.
 
+A Carrier is a `*.test.*` file. A traceable Test Case is one canonical declaration in it, a top-level `test("name", { tests: { requirement: ["<id>"], defect: ["<id>"] } }, fn)` through the Carrier's `import test from "node:test"`, identified by the Carrier's path and its string-literal name and listed as the one-line JSON array `[carrier, name]`. It is read from the source without running it, and it declares what the Test Case tests; it does not say that Node ran it, which a Run shows, carrier by carrier. Every other use of `node:test` is ordinary Node syntax that KAAL neither reads nor refuses. The declaration belongs to the Test Case: the Requirement or Defect it names is never changed, and later Test Cases may declare earlier sealed meaning. `npm run test-cases:check` refuses a declaration whose id names no Requirement or Defect in any Change, and `npm run test-cases:check -- requirement <id>` (or `defect <id>`) lists the Test Cases that declare one, computed from them. A Test Case tests only what it names: a Requirement that supersedes another is not tested by the Test Cases of the one it supersedes.
+
 ## Where and when
 
 CI runs the Regression Test Plan with `npm run testing:run -- <plan>` on Linux and Windows, checked out with `core.autocrlf=true`, on every push and pull request.
