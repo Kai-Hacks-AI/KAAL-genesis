@@ -1,0 +1,4 @@
+{
+  "concern": "Names a missing Plan and one that is no Plan.",
+  "tests": ["plans/missing.md", "plans/not-a-plan.md", "plans/plan.md"]
+}

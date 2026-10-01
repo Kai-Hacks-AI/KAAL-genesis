@@ -1,0 +1,4 @@
+{
+  "concern": "Holds a Case and tests two Plans.",
+  "tests": ["plans/plan.md", "plans/other.md"]
+}

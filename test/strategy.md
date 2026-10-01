@@ -19,6 +19,11 @@ A new Regression Test Plan supersedes the one before it, backward: its own front
 
 Whether a Change's Regression Test Plan follows from the one it supersedes, with its Feature and Acceptance Plans, is for review to judge. Testing never decides that a Suite left out was given up.
 
+## The graph is child-owned
+
+Testing's graph is born parent first: a Plan exists before the Suites that test it, a Suite before the Cases that test it, and a Requirement or Defect before any Case that tests it. Each child states its own edges to parents that already exist, and no parent is ever changed to learn of it. KAAL reads the graph across every Change's `test/` with `npm run testing:check`, which refuses an edge to a parent that does not exist, and computes children from it; there is no registry of the graph. A Suite or a Case may test a Plan, Suite, Requirement or Defect of any earlier Change. A Plan's own `suites` and a Suite's containment of Cases remain for now; Runs still follow them.
+Why: brain/learning/regression-testing/26/09/30/02/nodes/testing.md
+
 ## Cases
 
 A Case reaches what it tests through its working directory, the candidate, and the candidate's public entry points, never through its own location, so a sealed Case can judge candidates written after it.

@@ -1,0 +1,4 @@
+{
+  "concern": "Born before any Case.",
+  "tests": ["plans/plan.md"]
+}

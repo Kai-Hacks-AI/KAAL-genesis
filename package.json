@@ -16,6 +16,7 @@
     "change:validate": "tsx skills/managing-change/scripts/validate.ts",
     "change:list": "tsx skills/managing-change/scripts/list.ts",
     "testing:run": "tsx skills/testing/scripts/run.ts",
+    "testing:check": "tsx scripts/testing.ts",
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
