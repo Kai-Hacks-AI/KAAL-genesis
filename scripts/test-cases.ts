@@ -9,22 +9,24 @@ import { kaalRequirements } from "./requirements.js";
 
 /**
  * KAAL's composition of Testing with Requirements and Defects. A Carrier is a
- * `*.test.*` file; a Test Case is one top-level `node:test` call in it, which
- * states what it tests in its literal `tests` option. Testing owns that
- * reference and knows neither managing-requirements nor managing-defects;
- * those know nothing of Testing. This decides which kinds a Test Case of KAAL
- * may test, `requirement` and `defect`, and that each id must name one that
- * exists. A Carrier is found as a file of a Change's `test/`, whether or not
- * any Suite collects it: what a Test Case tests does not wait on where Suites
- * lie. The reference belongs to the Test Case: a Requirement or a Defect never
- * names its Test Cases, and the Test Cases testing one are found by reading
- * them. Traceability is of the Test Case; a Run still observes the Carrier.
+ * `*.test.*` file; a traceable Test Case is one canonical declaration in it,
+ * `test("name", { tests: { requirement: ["id"] } }, fn)` through the Carrier's
+ * default import of `node:test`, which declares what the Test Case tests.
+ * Testing owns that declaration and knows neither managing-requirements nor
+ * managing-defects; those know nothing of Testing. This decides which kinds a
+ * Test Case of KAAL may declare, `requirement` and `defect`, and that each id
+ * must name one that exists. A Carrier is found as a file of a Change's
+ * `test/`, whether or not any Suite collects it: what a Test Case declares does
+ * not wait on where Suites lie. The declaration belongs to the Test Case: a
+ * Requirement or a Defect never names its Test Cases, and the Test Cases
+ * declaring one are found by reading them. It is a declaration of meaning, not
+ * evidence that the call ran: a Run observes the Carrier.
  */
 
 /** The Change occurrence directory that holds its Suites: KAAL's Test Strategy, test/strategy.md. */
 export const TEST_DIR = "test";
 
-/** What a Test Case of KAAL may test. */
+/** What a Test Case of KAAL may declare it tests. */
 export const KINDS = ["requirement", "defect"] as const;
 
 /** Every Carrier beneath each Change's `test/`, as posix paths from `repo`, in traversal order. No Suite is consulted. */
@@ -44,8 +46,8 @@ export function carrierPlaces(repo = "."): string[] {
 }
 
 /**
- * The Test Cases of the Carriers beneath KAAL's Changes' `test/`, with
- * everything that stops a reference being one: anything Testing refuses in a
+ * The traceable Test Cases of the Carriers beneath KAAL's Changes' `test/`,
+ * with everything that stops a reference being one: anything Testing refuses in a
  * Carrier, a kind KAAL does not test, and an id that names no Requirement or
  * Defect.
  */
