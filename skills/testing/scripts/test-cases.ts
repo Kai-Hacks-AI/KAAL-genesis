@@ -108,7 +108,9 @@ function bindings(program: Node): {
   const declared = new Map<string, { index: number; line: number }>();
   /** The specifier nodes of the declarations that bind `node:test`: the Carrier's own ways to reach it. */
   const recognized = new Set<Node>();
-  for (const [index, statement] of nodes(program.body).entries()) {
+  for (const [index, top] of nodes(program.body).entries()) {
+    // `export const test = require(...)` declares the same binding as without `export`.
+    const statement = top.type === "ExportNamedDeclaration" && isNode(top.declaration) ? top.declaration : top;
     if (statement.type === "ImportDeclaration" && literal(statement.source) === "node:test") {
       recognized.add(statement.source as Node);
       if (statement.importKind === "type") continue;
@@ -463,6 +465,45 @@ function otherRoute(program: Node, recognized: Set<Node>): number | undefined {
 const format = (file: string): "cjs" | "esm" | "package" =>
   /\.c[jt]s$/.test(file) ? "cjs" : /\.m[jt]s$/.test(file) ? "esm" : "package";
 
+/** What a Carrier may do with `module` without touching the loader: its own exports and facts about itself. */
+const MODULE_SAFE = new Set(["exports", "id", "filename", "path", "loaded", "paths", "children"]);
+
+/**
+ * Where the Carrier reaches the CommonJS loader that `require` delegates to, by
+ * what its own source shows: `module` used other than for its own exports
+ * (`module.require`, `module.constructor`, `module.parent`), the module system
+ * named (`require("module")`, `node:module`, however built from literals), or
+ * `process.mainModule`. `require` itself is judged apart. The loader reached
+ * by any other route, such as a global the Carrier does not name, is not seen.
+ */
+function loaderReach(program: Node): { line: number; what: string } | undefined {
+  const consts = constants(program);
+  let found: { line: number; what: string } | undefined;
+  const staticName = (member: Node) => (member.computed ? literal(member.property) : nameOf(member.property));
+  const visit = (node: Node, path: Step[]) => {
+    if (found) return;
+    const parent = path[path.length - 1];
+    if (node.type === "Identifier" && node.name === "module" && parent && !onlyNames(path) && !isDeclaration(path)) {
+      const isMember = parent.node.type === "MemberExpression" || parent.node.type === "OptionalMemberExpression";
+      const member = isMember && parent.key === "object" ? staticName(parent.node) : undefined;
+      if (member === undefined || !MODULE_SAFE.has(member))
+        found = { line: at(node), what: "module is used other than for its own exports" };
+    } else if (["StringLiteral", "TemplateLiteral", "BinaryExpression"].includes(node.type)) {
+      const text = fold(node, consts);
+      if (text === "module" || text === "node:module") found = { line: at(node), what: "the module system is named" };
+    } else if (
+      (node.type === "MemberExpression" || node.type === "OptionalMemberExpression") &&
+      staticName(node) === "mainModule"
+    )
+      found = { line: at(node), what: "process.mainModule is used" };
+    if (!found)
+      for (const [key, value] of Object.entries(node))
+        for (const child of nodes(value)) visit(child, [...path, { node, key }]);
+  };
+  visit(program, []);
+  return found;
+}
+
 /**
  * The names `node:test` is bound to that the Carrier can be trusted to leave
  * as Node defines them, and the reason for each that cannot. The Carrier is
@@ -512,7 +553,12 @@ function trusted(
           ? `require is used other than by calling it, at line ${used.get("require")}`
           : declares(program, "require")
             ? "require is declared in the Carrier"
-            : undefined;
+            : viaRequire.size && kind === "cjs"
+              ? ((r) =>
+                  r ? `the CommonJS loader is reachable and changeable: ${r.what}, at line ${r.line}` : undefined)(
+                  loaderReach(program),
+                )
+              : undefined;
   if (why)
     for (const name of viaRequire) {
       dropped.set(name, why);

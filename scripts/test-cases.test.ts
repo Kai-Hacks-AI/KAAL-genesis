@@ -430,3 +430,28 @@ test("a top-level await in a CommonJS Carrier cannot vouch for a reference", () 
     ["a.test.cjs:2: ES module syntax in a CommonJS Carrier (top-level await)"],
   );
 });
+
+// Review round 10 of #121: the findings as KAAL meets them.
+test("an overridden module.require cannot vouch for a reference, while an exported require binding is read", () => {
+  const { dir, born } = repo({});
+  const suite = path.join(born, TEST_DIR, "suite");
+  fs.writeFileSync(
+    path.join(suite, "a.test.cjs"),
+    'module.require = () => helper;\nconst test = require("node:test");\ntest("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  fs.writeFileSync(
+    path.join(suite, "b.test.cts"),
+    'export const test = require("node:test");\ntest("d", { tests: { requirement: ["r2"] } }, () => {});\n',
+  );
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(
+    errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": ")),
+    [
+      "a.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (the CommonJS loader is reachable and changeable: module is used other than for its own exports, at line 1, so it is not trusted to be node:test)",
+    ],
+  );
+  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), [
+    testCaseId({ carrier: `${PLACE}/b.test.cts`, name: "d" }),
+  ]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), []);
+});

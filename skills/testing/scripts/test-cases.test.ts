@@ -1058,3 +1058,100 @@ test("syntax that only an ES module has, at the top of a CommonJS Carrier, is re
   // A .cts may import and export, which TypeScript compiles; a .cjs may not.
   assert.equal(parseTestCases(`import test from "node:test";\n${claim}`, "a.test.cts").cases.length, 1);
 });
+
+// Review round 10 of #121. Each finding was reproduced first, then its class repaired.
+
+test("require is trusted only if the Carrier leaves the loader it delegates to alone: module, the module system and the main module", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const C = `const test = require("node:test");\ntest("claim", ${T}, () => {});`;
+  const reach =
+    /\(the CommonJS loader is reachable and changeable: (module is used other than for its own exports|the module system is named|process\.mainModule is used), at line \d+, so it is not trusted to be node:test\)$/;
+  for (const head of [
+    "module.require = () => helper;",
+    "module['require'] = () => helper;",
+    "module[`require`] = () => helper;",
+    "module[k] = () => helper;",
+    "module.constructor._load = () => helper;",
+    "module.constructor.prototype.require = () => helper;",
+    "module.parent.require = () => helper;",
+    "module.__proto__.require = () => helper;",
+    "Object.getPrototypeOf(module).require = () => helper;",
+    "patch(module);",
+    "const m = module;",
+    'require("module").prototype.require = () => helper;',
+    'require("node:module")._load = () => helper;',
+    'require("node:" + "module")._load = () => helper;',
+    'const spec = "node:" + "module";\nrequire(spec)._load = () => helper;',
+    'process.getBuiltinModule("node:module")._load = () => helper;',
+    "process.mainModule.require = () => helper;",
+    "process['mainModule'].require = () => helper;",
+    "process.mainModule.constructor._load = () => helper;",
+  ]) {
+    const read = parseTestCases(`${head}\n${C}`, "a.test.cjs");
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(read.errors[0], reach, head);
+  }
+  // No scopes are tracked, so a shadowing module that reaches for require is refused too, never inferred.
+  assert.equal(parseTestCases(`function f(module) { return module.require; }\n${C}`, "a.test.cjs").errors.length, 1);
+  // A module system imported in a .cts is named too.
+  const imported = parseTestCases(
+    `import Module from "node:module";\nModule.prototype.require = () => helper;\n${C}`,
+    "a.test.cts",
+  );
+  assert.deepEqual(imported.cases, []);
+  assert.match(imported.errors[0], reach);
+  // A Carrier's own exports and facts about itself leave the loader alone.
+  for (const fine of [
+    "module.exports = { a: 1 };",
+    "module.exports.a = 1;",
+    "const id = module.id;",
+    "const f = module.filename + module.path;",
+    "if (module.loaded) {}",
+    "const ps = module.paths.length + module.children.length;",
+    "function f(module) { return module.exports; }",
+    "const o = { module: 1, mainModule2: 2 };",
+    "o.module = 1;",
+    'const note = "see node:modules";',
+    "require.resolve('x');",
+  ])
+    assert.deepEqual(parseTestCases(`${fine}\n${C}`, "a.test.cjs").errors, [], fine);
+  // An ES import does not delegate to module.require, so none of this concerns it.
+  assert.deepEqual(
+    parseTestCases(
+      `import test from "node:test";\nmodule.require = () => helper;\ntest("claim", ${T}, () => {});`,
+      "a.test.mjs",
+    ).errors,
+    [],
+  );
+});
+
+test("an exported declaration binds node:test as the same declaration does without export", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const names = (source: string, file = "a.test.cts") => parseTestCases(source, file).cases.map((c) => c.name);
+  assert.deepEqual(names(`export const test = require("node:test");\ntest("n", ${T}, () => {});`), ["n"]);
+  assert.deepEqual(
+    names(
+      `export const { skip, only: o } = require("node:test");\nskip("n", ${T}, () => {});\no("m", ${T}, () => {});`,
+    ),
+    ["n", "m"],
+  );
+  assert.deepEqual(names(`export import test = require("node:test");\ntest("n", ${T}, () => {});`), ["n"]);
+  assert.deepEqual(
+    names(`export const test = require("node:test");\nexport const other = 1;\ntest("n", ${T}, () => {});`),
+    ["n"],
+  );
+  // The same rules apply to it: a call before it, and a write to it, are refused.
+  const early = parseTestCases(`test("n", ${T}, () => {});\nexport const test = require("node:test");`, "a.test.cts");
+  assert.deepEqual(early.cases, []);
+  assert.match(
+    early.errors[0],
+    /test is used before its declaration at line 2, so it is not trusted to be node:test\)$/,
+  );
+  const written = parseTestCases(
+    `export const test = require("node:test");\ntest.only = helper;\ntest.only("n", ${T}, () => {});`,
+    "a.test.cts",
+  );
+  assert.deepEqual(written.cases, []);
+  assert.equal(written.errors.length, 1);
+});
