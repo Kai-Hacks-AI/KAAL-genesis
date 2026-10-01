@@ -8,16 +8,16 @@ Each Change carries its own protection transition, sparsely, beneath its occurre
 
 - **Suites** it contributes, one directory per concern, such as `test/testing/`.
 - **Feature Plan**, `test/feature.md`: the Suites the Change introduces.
-- **Acceptance Plan**, `test/acceptance.md`: accepted Suites the Change gives up. Present only when it gives some up.
+- **Authorise Plan**, `test/authorise.md`: the Suites the Change explicitly authorises to leave protection. Present only when it authorises some.
 - **Regression Test Plan**, `test/regression.md`: every Suite that must hold after the Change lands.
 
-Feature adds, Acceptance removes, Regression projects. Plans use the `testing` Plan format, Markdown whose body states the Plan's meaning for its reviewers and whose frontmatter lists its `suites` by path from the repository root, so a Plan can name a Suite of its own Change or of any earlier one. The Plan alone decides membership: where a Suite is stored implies nothing. Plans and Suites are the Change's own material and are sealed with it, so a sealed Suite a Plan names never changes beneath it.
+Feature adds, Authorise removes, Regression projects. Omission has no authority: a Suite the Change leaves out stays in the Regression Test Plan unless its Authorise Plan authorises it. Plans use the `testing` Plan format, Markdown whose body states the Plan's meaning for its reviewers and whose frontmatter lists its `suites` by path from the repository root, so a Plan can name a Suite of its own Change or of any earlier one. The Plan alone decides membership: where a Suite is stored implies nothing. Plans and Suites are the Change's own material and are sealed with it, so a sealed Suite a Plan names never changes beneath it. Authorise was earlier called Acceptance: material written under that word, such as an `acceptance.md`, says Acceptance and is never renamed, and means Authorise.
 
 ## Supersession
 
 A new Regression Test Plan supersedes the one before it, backward: its own frontmatter names the Plan it supersedes, `supersedes: change/<lineage>/YY/MM/DD/CC/test/regression.md`, and the old Plan is never edited. `supersedes` is KAAL's, not Testing's: Testing never reads it. The first Regression Test Plan supersedes nothing. KAAL's rules: no Plan may be superseded twice, and the current Regression Test Plan is the one Plan no other supersedes. KAAL does not yet derive it: until it does, CI names the Plan it runs.
 
-Whether a Change's Regression Test Plan follows from the one it supersedes, with its Feature and Acceptance Plans, is for review to judge. Testing never decides that a Suite left out was given up.
+Whether a Change's Regression Test Plan follows from the one it supersedes, with its Feature and Authorise Plans, is for review to judge. Testing never decides that a Suite left out was given up.
 
 ## Cases
 
