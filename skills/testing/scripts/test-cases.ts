@@ -87,11 +87,21 @@ function literal(node: unknown): string | undefined {
  * The local names `node:test` is bound to at the top of a Carrier: imported, or
  * required, with the ones that rest on `require` meaning the CommonJS loader.
  */
-function bindings(program: Node): { bound: Map<string, Binding>; viaRequire: Set<string> } {
+function bindings(program: Node): {
+  bound: Map<string, Binding>;
+  viaRequire: Set<string>;
+  declared: Map<string, { index: number; line: number }>;
+  recognized: Set<Node>;
+} {
   const bound = new Map<string, Binding>();
   const viaRequire = new Set<string>();
-  for (const statement of nodes(program.body)) {
+  /** Where a binding that is not hoisted is declared: a call before it runs in its temporal dead zone. */
+  const declared = new Map<string, { index: number; line: number }>();
+  /** The specifier nodes of the declarations that bind `node:test`: the Carrier's own ways to reach it. */
+  const recognized = new Set<Node>();
+  for (const [index, statement] of nodes(program.body).entries()) {
     if (statement.type === "ImportDeclaration" && literal(statement.source) === "node:test") {
+      recognized.add(statement.source as Node);
       if (statement.importKind === "type") continue;
       for (const s of nodes(statement.specifiers)) {
         const local = nameOf(s.local);
@@ -107,8 +117,12 @@ function bindings(program: Node): { bound: Map<string, Binding>; viaRequire: Set
       isNode(statement.moduleReference) &&
       literal(statement.moduleReference.expression) === "node:test"
     ) {
+      recognized.add((statement.moduleReference as Node).expression as Node);
       const local = nameOf(statement.id);
-      if (local) bound.set(local, "module");
+      if (local) {
+        bound.set(local, "module");
+        declared.set(local, { index, line: at(statement) });
+      }
     } else if (statement.type === "VariableDeclaration" && statement.kind === "const") {
       // Only a `const` binding is trusted: a `let` or `var` can be written to later, so what it names at a call is not known.
       for (const d of nodes(statement.declarations)) {
@@ -120,22 +134,24 @@ function bindings(program: Node): { bound: Map<string, Binding>; viaRequire: Set
           literal(nodes(init.arguments)[0]) !== "node:test"
         )
           continue;
-        if (isNode(d.id) && d.id.type === "Identifier") {
-          bound.set(d.id.name as string, "module");
-          viaRequire.add(d.id.name as string);
-        } else if (isNode(d.id) && d.id.type === "ObjectPattern")
+        recognized.add(nodes(init.arguments)[0]);
+        const bind = (local: string, binding: Binding) => {
+          bound.set(local, binding);
+          viaRequire.add(local);
+          declared.set(local, { index, line: at(statement) });
+        };
+        if (isNode(d.id) && d.id.type === "Identifier") bind(d.id.name as string, "module");
+        else if (isNode(d.id) && d.id.type === "ObjectPattern")
           for (const p of nodes(d.id.properties)) {
             const imported = nameOf(p.key);
             const local = nameOf(p.value);
-            if (p.type === "ObjectProperty" && imported && local && EXPORTS.has(imported)) {
-              bound.set(local, imported as Binding);
-              viaRequire.add(local);
-            }
+            if (p.type === "ObjectProperty" && imported && local && EXPORTS.has(imported))
+              bind(local, imported as Binding);
           }
       }
     }
   }
-  return { bound, viaRequire };
+  return { bound, viaRequire, declared, recognized };
 }
 
 /** A pattern's own names: what it declares. */
@@ -276,26 +292,56 @@ function usedOtherwise(program: Node, names: Set<string>): Map<string, number> {
 }
 
 /**
+ * Where the Carrier names `node:test` other than in the declarations that bind
+ * it: another `require`, a dynamic import, a re-export, a lookup by name.
+ * Each reaches the same functions the bound names do.
+ */
+function otherRoute(program: Node, recognized: Set<Node>): number | undefined {
+  let line: number | undefined;
+  const visit = (node: Node) => {
+    if (line !== undefined) return;
+    if (!recognized.has(node) && literal(node) === "node:test") line = at(node);
+    else for (const value of Object.values(node)) for (const child of nodes(value)) visit(child);
+  };
+  visit(program);
+  return line;
+}
+
+/**
  * The names `node:test` is bound to that the Carrier can be trusted to leave
  * as Node defines them, and the reason for each that cannot. The Carrier is
  * trusted only for what its own source shows: a name it uses other than by
- * calling it, and `require` when it is written, redeclared or so used, are not.
+ * calling it, any other route to `node:test` than its own declarations, and
+ * `require` when it is written, redeclared or so used, are not, and all names
+ * share one verdict, since they reach the same functions.
  * What happens outside the Carrier's source, such as a preload hook or another
  * module that changes `node:test`, is not seen by reading it. Scopes are not
  * tracked, so a local name shadowing one of these and used otherwise than by
  * calling it also costs the trust, which only ever refuses more.
  */
-function trusted(program: Node): { bound: Map<string, Binding>; dropped: Map<string, string> } {
-  const { bound, viaRequire } = bindings(program);
+function trusted(program: Node): {
+  bound: Map<string, Binding>;
+  dropped: Map<string, string>;
+  declared: Map<string, { index: number; line: number }>;
+} {
+  const { bound, viaRequire, declared, recognized } = bindings(program);
   const dropped = new Map<string, string>();
   const names = new Set(bound.keys());
   if (viaRequire.size) names.add("require");
   const used = usedOtherwise(program, names);
-  for (const [name, line] of used) {
-    if (name === "require") continue;
-    dropped.set(name, `${name} is used other than by calling it, at line ${line}`);
-    bound.delete(name);
-  }
+  const route = otherRoute(program, recognized);
+  // Every name of `node:test` reaches the same functions and members, so what is said of one is said of all.
+  const [first] = [...used].filter(([name]) => name !== "require");
+  const reason = first
+    ? `${first[0]} is used other than by calling it, at line ${first[1]}`
+    : route !== undefined
+      ? `node:test is reached other than by the Carrier's own import or const require, at line ${route}`
+      : undefined;
+  if (reason)
+    for (const name of [...bound.keys()]) {
+      dropped.set(name, reason);
+      bound.delete(name);
+    }
   const why = used.has("require")
     ? `require is used other than by calling it, at line ${used.get("require")}`
     : declares(program, "require")
@@ -306,7 +352,7 @@ function trusted(program: Node): { bound: Map<string, Binding>; dropped: Map<str
       dropped.set(name, why);
       bound.delete(name);
     }
-  return { bound, dropped };
+  return { bound, dropped, declared };
 }
 
 /**
@@ -486,18 +532,25 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   } catch (e) {
     return { cases: [], errors: [`${file}: unparseable carrier (${e instanceof Error ? e.message : String(e)})`] };
   }
-  const { bound, dropped } = trusted(program);
+  const { bound, dropped, declared } = trusted(program);
+  /** Why a top-level call was not recognized: it runs before the declaration that binds its callee. */
+  const early = new Map<Node, string>();
   const errors: string[] = [];
   /** Each recognized top-level Test Case call, with the options object its `tests` may sit in, if it has one. */
   const top = new Map<Node, Node | undefined>();
   const found: { name: string; tests: Tests[]; annotated: boolean; line: number }[] = [];
   /** Top-level tests whose name Node reports by what they are, not by a literal: known only by running them. */
   const unresolved: number[] = [];
-  for (const statement of nodes(program.body)) {
+  for (const [index, statement] of nodes(program.body).entries()) {
     let call: unknown = statement.type === "ExpressionStatement" ? statement.expression : undefined;
     while (isNode(call) && call.type === "AwaitExpression") call = call.argument;
     if (!isNode(call) || call.type === "NewExpression" || !isCall(call) || role(call.callee, bound) !== "test")
       continue;
+    const where_ = declared.get(rootName(call.callee) ?? "");
+    if (where_ && where_.index >= index) {
+      early.set(call, `${rootName(call.callee)} is used before its declaration at line ${where_.line}`);
+      continue;
+    }
     const args = nodes(call.arguments);
     const where = `${file}:${at(call)}`;
     // Options are the second argument, before the function; with a third they must be a literal object.
@@ -546,7 +599,7 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
             const hidden = registers ? optionsTests(arg).error : undefined;
             if (hidden) errors.push(`${file}:${at(child)}: ${hidden}`);
             else if (mentionsTests(arg)) {
-              const reason = dropped.get(rootName(child.callee) ?? "");
+              const reason = early.get(child) ?? dropped.get(rootName(child.callee) ?? "");
               errors.push(
                 `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call${reason ? ` (${reason}, so it is not trusted to be node:test)` : ""}`,
               );

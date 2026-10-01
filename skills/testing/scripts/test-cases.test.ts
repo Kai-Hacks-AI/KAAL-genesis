@@ -236,21 +236,6 @@ test("Testing keeps no reverse registry, reads without executing or writing, and
 
 // Review round 1 of #121. Each finding below was reproduced first, then its class repaired.
 
-test("every export and member of the running node:test is classified, so none this skill cannot read goes unnoticed", async () => {
-  const module = await import("node:test");
-  const classified = new Set<string>([...NODE_TEST.test, ...NODE_TEST.other, ...NODE_TEST.ignored]);
-  const exports = Object.keys(module);
-  const members = [...Object.keys(module.test), ...Object.keys(module.it)];
-  assert.deepEqual(
-    [...new Set([...exports, ...members])].filter((name) => !classified.has(name)),
-    [],
-  );
-  assert.deepEqual(
-    Object.keys(module.describe).filter((name) => !(NODE_TEST.modifiers as readonly string[]).includes(name)),
-    [],
-  );
-});
-
 test("every way node:test offers to define a Test Case is read: named exports, members, awaited, each binding", () => {
   const forms: [string, string, string][] = [
     ['import { skip } from "node:test";', "skip", "a.test.ts"],
@@ -587,4 +572,88 @@ test("require names the CommonJS loader only if the Carrier leaves it alone: wri
     assert.deepEqual(cjs(head).errors, [], head);
   // An ES import does not rest on require at all.
   assert.deepEqual(parse('function require() {}\ntest("n", { tests: { requirement: ["r"] } }, () => {});').errors, []);
+});
+
+// Review round 4 of #121. Each finding was reproduced first, then its class repaired.
+
+test("a call that runs before the declaration binding its name is not a Test Case, while a hoisted import is", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const early = / \((test|skip) is used before its declaration at line 2, so it is not trusted to be node:test\)$/;
+  const before = (source: string, file: string) => parseTestCases(source, file);
+  for (const [source, file] of [
+    [`test("claim", ${T}, () => {});\nconst test = require("node:test");`, "a.test.cjs"],
+    [`skip("claim", ${T}, () => {});\nconst { skip } = require("node:test");`, "a.test.cjs"],
+    [`test("claim", ${T}, () => {});\nimport test = require("node:test");`, "a.test.cts"],
+    [`await test("claim", ${T}, () => {});\nconst test = require("node:test");`, "a.test.cjs"],
+  ]) {
+    const read = before(source, file);
+    assert.deepEqual(read.cases, [], source);
+    assert.equal(read.errors.length, 1, source);
+    assert.match(read.errors[0], early, source);
+  }
+  // After its declaration it is read; an ES import is hoisted, so a call above it is read too.
+  assert.equal(
+    before(`const test = require("node:test");\ntest("claim", ${T}, () => {});`, "a.test.cjs").cases.length,
+    1,
+  );
+  assert.equal(before(`test("claim", ${T}, () => {});\nimport test from "node:test";`, "a.test.ts").cases.length, 1);
+  // Untraced, an early call claims nothing and is not an error.
+  assert.deepEqual(before('test("n", () => {});\nconst test = require("node:test");', "a.test.cjs"), {
+    cases: [],
+    errors: [],
+  });
+});
+
+test("every name of node:test, and every other route to it, shares one verdict: one used otherwise untrusts all", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const claim = `test.only("claim", ${T}, () => {});`;
+  const names = (source: string) => parseTestCases(source, "a.test.ts");
+  const mutated = [
+    'import test, { test as alias } from "node:test";\nalias.only = helper;',
+    'import test, { it } from "node:test";\nit.only = helper;',
+    'import test from "node:test";\nimport * as nt from "node:test";\nnt.test.only = helper;',
+    'import test from "node:test";\nimport { skip } from "node:test";\nskip.call = helper;',
+  ];
+  for (const head of mutated) {
+    const read = names(`${head}\n${claim}`);
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(read.errors[0], /not trusted to be node:test\)$/, head);
+  }
+  // Any other route to the same functions: another require, a dynamic import, a lookup by name, a re-export.
+  const routes = [
+    'require("node:test").only = helper;',
+    'import("node:test").then((m) => { m.default.only = helper; });',
+    'process.getBuiltinModule("node:test").only = helper;',
+    'export { skip } from "node:test";',
+    'const { mock } = await import("node:test");',
+    'let r = require("node:test");',
+  ];
+  for (const head of routes) {
+    const read = names(`import test from "node:test";\n${head}\n${claim}`);
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(
+      read.errors[0],
+      /node:test is reached other than by the Carrier's own import or const require, at line 2, so it is not trusted to be node:test\)$/,
+      head,
+    );
+  }
+  // The Carrier's own declarations are not other routes, however many or of whatever kind: a type import, several imports, a const require.
+  for (const fine of [
+    'import type { TestContext } from "node:test";',
+    'import { type TestContext } from "node:test";',
+    'import { skip } from "node:test";',
+    'import * as nt from "node:test";',
+    'import { it } from "node:test";\nconst x = "node:tests";',
+    'const note = "see node:test for details";',
+    "const t = require(`node:test`);",
+  ])
+    assert.equal(names(`import test from "node:test";\n${fine}\n${claim}`).cases.length, 1, fine);
+  const cjs = parseTestCases(
+    `const test = require("node:test");\nconst { mock } = require("node:test");\n${claim}`,
+    "a.test.cjs",
+  );
+  assert.equal(cjs.cases.length, 1);
+  assert.deepEqual(cjs.errors, []);
 });

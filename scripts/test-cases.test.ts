@@ -332,3 +332,20 @@ test("a Test Case defined by expectFailure is validated, and an overwritten node
     "c.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (require is used other than by calling it, at line 1, so it is not trusted to be node:test)",
   ]);
 });
+
+// Review round 4 of #121: the findings as KAAL meets them.
+test("a call before its const require, or beside a second route to node:test, cannot vouch for a reference", () => {
+  const { dir, born } = repo({
+    "a.test.ts":
+      'import { test as alias } from "node:test";\nalias.only = helper;\ntest.only("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  });
+  fs.writeFileSync(
+    path.join(born, TEST_DIR, "suite", "b.test.cjs"),
+    'test("d", { tests: { requirement: ["r1"] } }, () => {});\nconst test = require("node:test");\n',
+  );
+  const errors = kaalTestCases(dir).errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": "));
+  assert.deepEqual([...errors].sort(), [
+    "a.test.ts: tests belongs on the options of a top-level Test Case, not on another call (alias is used other than by calling it, at line 3, so it is not trusted to be node:test)",
+    "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (test is used before its declaration at line 2, so it is not trusted to be node:test)",
+  ]);
+});
