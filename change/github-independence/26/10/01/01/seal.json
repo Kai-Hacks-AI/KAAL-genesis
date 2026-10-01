@@ -1,0 +1,11 @@
+{
+  "unit": "change/github-independence/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "test/no-github.test.ts",
+      "sha256": "08d24ea90e4501631a9cf06d2cd1832bf60a5459f140a436fbff813aedc6ca77"
+    }
+  ],
+  "seal": "d206365b9c4825f74076c040b3deb913bf59904c5bff6157a5afa5d2058feb57"
+}
