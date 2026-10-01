@@ -14,7 +14,7 @@ KAAL composes the skill with Change; neither skill knows the other. A Change tha
 
 Architecture is meaning other work may be judged against where it is relevant. It is not a service: no skill depends on Architecting, calls it or learns its records, and Reviewing in particular stays independent and judges findings against the responsibility under review, whichever statement of it that work refers to. Whoever refers to a record owns the reference and what it means for their work.
 
-BRAIN says what KAAL understands about itself, and may later express an architectural meaning where that is the right home for it; nothing projects a record into BRAIN automatically, and the skill works without BRAIN. Architecting is the capability. It is not where KAAL's architecture is kept: that is the Changes that settled it.
+Each part owns a different thing, and none depends on another. Architecting owns what an Architecture record is: its identity, its form and how it is created, read and validated. The Change composition owns where the occurrence that settled a record retains it, which is the record's durable home and its provenance. BRAIN owns what KAAL has learned and currently understands about itself, and may express architectural meaning where that is the right home for it. A record does not project into BRAIN automatically, Architecting does not depend on BRAIN, and the skill works without it. Nothing here makes the Change the only place KAAL's architecture can be understood, or BRAIN the place records are kept.
 
 KAAL accepts no Architecture record with this birth and retrofits none from history.
 
