@@ -92,10 +92,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       # The merge ref moves with the pull request: what was checked out must be the
-      # merge of exactly the head this run's status is for, or it judges nothing.
+      # merge of exactly the head this run's status is for into exactly the base
+      # branch it is now into, or it judges nothing.
       - if: github.event_name == 'pull_request_target'
         working-directory: change
-        run: test "$(git rev-parse HEAD^2)" = "$EVENT_SHA"
+        run: |
+          test "$(git rev-parse HEAD^2)" = "$EVENT_SHA"
+          test "$(git rev-parse HEAD^1)" = "$(git rev-parse "origin/$BASE_REF")"
       - uses: actions/setup-node@v7
         with:
           node-version: 22

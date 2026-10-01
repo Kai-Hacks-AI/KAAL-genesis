@@ -536,7 +536,9 @@ test("check-seals requires sealed Changes of a ready pull request, from main's c
   // The verdict is for one head: a stale event judges nothing, and what was checked out is the
   // merge of exactly that head, so a force-pushed head cannot be judged through another's merge.
   assert.ok(steps.some((s) => s.run === 'test "$HEAD_SHA" = "$EVENT_SHA"'));
-  const bound = steps.findIndex((s) => s.run === 'test "$(git rev-parse HEAD^2)" = "$EVENT_SHA"');
+  const bound = steps.findIndex((s) => /HEAD\^2.*EVENT_SHA/.test(s.run ?? ""));
+  assert.match(steps[bound].run!, /test "\$\(git rev-parse HEAD\^1\)" = "\$\(git rev-parse "origin\/\$BASE_REF"\)"/);
+  assert.equal(steps[bound]["working-directory"], "change");
   const checkoutChange = steps.findIndex((s) => s.with?.path === "change");
   assert.ok(checkoutChange >= 0 && bound === checkoutChange + 1);
   assert.equal(wf.jobs["check-seals"].env.EVENT_SHA, "${{ github.event.pull_request.head.sha }}");
