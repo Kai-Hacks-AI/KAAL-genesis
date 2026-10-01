@@ -6,12 +6,19 @@ import test from "node:test";
 import { birthChange } from "../skills/managing-change/scripts/birth.js";
 import { createRequirement } from "../skills/managing-requirements/scripts/create.js";
 import { instanceId, observeConditions, planInstances, readPlan, unmet } from "../skills/testing/scripts/testing.js";
-import { EVIDENCE_DIR, kaalRequiredEvidence, requiredInstances } from "./required-evidence.js";
 import { REQUIREMENT_DIR } from "./requirements.js";
-import { kaalTestCases, TEST_DIR, testPlanProtecting } from "./test-cases.js";
+import {
+  carrierPlaces,
+  INSTANCE_DIR,
+  kaalInstanceRequirements,
+  kaalTestCases,
+  requiredInstances,
+  TEST_DIR,
+  testPlanProtecting,
+} from "./test-cases.js";
 
-// KAAL composes Requirements with the parameters their HOW is evidenced under.
-// A decision of a Change names a Requirement and parameters; the Test Case stays
+// KAAL decides which parameters a Requirement's instances are required under.
+// A decision, kept in a Change's test/instances/, names a Requirement and parameters; the Test Case stays
 // generic, Testing stays ignorant of every name, and the Requirement is untouched.
 const CORE = "change/execution-environments/26/10/01/01/test/core-executes.test.ts";
 const NO_GIT = "change/git-independence/26/10/01/01/test/no-git.test.ts";
@@ -22,7 +29,7 @@ const decision = (requirement: string, parameters: string, why = "Because.") =>
 
 /** A repository with Requirements `r1`, `r2`, a Carrier of generic Test Cases and the decisions given. */
 function repo(decisions: Record<string, string>): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-required-evidence-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kaal-instances-"));
   const born = birthChange({ root: path.join(dir, "change"), lineage: "x", occurrence: "26/09/30/01" });
   for (const id of ["r1", "r2"]) createRequirement(path.join(born, REQUIREMENT_DIR), id, `${id} holds.`);
   fs.mkdirSync(path.join(born, TEST_DIR), { recursive: true });
@@ -32,27 +39,28 @@ function repo(decisions: Record<string, string>): string {
       'test("generic", { tests: { requirement: ["r1", "r2"] } }, () => {});\n' +
       'test("other", { tests: { requirement: ["r2"] } }, () => {});\n',
   );
-  fs.mkdirSync(path.join(born, EVIDENCE_DIR));
-  for (const [name, text] of Object.entries(decisions)) fs.writeFileSync(path.join(born, EVIDENCE_DIR, name), text);
+  fs.mkdirSync(path.join(born, TEST_DIR, INSTANCE_DIR));
+  for (const [name, text] of Object.entries(decisions))
+    fs.writeFileSync(path.join(born, TEST_DIR, INSTANCE_DIR, name), text);
   return dir;
 }
 const A = "change/x/26/09/30/01/test/a.test.ts";
-const ids = (dir: string, req: string[], decisions = kaalRequiredEvidence(dir).evidence) => {
+const ids = (dir: string, req: string[], decisions = kaalInstanceRequirements(dir).required) => {
   const plan = testPlanProtecting(kaalTestCases(dir).cases, "requirement", req, decisions);
   assert.ok(!("errors" in plan));
   return plan.instances.map(instanceId);
 };
 
 test("KAAL's own decisions are valid and name the Requirements that exist", () => {
-  assert.deepEqual(kaalRequiredEvidence().errors, []);
+  assert.deepEqual(kaalInstanceRequirements().errors, []);
 });
 
 test("the four FAR-9 Requirements derive their required instances from accepted material", () => {
   const { cases, errors } = kaalTestCases();
   assert.deepEqual(errors, []);
-  const { evidence } = kaalRequiredEvidence();
+  const { required } = kaalInstanceRequirements();
   const derived = (id: string) => {
-    const plan = testPlanProtecting(cases, "requirement", [id], evidence);
+    const plan = testPlanProtecting(cases, "requirement", [id], required);
     assert.ok(!("errors" in plan));
     return plan.instances.map(instanceId);
   };
@@ -72,7 +80,7 @@ test("the derived Plan is a Plan Testing reads, requiring those instances and no
     cases,
     "requirement",
     ["linux-support", "windows-support", "git-independence"],
-    kaalRequiredEvidence().evidence,
+    kaalInstanceRequirements().required,
   );
   assert.ok(!("errors" in plan));
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-derived-")), "plan.md");
@@ -112,13 +120,13 @@ test("the same instance decided twice is one instance, and parameters order mean
     "a.md": decision("r1", "  environment: linux\n  arch: x64"),
     "b.md": decision("r1", "  arch: x64\n  environment: linux"),
   });
-  assert.equal(kaalRequiredEvidence(dir).evidence.length, 1);
+  assert.equal(kaalInstanceRequirements(dir).required.length, 1);
   assert.deepEqual(ids(dir, ["r1"]), [`${A}[arch=x64,environment=linux]`]);
 });
 
 test("with no decision at all, derivation is exactly what it was", () => {
   const dir = repo({});
-  assert.deepEqual(kaalRequiredEvidence(dir), { evidence: [], errors: [] });
+  assert.deepEqual(kaalInstanceRequirements(dir), { required: [], errors: [] });
   assert.deepEqual(ids(dir, ["r1", "r2"]), [A]);
   const { cases } = kaalTestCases(dir);
   const plan = testPlanProtecting(cases, "requirement", ["r1", "r2"]);
@@ -128,7 +136,7 @@ test("with no decision at all, derivation is exactly what it was", () => {
 });
 
 test("a decision is refused when it names no Requirement, no parameters, a bad parameter or no reason", () => {
-  const { errors } = kaalRequiredEvidence(
+  const { errors } = kaalInstanceRequirements(
     repo({
       "unknown.md": decision("nope", "  environment: linux"),
       "none.md": "---\nrequirement: r1\n---\n\nBecause.\n",
@@ -141,7 +149,7 @@ test("a decision is refused when it names no Requirement, no parameters, a bad p
       "missing.md": "---\nparameters:\n  environment: linux\n---\n\nBecause.\n",
     }),
   );
-  const short = errors.map((e) => e.replace(/^.*\/evidence\//, ""));
+  const short = errors.map((e) => e.replace(/^.*\/instances\//, ""));
   assert.deepEqual(
     short.sort(),
     [
@@ -185,14 +193,30 @@ test("an instance for a Defect is under no parameters", () => {
 
 test("Testing knows nothing of this composition", () => {
   for (const file of fs.readdirSync("skills/testing/scripts").filter((f) => f.endsWith(".ts")))
-    assert.doesNotMatch(fs.readFileSync(path.join("skills/testing/scripts", file), "utf8"), /required-evidence/);
+    assert.doesNotMatch(
+      fs.readFileSync(path.join("skills/testing/scripts", file), "utf8"),
+      /INSTANCE_DIR|InstanceRequirement|test\/instances/,
+    );
 });
 
 test("no Run provides the environment these decisions require yet: that is the environment adapter's, and the instances stay unrun", () => {
-  const { evidence } = kaalRequiredEvidence();
+  const { required } = kaalInstanceRequirements();
   assert.deepEqual(
-    evidence.map((e) => e.parameters).sort((a, b) => (a.environment < b.environment ? -1 : 1)),
+    required.map((e) => e.parameters).sort((a, b) => (a.environment < b.environment ? -1 : 1)),
     [{ environment: "linux" }, { environment: "windows" }],
   );
-  for (const { parameters } of evidence) assert.deepEqual(unmet(parameters, observeConditions()), ["environment"]);
+  for (const { parameters } of required) assert.deepEqual(unmet(parameters, observeConditions()), ["environment"]);
+});
+
+test("decisions are test material: beneath a Change's test/, they are no Carrier, no Suite and no Plan, and a directory of the old name is not read", () => {
+  const dir = repo({ "r1.md": decision("r1", "  environment: linux") });
+  assert.deepEqual(carrierPlaces(dir), [A]);
+  assert.deepEqual(kaalTestCases(dir).errors, []);
+  const stray = path.join(dir, "change/x/26/09/30/01/evidence");
+  fs.mkdirSync(stray);
+  fs.writeFileSync(path.join(stray, "r2.md"), decision("r2", "  environment: windows"));
+  assert.deepEqual(
+    kaalInstanceRequirements(dir).required.map((d) => d.requirement),
+    ["r1"],
+  );
 });

@@ -22,7 +22,6 @@
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
     "requirements:check": "tsx scripts/requirements.ts",
     "test-cases:check": "tsx scripts/test-cases.ts",
-    "evidence:check": "tsx scripts/required-evidence.ts",
     "defects:create": "tsx skills/managing-defects/scripts/create.ts",
     "defects:validate": "tsx skills/managing-defects/scripts/validate.ts",
     "defects:read": "tsx skills/managing-defects/scripts/read.ts",
