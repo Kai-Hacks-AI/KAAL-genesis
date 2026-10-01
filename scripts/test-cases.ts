@@ -6,6 +6,8 @@ import {
   carriersCurrentlyTesting,
   currentTestCasesTesting,
   readSupersession,
+  testCasesProtecting,
+  type PlanEntry,
 } from "../skills/testing/scripts/supersession.js";
 import { readTestCases, testCasesTesting, type TestCase } from "../skills/testing/scripts/test-cases.js";
 import { CASE } from "../skills/testing/scripts/testing.js";
@@ -111,15 +113,50 @@ export const carriersProtecting = (
     ids.map((id) => ({ kind, id })),
   );
 
+/**
+ * The Test Plan that demonstrates the protection of the Requirements or
+ * Defects `ids` of `kind`: each Test Case active for any of them once, with
+ * the ids that select it, and the Carriers a Run executes. Derived, never
+ * stored: a Plan file made of it is discarded and made again from the sources
+ * as it was. Which identities are protected is for the caller to say.
+ */
+export function testPlanProtecting(
+  cases: TestCase[],
+  kind: (typeof KINDS)[number],
+  ids: readonly string[],
+): { entries: PlanEntry[]; carriers: string[]; plan: string } | { errors: string[] } {
+  const answer = testCasesProtecting(
+    cases,
+    ids.map((id) => ({ kind, id })),
+  );
+  if ("errors" in answer) return answer;
+  const carriers = [...new Set(answer.entries.map((e) => e.carrier))];
+  const protectedIds = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const plan = [
+    "---",
+    "carriers:",
+    ...carriers.map((c) => `  - ${JSON.stringify(c)}`),
+    "---",
+    "",
+    `Derived, not authored: the Carriers that hold the Test Cases active for each ${kind} below, each Carrier once, computed from the Test Cases and the \`tests\` and \`supersedes\` they declare. Made again from them, it is the same.`,
+    "",
+    ...protectedIds.map((id) => `- ${id}`),
+    "",
+  ].join("\n");
+  return { entries: answer.entries, carriers, plan };
+}
+
 // With no arguments, checks every reference and every lineage. With `<requirement|defect> <id>`,
 // prints the Test Cases that test it, one identity per line, after the same check; with `current`
 // before them, only those active for it: no later Test Case of their own lineage tests it too. With
 // `carriers <requirement|defect> <id>...`, prints the Carriers, one path per line, that hold the Test
-// Cases active for any of the ids.
+// Cases active for any of the ids. With `plan <requirement|defect> <id>...`, prints the Test Plan, a
+// Plan file that collects those Carriers, derived from the same material and never stored.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const usage = `usage: test-cases.ts [current] [${KINDS.join("|")} <id>] | carriers <${KINDS.join("|")}> <id>...`;
+  const usage = `usage: test-cases.ts [current] [${KINDS.join("|")} <id>] | carriers|plan <${KINDS.join("|")}> <id>...`;
   const args = process.argv.slice(2);
-  const carriers = args[0] === "carriers";
+  const plan = args[0] === "plan";
+  const carriers = args[0] === "carriers" || plan;
   const current = args[0] === "current";
   const [kind, id, ...rest] = carriers || current ? args.slice(1) : args;
   if (
@@ -136,11 +173,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.error(errors.join("\n"));
       process.exitCode = 1;
     } else if (carriers) {
-      const answer = carriersProtecting(cases, kind as (typeof KINDS)[number], [id, ...rest]);
-      if ("errors" in answer) {
-        console.error(answer.errors.join("\n"));
-        process.exitCode = 1;
-      } else for (const carrier of answer.carriers) console.log(carrier);
+      const ids = [id, ...rest];
+      const k = kind as (typeof KINDS)[number];
+      if (plan) {
+        const answer = testPlanProtecting(cases, k, ids);
+        if ("errors" in answer) {
+          console.error(answer.errors.join("\n"));
+          process.exitCode = 1;
+        } else process.stdout.write(answer.plan);
+      } else {
+        const answer = carriersProtecting(cases, k, ids);
+        if ("errors" in answer) {
+          console.error(answer.errors.join("\n"));
+          process.exitCode = 1;
+        } else for (const carrier of answer.carriers) console.log(carrier);
+      }
     } else if (kind !== undefined)
       for (const c of current ? currentTestCasesTesting(cases, kind, id) : testCasesTesting(cases, kind, id))
         console.log(c);
