@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { computeRegression } from "../skills/testing/scripts/regression.js";
+import { kaalTestCases, testPlanProtecting } from "./test-cases.js";
 
 // The sealed FAR checkpoints, oldest first. They were written when Authorise was
 // called Acceptance and say so; sealing keeps them exactly as written. They are
@@ -12,6 +13,9 @@ const HISTORY = [
   "change/far/26/09/26/02",
   "change/far/26/09/26/03",
 ];
+
+// FAR-4 is written under the word Authorise, which is what Acceptance came to be called.
+const FAR4 = "change/far/26/09/30/01";
 
 const identities = (file: string): string[] =>
   fs
@@ -35,4 +39,34 @@ test("history that says Acceptance still computes: its Acceptance is an Authoris
     previous = result.regression;
   }
   assert.equal(previous!.length, 12);
+});
+
+test("FAR-4 is written under Authorise: its Regression follows from FAR-3's, its Feature and its Authorise", () => {
+  assert.match(fs.readFileSync(`${FAR4}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
+  assert.equal(fs.existsSync(`${FAR4}/acceptance.md`), false);
+  const result = computeRegression({
+    previous: identities("change/far/26/09/26/03/regression.md"),
+    feature: identities(`${FAR4}/feature.md`),
+    authorise: identities(`${FAR4}/authorise.md`),
+  });
+  assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
+  assert.deepEqual(result.regression, identities(`${FAR4}/regression.md`).sort());
+  assert.deepEqual(identities(`${FAR4}/feature.md`), [
+    "changes-are-immutable-occurrences-beneath-their-lineage",
+    "closed-change-cannot-change-unnoticed",
+  ]);
+  assert.deepEqual(identities(`${FAR4}/authorise.md`), []);
+});
+
+test("FAR-4's Plan is exactly what its Regression derives from the Test Cases: made again, it is the same bytes", () => {
+  const { cases, errors } = kaalTestCases();
+  assert.deepEqual(errors, []);
+  const derived = testPlanProtecting(cases, "requirement", identities(`${FAR4}/regression.md`));
+  assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
+  assert.equal(fs.readFileSync(`${FAR4}/runs/01/plan.md`, "utf8"), derived.plan);
+  // FAR-1's Suite and its twelve Carriers are untouched, yet the Carrier whose Test Cases FAR-4 superseded is not run.
+  const stale = "change/far/26/09/26/01/test/genesis/changes-checked-against-seals-of-target-branch.test.ts";
+  assert.equal(fs.existsSync(stale), true);
+  assert.equal(derived.carriers.includes(stale), false);
+  assert.equal(derived.carriers.length, 14);
 });
