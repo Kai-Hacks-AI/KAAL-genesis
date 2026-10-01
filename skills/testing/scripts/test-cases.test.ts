@@ -399,8 +399,13 @@ test("a key is the name its syntax gives it: literal and template keys, computed
   const other = (key: string) => refused(`helper({ ${key}: 1 });`);
   assert.deepEqual(other("[`tests`]"), ["tests belongs on the options of a top-level Test Case, not on another call"]);
   assert.deepEqual(other('["tests"]'), ["tests belongs on the options of a top-level Test Case, not on another call"]);
+  // A computed key built from literals, templates, + and consts is its name too; one that has to be run is not evaluated.
+  const moved = ["tests belongs on the options of a top-level Test Case, not on another call"];
+  assert.deepEqual(other('["te" + "sts"]'), moved);
+  assert.deepEqual(other("[`te${'sts'}`]"), moved);
+  assert.deepEqual(refused('const a = "te";\nconst b = a + "sts";\nhelper({ [b]: 1 });'), moved);
   assert.deepEqual(other("[k]"), []);
-  assert.deepEqual(other('["te" + "sts"]'), []);
+  assert.deepEqual(other('["te" + x]'), []);
   assert.deepEqual(other("[`te${k}`]"), []);
   // A call that registers a test never hides a key behind an expression, evaluated or not.
   assert.deepEqual(nested('["te" + "sts"]'), computed);
@@ -1065,7 +1070,7 @@ test("require is trusted only if the Carrier leaves the loader it delegates to a
   const T = '{ tests: { requirement: ["r"] } }';
   const C = `const test = require("node:test");\ntest("claim", ${T}, () => {});`;
   const reach =
-    /\(the CommonJS loader is reachable and changeable: (module is used other than for its own exports|the module system is named|process\.mainModule is used), at line \d+, so it is not trusted to be node:test\)$/;
+    /\(the CommonJS loader is reachable and changeable: (module is used other than for its own exports|the module system is named|process\.mainModule is used|process\.getBuiltinModule is used|mainModule is used|getBuiltinModule is used), at line \d+, so it is not trusted to be node:test\)$/;
   for (const head of [
     "module.require = () => helper;",
     "module['require'] = () => helper;",
@@ -1154,4 +1159,96 @@ test("an exported declaration binds node:test as the same declaration does witho
   );
   assert.deepEqual(written.cases, []);
   assert.equal(written.errors.length, 1);
+});
+
+// Review round 11 of #121. Each finding was reproduced first, then its class repaired.
+
+test("the module system is named only where a module is loaded: a string that happens to say so reaches nothing", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const R = 'const test = require("node:test");\n';
+  // Valid Carriers that merely contain the words: a test named module, an id named module, notes, other calls' arguments.
+  for (const [body, file] of [
+    [`test("module", ${T}, () => {});`, "a.test.cjs"],
+    [`test("node:module", ${T}, () => {});`, "a.test.cjs"],
+    ['test("n", { tests: { requirement: ["module", "node:module"] } }, () => {});', "a.test.cts"],
+    [`const note = "node:module";\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`const spec = "node:" + "module";\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`console.log("module", \`node:\${"module"}\`);\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`path.join("a", "module");\nassert.equal(x, "node:module");\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`const o = { module: "node:module" };\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`require("node:path");\nrequire("modules");\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`import("node:fs");\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+    [`test.describe("module", () => { test.it("node:module", () => {}); });\ntest("n", ${T}, () => {});`, "a.test.cjs"],
+  ] as const) {
+    const read = parseTestCases(`${R}${body}`, file);
+    assert.deepEqual(read.errors, [], body);
+    assert.ok(read.cases.length > 0, body);
+  }
+  // Where a module is loaded, however its specifier is built, it is the module system.
+  const named =
+    / \(the CommonJS loader is reachable and changeable: the module system is named, at line \d+, so it is not trusted to be node:test\)$/;
+  for (const head of [
+    'require("module");',
+    'require("node:module");',
+    "require(`node:module`);",
+    'require("node:" + "module");',
+    'require(`${"node"}:module`);',
+    'const a = "node:";\nconst b = a + "module";\nrequire(b);',
+    'import("node:module");',
+    'import("node:" + "module");',
+    'const { createRequire } = require("node:module");',
+    'require?.("module");',
+  ]) {
+    const read = parseTestCases(`${head}\n${R}test("claim", ${T}, () => {});`, "a.test.cjs");
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(read.errors[0], named, head);
+  }
+  for (const head of [
+    'import Module from "node:module";',
+    'import { createRequire } from "node:module";',
+    'export * from "node:module";',
+    'import m = require("node:module");',
+  ])
+    assert.match(
+      parseTestCases(`${head}\n${R}test("claim", ${T}, () => {});`, "a.test.cts").errors[0] ?? "",
+      named,
+      head,
+    );
+});
+
+test("a name built from literals, templates, + and consts is its name wherever a name matters: members, keys and tests alike", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const R = 'const test = require("node:test");\n';
+  const reach =
+    /\(the CommonJS loader is reachable and changeable: [^)]*, at line \d+, so it is not trusted to be node:test\)$/;
+  for (const head of [
+    'process["main" + "Module"].constructor._load = () => helper;',
+    'const k = "mainModule";\nprocess[k].constructor._load = () => helper;',
+    "process[`mainModule`].constructor._load = () => helper;",
+    'process[`main${"Module"}`].constructor._load = () => helper;',
+    'const p = "main";\nconst q = p + "Module";\nprocess[q].constructor._load = () => helper;',
+    'process?.["main" + "Module"]?.constructor;',
+    "const { mainModule } = process;",
+    "const { getBuiltinModule: g } = process;",
+    'const o = { ["main" + "Module"]: 1 };',
+    'process.getBuiltinModule("anything");',
+    'process["get" + "BuiltinModule"]("x");',
+    'module["req" + "uire"] = () => helper;',
+    'const k = "require";\nmodule[k] = () => helper;',
+  ]) {
+    const read = parseTestCases(`${head}\n${R}test("claim", ${T}, () => {});`, "a.test.cjs");
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(read.errors[0], reach, head);
+  }
+  // A name built so is still its name when it is a safe one, and a name built by running something is not evaluated.
+  for (const fine of [
+    'module["exp" + "orts"] = 1;',
+    'const e = "exports";\nmodule[e] = 1;',
+    "const m = { mainModule2: 1, main: 2 };",
+    'process["main" + x];',
+    "process[`main${x}`];",
+  ])
+    assert.deepEqual(parseTestCases(`${fine}\n${R}test("claim", ${T}, () => {});`, "a.test.cjs").errors, [], fine);
 });

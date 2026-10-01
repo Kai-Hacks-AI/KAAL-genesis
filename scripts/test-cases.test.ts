@@ -455,3 +455,28 @@ test("an overridden module.require cannot vouch for a reference, while an export
   ]);
   assert.deepEqual(testCasesTestingRequirement(cases, "r1"), []);
 });
+
+// Review round 11 of #121: the findings as KAAL meets them.
+test("a Carrier whose test or id is named module is read, and a computed mainModule cannot vouch for a reference", () => {
+  const { dir, born } = repo({});
+  const suite = path.join(born, TEST_DIR, "suite");
+  fs.writeFileSync(
+    path.join(suite, "a.test.cjs"),
+    'const test = require("node:test");\ntest("module", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  fs.writeFileSync(
+    path.join(suite, "b.test.cjs"),
+    'process["main" + "Module"].constructor._load = () => helper;\nconst test = require("node:test");\ntest("n", { tests: { requirement: ["r2"] } }, () => {});\n',
+  );
+  const { cases, errors } = kaalTestCases(dir);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r1"), [
+    testCaseId({ carrier: `${PLACE}/a.test.cjs`, name: "module" }),
+  ]);
+  assert.deepEqual(testCasesTestingRequirement(cases, "r2"), []);
+  assert.deepEqual(
+    errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": ")),
+    [
+      "b.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (the CommonJS loader is reachable and changeable: process.mainModule is used, at line 1, so it is not trusted to be node:test)",
+    ],
+  );
+});

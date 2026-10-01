@@ -468,34 +468,56 @@ const format = (file: string): "cjs" | "esm" | "package" =>
 /** What a Carrier may do with `module` without touching the loader: its own exports and facts about itself. */
 const MODULE_SAFE = new Set(["exports", "id", "filename", "path", "loaded", "paths", "children"]);
 
+/** Names that reach the module system whatever is said of it: the main module, and the lookup of a builtin by name. */
+const MODULE_REACH = new Set(["mainModule", "getBuiltinModule"]);
+
 /**
  * Where the Carrier reaches the CommonJS loader that `require` delegates to, by
  * what its own source shows: `module` used other than for its own exports
- * (`module.require`, `module.constructor`, `module.parent`), the module system
- * named (`require("module")`, `node:module`, however built from literals), or
- * `process.mainModule`. `require` itself is judged apart. The loader reached
- * by any other route, such as a global the Carrier does not name, is not seen.
+ * (`module.require`, `module.constructor`, `module.parent`); the module system
+ * named where a module is loaded (`require("module")`, a dynamic import, an
+ * import or export from it, however its specifier is built from literals,
+ * templates, `+` and consts), never merely as a string that happens to say so;
+ * and the main module or the lookup of a builtin by name (`process.mainModule`,
+ * `process.getBuiltinModule`, as a member or a key, however its name is built).
+ * `require` itself is judged apart. The loader reached by any other route, such
+ * as a global the Carrier does not name, is not seen.
  */
-function loaderReach(program: Node): { line: number; what: string } | undefined {
-  const consts = constants(program);
+function loaderReach(program: Node, consts: Map<string, string>): { line: number; what: string } | undefined {
   let found: { line: number; what: string } | undefined;
-  const staticName = (member: Node) => (member.computed ? literal(member.property) : nameOf(member.property));
+  const memberName = (member: Node) => (member.computed ? fold(member.property, consts) : nameOf(member.property));
+  const names = (specifier: unknown) => ["module", "node:module"].includes(fold(specifier, consts) ?? "");
   const visit = (node: Node, path: Step[]) => {
     if (found) return;
     const parent = path[path.length - 1];
+    const member = node.type === "MemberExpression" || node.type === "OptionalMemberExpression";
     if (node.type === "Identifier" && node.name === "module" && parent && !onlyNames(path) && !isDeclaration(path)) {
       const isMember = parent.node.type === "MemberExpression" || parent.node.type === "OptionalMemberExpression";
-      const member = isMember && parent.key === "object" ? staticName(parent.node) : undefined;
-      if (member === undefined || !MODULE_SAFE.has(member))
+      const name = isMember && parent.key === "object" ? memberName(parent.node) : undefined;
+      if (name === undefined || !MODULE_SAFE.has(name))
         found = { line: at(node), what: "module is used other than for its own exports" };
-    } else if (["StringLiteral", "TemplateLiteral", "BinaryExpression"].includes(node.type)) {
-      const text = fold(node, consts);
-      if (text === "module" || text === "node:module") found = { line: at(node), what: "the module system is named" };
     } else if (
-      (node.type === "MemberExpression" || node.type === "OptionalMemberExpression") &&
-      staticName(node) === "mainModule"
+      (node.type === "CallExpression" || node.type === "OptionalCallExpression") &&
+      (nameOf(node.callee) === "require" || (isNode(node.callee) && node.callee.type === "Import")) &&
+      names(nodes(node.arguments)[0])
     )
-      found = { line: at(node), what: "process.mainModule is used" };
+      found = { line: at(node), what: "the module system is named" };
+    else if (
+      (node.type === "ImportExpression" && names(node.source)) ||
+      (["ImportDeclaration", "ExportNamedDeclaration", "ExportAllDeclaration"].includes(node.type) &&
+        names(node.source)) ||
+      (node.type === "TSImportEqualsDeclaration" &&
+        isNode(node.moduleReference) &&
+        names(node.moduleReference.expression))
+    )
+      found = { line: at(node), what: "the module system is named" };
+    else if (member && MODULE_REACH.has(memberName(node) ?? ""))
+      found = { line: at(node), what: `process.${memberName(node)} is used` };
+    else if (
+      ["ObjectProperty", "ObjectMethod", "ClassProperty", "ClassMethod"].includes(node.type) &&
+      MODULE_REACH.has(staticKey(node, consts) ?? "")
+    )
+      found = { line: at(node), what: `${staticKey(node, consts)} is used` };
     if (!found)
       for (const [key, value] of Object.entries(node))
         for (const child of nodes(value)) visit(child, [...path, { node, key }]);
@@ -556,7 +578,7 @@ function trusted(
             : viaRequire.size && kind === "cjs"
               ? ((r) =>
                   r ? `the CommonJS loader is reachable and changeable: ${r.what}, at line ${r.line}` : undefined)(
-                  loaderReach(program),
+                  loaderReach(program, constants(program)),
                 )
               : undefined;
   if (why)
@@ -606,15 +628,16 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
 /**
  * The name a member of an object literal has by its syntax alone: an
  * identifier, a string or number literal, or a computed key that is itself one
- * of the literals or a template without substitutions. A computed key built
- * from any other expression has none without evaluating it.
+ * of the literals, a template or a `+` of such, or a program-level `const` name
+ * of one. A computed key built from any other expression has none without
+ * evaluating it.
  */
-function staticKey(member: Node): string | undefined {
+function staticKey(member: Node, consts: Map<string, string> = new Map()): string | undefined {
   const key = member.key;
   if (!isNode(key)) return undefined;
   if (!member.computed && key.type === "Identifier") return key.name as string;
   if (key.type === "NumericLiteral") return String(key.value);
-  return literal(key);
+  return member.computed ? fold(key, consts) : literal(key);
 }
 
 /** The name a callee chain starts from: `f` for `f(...)` and `f.g.h(...)`. */
@@ -630,8 +653,8 @@ const isTests = (member: Node): boolean =>
   member.type === "ObjectProperty" && !member.computed && staticKey(member) === "tests";
 
 /** Whether any member of the object literal is named `tests` by its syntax, however it is written: property, method, accessor, computed or not. */
-const mentionsTests = (object: Node): boolean =>
-  nodes(object.properties).some((m) => m.type !== "SpreadElement" && staticKey(m) === "tests");
+const mentionsTests = (object: Node, consts: Map<string, string>): boolean =>
+  nodes(object.properties).some((m) => m.type !== "SpreadElement" && staticKey(m, consts) === "tests");
 
 /**
  * Why an options object cannot be read for `tests`, or the one plain property
@@ -759,6 +782,7 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   // CommonJS has syntax that only an ES module has; a Carrier that uses it throws before registering anything.
   const esm = format(file) === "cjs" ? moduleSyntax(program, /\.cjs$/.test(file)) : undefined;
   if (esm) return { cases: [], errors: [`${file}:${at(esm)}: ES module syntax in a CommonJS Carrier (${esm.what})`] };
+  const consts = constants(program);
   const { bound, dropped, declared } = trusted(program, file);
   /** Why a top-level call was not recognized: it runs before the declaration that binds its callee. */
   const early = new Map<Node, string>();
@@ -834,7 +858,7 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
             if (arg.type !== "ObjectExpression" || (top.has(child) && top.get(child) === arg)) continue;
             const hidden = registers ? optionsTests(arg).error : undefined;
             if (hidden) errors.push(`${file}:${at(child)}: ${hidden}`);
-            else if (mentionsTests(arg)) {
+            else if (mentionsTests(arg, consts)) {
               const root = rootName(child.callee) ?? "";
               const untrusted = early.get(child) ?? dropped.get(root);
               const why = untrusted
