@@ -309,3 +309,26 @@ test("an optional call is validated, and a reassigned binding or a template key 
     "c.test.ts: options must not compute keys, since that could carry tests",
   ]);
 });
+
+// Review round 3 of #121: the findings as KAAL meets them.
+test("a Test Case defined by expectFailure is validated, and an overwritten node:test member or require cannot vouch for a reference", () => {
+  const { dir, born } = repo({
+    "a.test.ts":
+      'import { expectFailure } from "node:test";\nexpectFailure("fails", { tests: { requirement: ["missing"] } }, () => {});\n',
+  });
+  const suite = path.join(born, TEST_DIR, "suite");
+  fs.writeFileSync(
+    path.join(suite, "b.test.ts"),
+    'import test from "node:test";\ntest.only = helper;\ntest.only("c", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  fs.writeFileSync(
+    path.join(suite, "c.test.cjs"),
+    'require = () => helper;\nconst test = require("node:test");\ntest("d", { tests: { requirement: ["r1"] } }, () => {});\n',
+  );
+  const errors = kaalTestCases(dir).errors.map((e) => e.replace(`${PLACE}/`, "").replace(/:\d+: /, ": "));
+  assert.deepEqual([...errors].sort(), [
+    'a.test.ts: "fails" tests requirement "missing", which names no requirement',
+    "b.test.ts: tests belongs on the options of a top-level Test Case, not on another call (test is used other than by calling it, at line 2, so it is not trusted to be node:test)",
+    "c.test.cjs: tests belongs on the options of a top-level Test Case, not on another call (require is used other than by calling it, at line 1, so it is not trusted to be node:test)",
+  ]);
+});

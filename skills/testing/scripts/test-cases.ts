@@ -43,16 +43,28 @@ const at = (node: Node): number => node.loc?.start.line ?? 0;
  * export or member this does not classify, so one Node adds cannot go unread.
  */
 export const NODE_TEST = {
-  test: ["test", "it", "skip", "only", "todo"],
+  test: ["test", "it", "skip", "only", "todo", "expectFailure"],
   other: ["describe", "suite"],
-  ignored: ["after", "afterEach", "assert", "before", "beforeEach", "default", "mock", "run", "snapshot"],
+  modifiers: ["skip", "only", "todo", "expectFailure"],
+  ignored: [
+    "after",
+    "afterEach",
+    "assert",
+    "before",
+    "beforeEach",
+    "default",
+    "getTestContext",
+    "mock",
+    "run",
+    "snapshot",
+  ],
 } as const;
 
 /** How a local name is bound to `node:test`: to the module or its default export, or to one named export. */
-type Binding = "module" | "test" | "it" | "skip" | "only" | "todo" | "describe" | "suite";
+type Binding = "module" | "test" | "it" | "skip" | "only" | "todo" | "expectFailure" | "describe" | "suite";
 const EXPORTS = new Set<string>([...NODE_TEST.test, ...NODE_TEST.other]);
-/** What `describe` and `suite` offer as members: each opens a context. */
-const CONTEXT_MEMBERS = new Set(["skip", "only", "todo"]);
+/** What `describe` and `suite`, and `test` and `it`, offer as modifiers: the same call, skipped, only, todo, or expected to fail. */
+const MODIFIERS = new Set<string>(NODE_TEST.modifiers);
 
 const nameOf = (node: unknown): string | undefined =>
   isNode(node) && node.type === "Identifier"
@@ -71,9 +83,13 @@ function literal(node: unknown): string | undefined {
   return undefined;
 }
 
-/** The local names `node:test` is bound to at the top of a Carrier: imported, or required. */
-function bindings(program: Node): Map<string, Binding> {
+/**
+ * The local names `node:test` is bound to at the top of a Carrier: imported, or
+ * required, with the ones that rest on `require` meaning the CommonJS loader.
+ */
+function bindings(program: Node): { bound: Map<string, Binding>; viaRequire: Set<string> } {
   const bound = new Map<string, Binding>();
+  const viaRequire = new Set<string>();
   for (const statement of nodes(program.body)) {
     if (statement.type === "ImportDeclaration" && literal(statement.source) === "node:test") {
       if (statement.importKind === "type") continue;
@@ -104,18 +120,193 @@ function bindings(program: Node): Map<string, Binding> {
           literal(nodes(init.arguments)[0]) !== "node:test"
         )
           continue;
-        if (isNode(d.id) && d.id.type === "Identifier") bound.set(d.id.name as string, "module");
-        else if (isNode(d.id) && d.id.type === "ObjectPattern")
+        if (isNode(d.id) && d.id.type === "Identifier") {
+          bound.set(d.id.name as string, "module");
+          viaRequire.add(d.id.name as string);
+        } else if (isNode(d.id) && d.id.type === "ObjectPattern")
           for (const p of nodes(d.id.properties)) {
             const imported = nameOf(p.key);
             const local = nameOf(p.value);
-            if (p.type === "ObjectProperty" && imported && local && EXPORTS.has(imported))
+            if (p.type === "ObjectProperty" && imported && local && EXPORTS.has(imported)) {
               bound.set(local, imported as Binding);
+              viaRequire.add(local);
+            }
           }
       }
     }
   }
-  return bound;
+  return { bound, viaRequire };
+}
+
+/** A pattern's own names: what it declares. */
+function patternNames(pattern: unknown): string[] {
+  if (!isNode(pattern)) return [];
+  if (pattern.type === "Identifier") return [pattern.name as string];
+  if (pattern.type === "ObjectPattern")
+    return nodes(pattern.properties).flatMap((p) => patternNames(p.type === "RestElement" ? p : p.value));
+  if (pattern.type === "ArrayPattern") return (pattern.elements as unknown[]).flatMap(patternNames);
+  if (pattern.type === "RestElement") return patternNames(pattern.argument);
+  if (pattern.type === "AssignmentPattern") return patternNames(pattern.left);
+  return [];
+}
+
+/** Whether the top of the Carrier declares `name`, in any way a name is declared. */
+function declares(program: Node, name: string): boolean {
+  return nodes(program.body).some((s) => {
+    const declared =
+      s.type === "VariableDeclaration"
+        ? nodes(s.declarations).flatMap((d) => patternNames(d.id))
+        : s.type === "ImportDeclaration"
+          ? nodes(s.specifiers).flatMap((x) => patternNames(x.local))
+          : [...patternNames(s.id)];
+    return declared.includes(name);
+  });
+}
+
+/** One step down a syntax tree: a node, and the key under which the next one hangs on it. */
+type Step = { node: Node; key: string };
+
+const PATTERN = new Set(["ObjectPattern", "ArrayPattern", "RestElement", "AssignmentPattern"]);
+const FUNCTION = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+  "ObjectMethod",
+  "ClassMethod",
+]);
+/** TypeScript nodes that wrap an expression, which stays a use; every other TypeScript parent holds a type, not a use. */
+const WRAPS = new Set([
+  "TSAsExpression",
+  "TSNonNullExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+  "TSInstantiationExpression",
+]);
+
+/** Whether the identifier at the end of `path` only names something: a property, a label, a type, or a name being imported or exported. */
+function onlyNames(path: Step[]): boolean {
+  const { node: parent, key } = path[path.length - 1];
+  if ((parent.type === "MemberExpression" || parent.type === "OptionalMemberExpression") && key === "property")
+    return !parent.computed;
+  if (["ObjectProperty", "ObjectMethod", "ClassProperty", "ClassMethod"].includes(parent.type) && key === "key")
+    return !parent.computed;
+  if (parent.type === "ImportSpecifier" && key === "imported") return true;
+  if (parent.type === "ExportSpecifier" && key === "exported") return true;
+  if (["LabeledStatement", "BreakStatement", "ContinueStatement"].includes(parent.type) && key === "label") return true;
+  return parent.type.startsWith("TS") && !WRAPS.has(parent.type) && parent.type !== "TSImportEqualsDeclaration";
+}
+
+/** Whether the identifier at the end of `path` is where a name is declared, not a use: an import, a declarator, a parameter, a function or class name. */
+function isDeclaration(path: Step[]): boolean {
+  const { node: parent, key } = path[path.length - 1];
+  if (
+    ["ImportDefaultSpecifier", "ImportNamespaceSpecifier", "ImportSpecifier"].includes(parent.type) &&
+    key === "local"
+  )
+    return true;
+  if (parent.type === "TSImportEqualsDeclaration" && key === "id") return true;
+  if (
+    (FUNCTION.has(parent.type) || parent.type === "ClassDeclaration" || parent.type === "ClassExpression") &&
+    (key === "id" || key === "params")
+  )
+    return true;
+  if (parent.type === "CatchClause" && key === "param") return true;
+  // A name in a pattern is declared when the pattern is, and written when the pattern is the target of an assignment.
+  const slot =
+    (parent.type === "ObjectProperty" && key === "value" && path[path.length - 2]?.node.type === "ObjectPattern") ||
+    (parent.type === "ArrayPattern" && key === "elements") ||
+    (parent.type === "RestElement" && key === "argument") ||
+    (parent.type === "AssignmentPattern" && key === "left");
+  if (parent.type === "VariableDeclarator" && key === "id") return true;
+  if (!slot) return false;
+  let i = path.length - 1;
+  while (
+    i > 0 &&
+    (PATTERN.has(path[i].node.type) || (path[i].node.type === "ObjectProperty" && PATTERN.has(path[i - 1].node.type)))
+  )
+    i--;
+  const top = path[i];
+  return (
+    (top.node.type === "VariableDeclarator" && top.key === "id") ||
+    (FUNCTION.has(top.node.type) && top.key === "params") ||
+    (top.node.type === "CatchClause" && top.key === "param")
+  );
+}
+
+/** Whether the identifier at the end of `path` is only called, or the root of a chain of members that is: `f(...)`, `f.g.h(...)`. */
+function isCallRoot(path: Step[]): boolean {
+  let i = path.length - 1;
+  while (
+    i >= 0 &&
+    (path[i].node.type === "MemberExpression" || path[i].node.type === "OptionalMemberExpression") &&
+    path[i].key === "object"
+  )
+    i--;
+  return (
+    i >= 0 &&
+    (path[i].node.type === "CallExpression" || path[i].node.type === "OptionalCallExpression") &&
+    path[i].key === "callee"
+  );
+}
+
+/**
+ * Where each of `names` is first used in some way other than being called, or
+ * having a member of it called: written to, a member of it written to or
+ * deleted, passed, aliased, returned, re-exported, or read. Such a use could
+ * change what the name is at a later call, which static reading cannot follow,
+ * so a name used so is not trusted to be what `node:test` offers.
+ */
+function usedOtherwise(program: Node, names: Set<string>): Map<string, number> {
+  const found = new Map<string, number>();
+  const visit = (node: Node, path: Step[]) => {
+    if (
+      node.type === "Identifier" &&
+      names.has(node.name as string) &&
+      path.length &&
+      !onlyNames(path) &&
+      !isDeclaration(path) &&
+      !isCallRoot(path)
+    )
+      if (!found.has(node.name as string)) found.set(node.name as string, at(node));
+    for (const [key, value] of Object.entries(node))
+      for (const child of nodes(value)) visit(child, [...path, { node, key }]);
+  };
+  visit(program, []);
+  return found;
+}
+
+/**
+ * The names `node:test` is bound to that the Carrier can be trusted to leave
+ * as Node defines them, and the reason for each that cannot. The Carrier is
+ * trusted only for what its own source shows: a name it uses other than by
+ * calling it, and `require` when it is written, redeclared or so used, are not.
+ * What happens outside the Carrier's source, such as a preload hook or another
+ * module that changes `node:test`, is not seen by reading it. Scopes are not
+ * tracked, so a local name shadowing one of these and used otherwise than by
+ * calling it also costs the trust, which only ever refuses more.
+ */
+function trusted(program: Node): { bound: Map<string, Binding>; dropped: Map<string, string> } {
+  const { bound, viaRequire } = bindings(program);
+  const dropped = new Map<string, string>();
+  const names = new Set(bound.keys());
+  if (viaRequire.size) names.add("require");
+  const used = usedOtherwise(program, names);
+  for (const [name, line] of used) {
+    if (name === "require") continue;
+    dropped.set(name, `${name} is used other than by calling it, at line ${line}`);
+    bound.delete(name);
+  }
+  const why = used.has("require")
+    ? `require is used other than by calling it, at line ${used.get("require")}`
+    : declares(program, "require")
+      ? "require is declared in the Carrier"
+      : undefined;
+  if (why)
+    for (const name of viaRequire) {
+      dropped.set(name, why);
+      bound.delete(name);
+    }
+  return { bound, dropped };
 }
 
 /**
@@ -150,6 +341,7 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
     skip: "test",
     only: "test",
     todo: "test",
+    expectFailure: "test",
     describe: "context",
     suite: "context",
   };
@@ -159,10 +351,10 @@ function role(callee: unknown, bound: Map<string, Binding>): "test" | "other" | 
         ? "module"
         : member === "describe" || member === "suite"
           ? "context"
-          : CONTEXT_MEMBERS.has(member)
+          : MODIFIERS.has(member)
             ? "test"
             : undefined
-      : from === "context" && CONTEXT_MEMBERS.has(member)
+      : from === "context" && MODIFIERS.has(member)
         ? "other"
         : undefined;
   let at: At | undefined = start[binding];
@@ -185,6 +377,14 @@ function staticKey(member: Node): string | undefined {
   if (!member.computed && key.type === "Identifier") return key.name as string;
   if (key.type === "NumericLiteral") return String(key.value);
   return literal(key);
+}
+
+/** The name a callee chain starts from: `f` for `f(...)` and `f.g.h(...)`. */
+function rootName(callee: unknown): string | undefined {
+  let root = callee;
+  while (isNode(root) && (root.type === "MemberExpression" || root.type === "OptionalMemberExpression"))
+    root = root.object;
+  return isNode(root) && root.type === "Identifier" ? (root.name as string) : undefined;
 }
 
 /** The member of an options object that is a plain property named `tests`. */
@@ -286,7 +486,7 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
   } catch (e) {
     return { cases: [], errors: [`${file}: unparseable carrier (${e instanceof Error ? e.message : String(e)})`] };
   }
-  const bound = bindings(program);
+  const { bound, dropped } = trusted(program);
   const errors: string[] = [];
   /** Each recognized top-level Test Case call, with the options object its `tests` may sit in, if it has one. */
   const top = new Map<Node, Node | undefined>();
@@ -345,10 +545,12 @@ export function parseTestCases(text: string, file: string): { cases: TestCase[];
             if (arg.type !== "ObjectExpression" || (top.has(child) && top.get(child) === arg)) continue;
             const hidden = registers ? optionsTests(arg).error : undefined;
             if (hidden) errors.push(`${file}:${at(child)}: ${hidden}`);
-            else if (mentionsTests(arg))
+            else if (mentionsTests(arg)) {
+              const reason = dropped.get(rootName(child.callee) ?? "");
               errors.push(
-                `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call`,
+                `${file}:${at(child)}: tests belongs on the options of a top-level Test Case, not on another call${reason ? ` (${reason}, so it is not trusted to be node:test)` : ""}`,
               );
+            }
           }
         }
         walk(child);

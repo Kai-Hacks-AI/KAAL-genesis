@@ -246,7 +246,7 @@ test("every export and member of the running node:test is classified, so none th
     [],
   );
   assert.deepEqual(
-    Object.keys(module.describe).filter((name) => !["skip", "only", "todo"].includes(name)),
+    Object.keys(module.describe).filter((name) => !(NODE_TEST.modifiers as readonly string[]).includes(name)),
     [],
   );
 });
@@ -393,7 +393,10 @@ test("an optional call or member of node:test defines a Test Case like the plain
     );
   const moved = ["tests belongs on the options of a top-level Test Case, not on another call"];
   assert.deepEqual(refused(`function r() { test?.("n", ${T}, () => {}); }`), moved);
-  assert.deepEqual(refused(`new test("n", ${T}, () => {});`), moved);
+  assert.match(
+    refused(`new test("n", ${T}, () => {});`)[0],
+    /^tests belongs on the options of a top-level Test Case, not on another call \(test is used other than by calling it/,
+  );
   assert.deepEqual(refused(`(0, test)("n", ${T}, () => {});`), moved);
   assert.deepEqual(refused(`test("p", async (t) => { await t?.test("n", ${T}, () => {}); });`), moved);
 });
@@ -454,4 +457,134 @@ test("only a const binding of node:test is trusted: a let, a var, or a reassigne
     parse(`test("n", ${T}, () => {});`).cases.map((c) => c.name),
     ["n"],
   );
+});
+
+// Review round 3 of #121. Each finding was reproduced first, then its class repaired.
+
+test("every modifier node:test offers, expectFailure included, defines a Test Case the same way, and describe's open a context", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const calls = [
+    "expectFailure(",
+    "test.expectFailure(",
+    "it.expectFailure(",
+    "nt.expectFailure(",
+    "nt.test.expectFailure(",
+    "test?.expectFailure(",
+  ];
+  for (const call of calls) {
+    const source = `import test, { it, expectFailure } from "node:test";\nimport * as nt from "node:test";\n${call}"n", ${T}, () => {});`;
+    assert.deepEqual(
+      parseTestCases(source, "a.test.ts").cases.map((c) => c.name),
+      ["n"],
+      call,
+    );
+  }
+  const moved = ["tests belongs on the options of a top-level Test Case, not on another call"];
+  assert.deepEqual(
+    refused(`import { describe } from "node:test";\ndescribe.expectFailure("s", ${T}, () => {});`),
+    moved,
+  );
+  // getTestContext defines nothing: it is no Test Case, and stating tests on it is refused.
+  assert.deepEqual(refused(`import { getTestContext } from "node:test";\ngetTestContext("n", ${T}, () => {});`), moved);
+});
+
+test("a name of node:test is trusted only if the Carrier uses it by calling it: a write to it or a member of it is refused", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const claim = `test.only("claim", ${T}, () => {});`;
+  const reason = / \(test is used other than by calling it, at line \d+, so it is not trusted to be node:test\)$/;
+  const uses = [
+    "test.only = helper;",
+    "test.only += 1;",
+    "test.only++;",
+    "delete test.only;",
+    "({ x: test.only } = { x: helper });",
+    "[test.only] = [helper];",
+    "for (test.only of [helper]) {}",
+    "(test as any).only = helper;",
+    "test!.only = helper;",
+    'Object.defineProperty(test, "only", { value: helper });',
+    "Object.assign(test, { only: helper });",
+    'Reflect.set(test, "only", helper);',
+    "const t = test;",
+    "const { only } = test;",
+    "const o = { test };",
+    "const a = [test];",
+    "patch(test);",
+    "patch(test.only);",
+    "export { test as t };",
+    "globalThis.t = test;",
+    "const f = () => test;",
+    "void test.only;",
+  ];
+  for (const use of uses) {
+    const read = parse(`${use}\n${claim}`);
+    assert.deepEqual(read.cases, [], use);
+    assert.equal(read.errors.length, 1, use);
+    assert.match(read.errors[0], reason, use);
+  }
+  // Calls, member calls and shadowing declarations are the ways a Carrier uses them.
+  for (const fine of [
+    'test("a", () => {});',
+    'test.mock.method(console, "log");',
+    'test.describe("s", () => { test.it("i", () => {}); });',
+    "function f(test) { return test(1); }",
+    "const g = (test) => test(1);",
+    "try {} catch (test) {}",
+    "const o = { test: 1 };",
+    "o.test = 1;",
+    "o.test.only = helper;",
+  ])
+    assert.deepEqual(parse(`${fine}\n${claim}`).errors, [], fine);
+  // No scopes are tracked, so a shadowing name used otherwise than by calling it also costs the trust: refused, never inferred.
+  assert.equal(parse(`function f(test) { return test; }\n${claim}`).errors.length, 1);
+  // Untraced, an untrusted name claims nothing and is not an error.
+  assert.deepEqual(parse('const t = test;\ntest.only("n", () => {});'), { cases: [], errors: [] });
+  // A named export is a name too, and a namespace.
+  assert.equal(
+    parseTestCases(`import { skip } from "node:test";\nskip = 1;\nskip("n", ${T}, () => {});`, "a.test.ts").cases
+      .length,
+    0,
+  );
+  assert.equal(
+    parseTestCases(`import * as nt from "node:test";\nObject.freeze(nt);\nnt.skip("n", ${T}, () => {});`, "a.test.ts")
+      .cases.length,
+    0,
+  );
+});
+
+test("require names the CommonJS loader only if the Carrier leaves it alone: written, redeclared or passed, it is not trusted", () => {
+  const T = '{ tests: { requirement: ["r"] } }';
+  const cjs = (head: string) =>
+    parseTestCases(`${head}\nconst test = require("node:test");\ntest("claim", ${T}, () => {});`, "a.test.cjs");
+  assert.deepEqual(cjs("").errors, []);
+  assert.deepEqual(
+    cjs("").cases.map((c) => c.name),
+    ["claim"],
+  );
+  for (const head of [
+    "require = () => helper;",
+    "require = helper;",
+    "[require] = [helper];",
+    "patch(require);",
+    "const r = require;",
+    "function require() { return helper; }",
+    "var require = helper;",
+    "let require;",
+    "class require {}",
+    "const { require } = helper;",
+  ]) {
+    const read = cjs(head);
+    assert.deepEqual(read.cases, [], head);
+    assert.equal(read.errors.length, 1, head);
+    assert.match(
+      read.errors[0],
+      /require is (declared in the Carrier|used other than by calling it, at line \d+), so it is not trusted to be node:test\)$/,
+      head,
+    );
+  }
+  // Calling it, and its members, are how a Carrier uses it, and a shadow inside a function is another name.
+  for (const head of ['require("path");', 'require.resolve("path");', "function f(require) { return require('x'); }"])
+    assert.deepEqual(cjs(head).errors, [], head);
+  // An ES import does not rest on require at all.
+  assert.deepEqual(parse('function require() {}\ntest("n", { tests: { requirement: ["r"] } }, () => {});').errors, []);
 });
