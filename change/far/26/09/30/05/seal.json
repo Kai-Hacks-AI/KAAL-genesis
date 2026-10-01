@@ -1,0 +1,27 @@
+{
+  "unit": "change/far/26/09/30/05",
+  "previous": "659c47aeca89e6a23a7cdb346bd7a04e953cb31372a452cd5e390cf0c4f66fc0",
+  "files": [
+    {
+      "path": "authorise.md",
+      "sha256": "d28c1a667e7a3d36b78685057cce2631de8944ec2c6aecc32b84444f5513c425"
+    },
+    {
+      "path": "feature.md",
+      "sha256": "95290013f6dea19f3258ac6922bc6a7f4e49216fb04ba22b5d80711f029789f4"
+    },
+    {
+      "path": "regression.md",
+      "sha256": "ecd4c5558803cca8882f3d09d71f68be94f0f3d832f33294011eabbe36fbe1a0"
+    },
+    {
+      "path": "runs/01/plan.md",
+      "sha256": "6dc2b0eaef0d7a8445b19039cc18d7492543feb21ad97177dbcd57cab7eed45f"
+    },
+    {
+      "path": "runs/01/run.md",
+      "sha256": "ce45c9cadcaf9f79d51de7fe930d7cf2ca239273cac850c1c72bd2829b58c8d9"
+    }
+  ],
+  "seal": "fe359e596d608ab2ba53e483baeec56a39aeb3f36b3e2868843a6b60aafad3e2"
+}

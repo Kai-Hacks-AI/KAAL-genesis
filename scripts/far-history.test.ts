@@ -36,6 +36,7 @@ const AUTHORISE = [
     ],
     carriers: 18,
   },
+  { at: "change/far/26/09/30/05", previous: "change/far/26/09/30/04", feature: [], carriers: 18 },
 ];
 
 const identities = (file: string): string[] =>
