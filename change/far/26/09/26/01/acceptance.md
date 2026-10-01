@@ -1,0 +1,3 @@
+# Acceptance
+
+No protection identities.
