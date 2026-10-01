@@ -1,0 +1,15 @@
+{
+  "unit": "change/execution-environments/26/10/01/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "defect/concurrent-changes-contend-on-shared-seal-manifest.md",
+      "sha256": "c8318e55a35b0b6831eb88f995fe21b3a862f3f4321d5e177f3742c48cee7439"
+    },
+    {
+      "path": "test/core-executes.test.ts",
+      "sha256": "0a334fbcfc6f232d31ce57c87a400f5d093495ff9b7548017c8cf752260a55e8"
+    }
+  ],
+  "seal": "96d98b82428007da446abd0b2776ec77014d24f2c52e8cdc10409a2ccd738bdf"
+}
