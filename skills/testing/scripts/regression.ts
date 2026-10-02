@@ -72,18 +72,3 @@ export function computeRegression(far: Far): Regression {
   for (const id of feature) protectedNow.add(id);
   return { regression: [...protectedNow].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) };
 }
-
-/**
- * The Feature of a Change: the identities of the protections born on it,
- * as a set, sorted by code unit so the same identities always give the same
- * representation. It is a projection and never a judgment: what is born on a
- * Change is Feature whether or not it can yet be defended, so discovery is
- * never edited to what Testing can currently protect. Which identities a
- * Change gave birth to is for the using system to say. Refused, with nothing
- * computed: a malformed identity or one listed twice. Inputs are never modified.
- */
-export function computeFeature(born: readonly Protection[]): { feature: Protection[] } | { errors: string[] } {
-  const errors = setErrors("born", born);
-  if (errors.length) return { errors };
-  return { feature: [...born].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)) };
-}

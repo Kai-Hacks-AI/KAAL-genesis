@@ -1,21 +1,21 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { computeFeature } from "../skills/testing/scripts/regression.js";
 import { requirementsBornOn } from "./requirements.js";
 
 /**
- * KAAL's composition of Changes, Requirements and Testing's Feature: the Feature
- * of a Change is the Requirements born on it, so `feature.md` is that projection
- * and is not written apart from it. The file is a heading and one identity per line.
+ * KAAL's composition of Changes and Requirements into Feature. managing-requirements
+ * owns collecting the Requirements of a scope it is given; this decides what a Change
+ * does with them: the Requirements born on a Change are its Feature, so `feature.md`
+ * is that collection and is not written apart from it. Testing consumes Feature as it
+ * consumes Authorise, `R = old R - A + F`, and neither it nor managing-change learns
+ * where Requirements are kept. The file is a heading and one identity per line.
  */
 
 /** The text `feature.md` of the Change occurrence at `change` holds, or why it cannot be computed. */
 export function featureOf(change: string): { text: string } | { errors: string[] } {
   const born = requirementsBornOn(change);
   if (born.errors.length) return { errors: born.errors };
-  const answer = computeFeature(born.ids);
-  if ("errors" in answer) return answer;
-  return { text: ["# Feature", "", ...answer.feature.map((id) => `- ${id}`), ""].join("\n") };
+  return { text: ["# Feature", "", ...born.ids.map((id) => `- ${id}`), ""].join("\n") };
 }
 
 // `feature.ts <change occurrence>` prints the Feature text of that Change, for `feature.md`.

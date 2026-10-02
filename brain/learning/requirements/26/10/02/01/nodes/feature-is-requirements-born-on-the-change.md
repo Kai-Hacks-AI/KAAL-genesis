@@ -1,0 +1,5 @@
+---
+name: feature-is-requirements-born-on-the-change
+---
+
+KAAL understands that the Requirements born on a Change are that Change's Feature, so Feature is a projection and not a separate handwritten judgment. FAR-15 showed why: once its Requirement was honestly decomposed in two, one of them could have vanished from a handwritten Feature only because it could not yet be defended, which would have let discovery be edited to what can currently be protected. The ownership stays where it was. managing-requirements owns collecting the Requirements of a scope it is given and knows nothing of Feature. What a Change does with them, treating them as its Feature, is KAAL's composition of Changes and Requirements, which already says where a Change keeps its Requirements. Testing consumes Feature and Authorise when it computes Regression, old Regression less Authorise plus Feature, and does not learn where Requirements are kept. Authorise remains handwritten and nothing else about FAR, Change, Requirements or Testing changes. A Change with no requirement directory is not covered, since earlier records exist whose Feature names Requirements born elsewhere.
