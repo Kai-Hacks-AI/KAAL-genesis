@@ -30,6 +30,17 @@ export function kaalRequirements(repo = "."): { requirements: Requirement[]; err
   return { requirements, errors: [...changes.errors.map((e) => `${CHANGE_ROOT}/${e}`), ...errors] };
 }
 
+/**
+ * The identities of the Requirements born on one Change occurrence, the
+ * `requirement/` directory of `change` (a path to the occurrence), sorted, with
+ * everything that stops them being Requirements. Born on this Change alone: what
+ * other Changes introduced is theirs. A Change with none gives none.
+ */
+export function requirementsBornOn(change: string): { ids: string[]; errors: string[] } {
+  const { requirements, errors } = readRequirements([path.join(change, REQUIREMENT_DIR)]);
+  return { ids: requirements.map((r) => r.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)), errors };
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { errors } = kaalRequirements();
   if (errors.length) {

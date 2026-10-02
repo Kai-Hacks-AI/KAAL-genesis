@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeRegression, type Far } from "./regression.js";
+import { computeFeature, computeRegression, type Far } from "./regression.js";
 
 const next = (far: Far) => computeRegression(far);
 const refused = (far: Far) => {
@@ -118,4 +118,16 @@ test("the earlier name Acceptance is refused by name, never read, guessed at or 
     assert.ok("errors" in result, JSON.stringify(far));
     assert.match(result.errors.join("\n"), /acceptance: this is the earlier name of authorise/);
   }
+});
+
+test("the Feature of a Change is the set of identities born on it, sorted, and refuses what is not a set of identities", () => {
+  assert.deepEqual(computeFeature(["b", "a"]), { feature: ["a", "b"] });
+  assert.deepEqual(computeFeature([]), { feature: [] });
+  const born = ["b", "a"];
+  computeFeature(born);
+  assert.deepEqual(born, ["b", "a"]);
+  assert.deepEqual(computeFeature(["a", "a"]), { errors: ['born: "a" is listed more than once'] });
+  assert.deepEqual(computeFeature([" a"]), {
+    errors: ['born: " a" must be a non-empty string without leading or trailing whitespace'],
+  });
 });
