@@ -1,0 +1,11 @@
+{
+  "unit": "requirements/26/10/02/01",
+  "previous": "1a3fa2438eb4892635141bd2f17677b6c501ffdf943829f436c3368dca8ca616",
+  "files": [
+    {
+      "path": "nodes/feature-is-requirements-born-on-the-change.md",
+      "sha256": "8f735633910acf87c80105c6d280047a4e6913374c9a125bed501bc529d8caa2"
+    }
+  ],
+  "seal": "81201e9551a131f276a22dfc4c7a443e249c242c988ef1c4cea0331dd42a586a"
+}
