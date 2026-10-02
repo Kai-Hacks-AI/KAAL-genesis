@@ -471,7 +471,11 @@ test("FAR-15 adds one Feature identity and no Authorise: its Regression is FAR-1
   assert.match(fs.readFileSync(`${FAR_15}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
   assert.deepEqual(identities(`${FAR_15}/feature.md`), [FAR_15_NEW]);
   assert.deepEqual(identities(`${FAR_15}/authorise.md`), []);
-  const result = computeRegression({ previous: identities(`${FAR_14}/regression.md`), feature: [FAR_15_NEW], authorise: [] });
+  const result = computeRegression({
+    previous: identities(`${FAR_14}/regression.md`),
+    feature: [FAR_15_NEW],
+    authorise: [],
+  });
   assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
   assert.deepEqual(result.regression, identities(`${FAR_15}/regression.md`).sort());
   assert.equal(result.regression.length, 24);
