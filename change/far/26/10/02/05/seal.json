@@ -1,0 +1,43 @@
+{
+  "unit": "change/far/26/10/02/05",
+  "previous": "c2f234ec8c15768b0a4642fadce3d430ed106b95e028a39d52527fd3c977958b",
+  "files": [
+    {
+      "path": "authorise.md",
+      "sha256": "d28c1a667e7a3d36b78685057cce2631de8944ec2c6aecc32b84444f5513c425"
+    },
+    {
+      "path": "feature.md",
+      "sha256": "b5e22e51b459ff8e1082369a91fc5a60786144135237392a3b1b2ec63a525acc"
+    },
+    {
+      "path": "regression.md",
+      "sha256": "019a8de4f19ad6f96f11b89553d6d0263b1f03a0edce08181d1b76ee52003423"
+    },
+    {
+      "path": "requirement/delivery-admitted-by-recognized-origin.md",
+      "sha256": "114f1db50b6c149956171cf556c9d5c340dd7b832d0e2826033e69d43c15633b"
+    },
+    {
+      "path": "runs/01/plan.md",
+      "sha256": "0780071a985648416fa8ad6f6d72d0ac3b4c87d6059f913efa1e8d40302fa53b"
+    },
+    {
+      "path": "runs/01/run-linux.md",
+      "sha256": "40a85aece7e3471227e91ad99ddb4ace1f96ec09be568a133fa659f788c6b127"
+    },
+    {
+      "path": "runs/01/run-windows.md",
+      "sha256": "0e13c8973a51e09c20ce97ee9455d8513a40ea02e4422a17729409a0c375ebb0"
+    },
+    {
+      "path": "test/delivery/delivery-admitted-by-recognized-origin.test.ts",
+      "sha256": "6a0c871b51e918d902c064228a9f38ea362a239109004857fc167e877304061d"
+    },
+    {
+      "path": "test/delivery/suite.json",
+      "sha256": "87d8bc8580da476a68fc7cc0b4d312a3559a655c02e6951674abd68a9970e701"
+    }
+  ],
+  "seal": "a2f9f4630a8f330a890e57ba3227d4281d04d8521cf0c9ab4d8f6c26b7bbeae3"
+}
