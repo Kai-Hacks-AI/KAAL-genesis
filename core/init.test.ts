@@ -435,11 +435,11 @@ test("registering needs an initialized KAAL", () => {
   assert.throws(() => register(root, ".kaal", { kind: "skill", name: "x", location: "a" }), /not initialized/);
 });
 
-test("Core is independent: it imports only Node and itself, nothing of this repository, no graph Skill", () => {
+test("Core depends inward only: Node, itself and the generic helpers, no Skill, no graph, nothing else of this repository", () => {
   for (const file of fs.readdirSync(CORE).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))) {
     const source = fs.readFileSync(path.join(CORE, file), "utf8");
     for (const [, specifier] of source.matchAll(/\bfrom\s+"([^"]+)"/g))
-      assert.match(specifier, /^(node:|\.\/[a-z]+\.js$)/, `${file} imports ${specifier}`);
+      assert.match(specifier, /^(node:|\.\/[a-z]+\.js$|\.\.\/helpers\/[a-z-]+\.js$)/, `${file} imports ${specifier}`);
   }
 });
 

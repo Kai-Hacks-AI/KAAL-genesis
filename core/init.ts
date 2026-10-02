@@ -1,6 +1,8 @@
-import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { beneath } from "../helpers/beneath.js";
+import { isRegularFile, kind } from "../helpers/entry.js";
+import { publish } from "../helpers/publish.js";
 import { REGISTRATIONS, REGISTRATIONS_HEADER } from "./registrations.js";
 import { wire, wired } from "./section.js";
 
@@ -35,19 +37,10 @@ export const KERNEL = fs.readFileSync(new URL(`../graph/${KERNEL_FILE}`, import.
  * lie strictly inside the root.
  */
 function locate(root: string, kaal: string): string {
-  const relative = path.relative(root, path.resolve(root, kaal));
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative))
-    throw new Error(`${kaal}: the KAAL directory must be a directory inside ${root}`);
-  return relative.split(path.sep).join("/");
+  const relative = beneath(root, kaal);
+  if (relative === undefined) throw new Error(`${kaal}: the KAAL directory must be a directory inside ${root}`);
+  return relative;
 }
-
-const isFile = (file: string) => {
-  try {
-    return fs.lstatSync(file).isFile();
-  } catch {
-    return false; // missing, or something stands where a directory should
-  }
-};
 
 /**
  * What stands at the KAAL directory: nothing; an installation of this Core's
@@ -55,14 +48,14 @@ const isFile = (file: string) => {
  * recognize but does not call not-KAAL; or something that is no installation.
  */
 function inspect(kaalDir: string): { state: "absent" | "recognized" | "unrecognized" | "broken"; why?: string } {
-  const stat = fs.lstatSync(kaalDir, { throwIfNoEntry: false });
-  if (!stat) return { state: "absent" };
-  if (!stat.isDirectory()) return { state: "broken", why: "it is not a directory" };
+  const found = kind(kaalDir);
+  if (found === "missing") return { state: "absent" };
+  if (found !== "directory") return { state: "broken", why: "it is not a directory" };
   const kernel = path.join(kaalDir, KERNEL_FILE);
-  if (!isFile(kernel) || !fs.readFileSync(kernel, "utf8").trim())
+  if (!isRegularFile(kernel) || !fs.readFileSync(kernel, "utf8").trim())
     return { state: "broken", why: "it holds no KAAL Kernel" };
   const registrations = path.join(kaalDir, ...REGISTRATIONS.split("/"));
-  if (!isFile(registrations) || !fs.readFileSync(registrations, "utf8").startsWith(REGISTRATIONS_HEADER))
+  if (!isRegularFile(registrations) || !fs.readFileSync(registrations, "utf8").startsWith(REGISTRATIONS_HEADER))
     return { state: "broken", why: `it holds no ${REGISTRATIONS}` };
   return fs.readFileSync(kernel, "utf8") === KERNEL ? { state: "recognized" } : { state: "unrecognized" };
 }
@@ -70,9 +63,9 @@ function inspect(kaalDir: string): { state: "absent" | "recognized" | "unrecogni
 /** The host's AGENTS.md text, or undefined when there is none; refuses what is not a file. */
 function hostAgents(root: string): string | undefined {
   const file = path.join(root, HOST_AGENTS);
-  const stat = fs.lstatSync(file, { throwIfNoEntry: false });
-  if (!stat) return undefined;
-  if (!stat.isFile()) throw new Error(`${file}: not a regular file; refusing to touch it`);
+  const found = kind(file);
+  if (found === "missing") return undefined;
+  if (found !== "file") throw new Error(`${file}: not a regular file; refusing to touch it`);
   return fs.readFileSync(file, "utf8");
 }
 
@@ -107,12 +100,11 @@ export function initialized(root: string, kaal = KAAL_DIR): boolean {
  * refused. The root is never created, nor the KAAL directory's parent.
  */
 export function init(root: string, options: { kaal?: string } = {}): { born: boolean; wired: boolean } {
-  if (!fs.lstatSync(root, { throwIfNoEntry: false })?.isDirectory())
-    throw new Error(`${root}: KAAL can only be initialized into an existing directory`);
+  if (kind(root) !== "directory") throw new Error(`${root}: KAAL can only be initialized into an existing directory`);
   const kaal = locate(root, options.kaal ?? KAAL_DIR);
   const kaalDir = path.join(root, ...kaal.split("/"));
   const parent = path.dirname(kaalDir);
-  if (!fs.lstatSync(parent, { throwIfNoEntry: false })?.isDirectory())
+  if (kind(parent) !== "directory")
     throw new Error(`${parent}: the KAAL directory's parent must be an existing directory`);
 
   const found = inspect(kaalDir);
@@ -124,24 +116,18 @@ export function init(root: string, options: { kaal?: string } = {}): { born: boo
   const text = wire(host, kaal);
 
   const born = found.state === "absent";
-  const staged = path.join(parent, `${path.basename(kaalDir)}.${randomUUID()}.tmp`);
-  const stagedHost = path.join(root, `.${HOST_AGENTS}.${randomUUID()}.tmp`);
-  try {
-    if (born) {
-      fs.mkdirSync(path.join(staged, "core"), { recursive: true });
-      fs.writeFileSync(path.join(staged, KERNEL_FILE), KERNEL, { flag: "wx" });
-      fs.writeFileSync(path.join(staged, ...REGISTRATIONS.split("/")), REGISTRATIONS_HEADER, { flag: "wx" });
-      fs.renameSync(staged, kaalDir);
-    }
-    if (text !== undefined) {
-      fs.writeFileSync(stagedHost, text, { flag: "wx" });
-      fs.renameSync(stagedHost, path.join(root, HOST_AGENTS));
-    }
-  } catch (e) {
-    fs.rmSync(staged, { recursive: true, force: true });
-    fs.rmSync(stagedHost, { force: true });
-    if (born) fs.rmSync(kaalDir, { recursive: true, force: true });
-    throw e;
-  }
+  publish({
+    directory: born
+      ? {
+          to: kaalDir,
+          populate(staging) {
+            fs.mkdirSync(path.join(staging, "core"));
+            fs.writeFileSync(path.join(staging, KERNEL_FILE), KERNEL, { flag: "wx" });
+            fs.writeFileSync(path.join(staging, ...REGISTRATIONS.split("/")), REGISTRATIONS_HEADER, { flag: "wx" });
+          },
+        }
+      : undefined,
+    file: text !== undefined ? { to: path.join(root, HOST_AGENTS), content: text } : undefined,
+  });
   return { born, wired: text !== undefined };
 }
