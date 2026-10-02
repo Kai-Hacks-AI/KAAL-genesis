@@ -210,3 +210,51 @@ test("FAR refuses Runs that do not concern the Hit it records, whatever they sho
     /Run 2 is a Run of/,
   );
 });
+
+// FAR-10: the Hit that writes the seals of Requirements Management. It protects nothing new, so R₁₀ = R₉ and its Plan is
+// Plan₉'s bytes. Its record is the identity of the Hit it records, and its Runs state it.
+const FAR_10 = "change/far/26/10/02/02";
+const FAR_10_PLAN = `${FAR_10}/runs/01/plan.md`;
+const FAR_10_RUNS = { linux: `${FAR_10}/runs/01/run-linux.md`, windows: `${FAR_10}/runs/01/run-windows.md` };
+
+test("FAR-10 is written under Authorise: no protection changes, so its Regression is FAR-9's", () => {
+  assert.match(fs.readFileSync(`${FAR_10}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
+  assert.deepEqual(identities(`${FAR_10}/feature.md`), []);
+  assert.deepEqual(identities(`${FAR_10}/authorise.md`), []);
+  const result = computeRegression({ previous: identities(`${FAR_9}/regression.md`), feature: [], authorise: [] });
+  assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
+  assert.deepEqual(result.regression, identities(`${FAR_10}/regression.md`).sort());
+  assert.equal(result.regression.length, 22);
+});
+
+test("Plan₁₀ is exactly what R₁₀ derives under the decisions Plan₉ was made under, and is Plan₉'s bytes", () => {
+  const { cases, errors } = kaalTestCases();
+  assert.deepEqual(errors, []);
+  const decisions = kaalInstanceRequirements();
+  assert.deepEqual(decisions.errors, []);
+  const required = decisions.required.filter((d) => FAR_9_DECISIONS.includes(d.file));
+  const derived = testPlanProtecting(cases, "requirement", identities(`${FAR_10}/regression.md`), required);
+  assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
+  assert.equal(fs.readFileSync(FAR_10_PLAN, "utf8"), derived.plan);
+  assert.equal(fs.readFileSync(FAR_10_PLAN, "utf8"), fs.readFileSync(FAR_9_PLAN, "utf8"));
+  assert.equal(derived.instances.length, 22);
+});
+
+test("FAR-10 admits a Linux Run and a Windows Run that each state the Hit the record is about, and together evidence Plan₁₀", () => {
+  const linux = readRun(FAR_10_RUNS.linux);
+  const windows = readRun(FAR_10_RUNS.windows);
+  assert.deepEqual(admissionErrors(FAR_10, FAR_10_PLAN, [linux, windows]), []);
+  assert.equal(linux.candidateIdentity, "far/26/10/02/02");
+  assert.equal(linux.unrun.length, 1);
+  assert.equal(windows.unrun.length, 1);
+  assert.notDeepEqual(linux.unrun, windows.unrun);
+  for (const alone of [linux, windows]) assert.equal(planEvidence([alone]).evidence?.evidenced, false);
+  // Runs that concern the previous Hit are refused, though they evidence the same Plan.
+  const previous = [readRun(FAR_9_RUNS.linux), readRun(FAR_9_RUNS.windows)];
+  assert.match(admissionErrors(FAR_10, FAR_10_PLAN, previous).join("\n"), /Run 1 states far\/26\/10\/02\/01/);
+  for (const file of Object.values(FAR_10_RUNS)) {
+    const text = fs.readFileSync(file, "utf8");
+    assert.match(text, /^candidate <historical candidate>$/m, file);
+    assert.doesNotMatch(text, /[0-9a-f]{40}|https?:|[A-Za-z]:\\|runner|artifact|workflow/i, file);
+  }
+});
