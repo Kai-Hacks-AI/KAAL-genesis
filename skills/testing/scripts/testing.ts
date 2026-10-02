@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import YAML from "yaml";
+import type { Tests } from "./test-cases.js";
 
-/** The file that makes a directory a Suite and states its concern. */
+/** The file that makes a directory a Suite and states what it tests. */
 export const SUITE_FILE = "suite.json";
 
 /** A Case is a file whose `node:test` tests Node runs when it executes it: `*.test.js`, `*.test.ts` and their module variants. */
@@ -33,8 +34,12 @@ export type Instance = { carrier: string; parameters: Parameters };
  */
 export type Plan = { concern: string; suites: string[]; carriers: string[]; parameterized?: Instance[] };
 
-/** A Suite: its place relative to the testing root, its concern, and its Cases as posix paths relative to it. */
-export type Suite = { place: string; concern: string; cases: string[] };
+/**
+ * A Suite: its place relative to the testing root, what it tests (none when it states no relation, as a `suite.json`
+ * written before the relation does), its `concern` prose when it holds one, which means nothing, and its Cases as posix
+ * paths relative to it.
+ */
+export type Suite = { place: string; concern?: string; tests: Tests[]; cases: string[] };
 
 /** What a Run saw of one Case. A Case that ran no test, or skipped one, proves nothing, so it did not pass. */
 export type Observation = { case: string; passed: boolean; output: string };
@@ -103,6 +108,39 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const concernError = (value: Record<string, unknown>): string | undefined =>
   typeof value.concern === "string" && value.concern.trim() ? undefined : "concern must be a non-empty string";
+
+/** A name that can stand as a kind or an id: a non-blank string without whitespace. */
+const plainName = (name: unknown): name is string => typeof name === "string" && name !== "" && !/\s/.test(name);
+
+/** What a Suite's `tests` declares, or why it is not an object of kinds, each a non-empty list of distinct plain ids. */
+function suiteTests(value: unknown): { tests: Tests[]; errors: string[] } {
+  const tests: Tests[] = [];
+  if (!isObject(value)) return { tests, errors: ["tests must be an object of kinds, each a list of ids"] };
+  const errors: string[] = [];
+  const kinds = Object.keys(value);
+  if (!kinds.length) errors.push("tests must name at least one kind");
+  for (const kind of kinds) {
+    if (!plainName(kind)) {
+      errors.push("a kind must be a plain name, never blank");
+      continue;
+    }
+    const ids = value[kind];
+    if (!Array.isArray(ids) || !ids.length) {
+      errors.push(`tests ${kind} must be a list of at least one id`);
+      continue;
+    }
+    const seen = new Set<string>();
+    for (const id of ids) {
+      if (!plainName(id)) errors.push(`tests ${kind} ids must be strings without whitespace`);
+      else if (seen.has(id)) errors.push(`tests ${kind} "${id}" twice`);
+      else {
+        seen.add(id);
+        tests.push({ kind, id });
+      }
+    }
+  }
+  return { tests, errors };
+}
 
 /** A place is a relative posix path that stays beneath the root it is read from. */
 function placeError(place: unknown, noun = "suite"): string | undefined {
@@ -230,7 +268,7 @@ function readInstance(entry: Record<string, unknown>): { instance?: Instance; er
     : { instance: { carrier: entry.carrier as string, parameters: parameters as Parameters }, errors };
 }
 
-/** The Suite at `place` beneath `root`: its concern and its Cases, in sorted order. */
+/** The Suite at `place` beneath `root`: what it tests and its Cases, in sorted order. */
 export function readSuite(root: string, place: string): { suite?: Suite; errors: string[] } {
   const dir = path.join(root, ...place.split("/"));
   const stat = fs.lstatSync(dir, { throwIfNoEntry: false });
@@ -239,17 +277,24 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
   if (error) return { errors: [`${place}/${SUITE_FILE}: unreadable suite (${error})`] };
   if (!isObject(value)) return { errors: [`${place}/${SUITE_FILE}: a suite must be an object`] };
   const errors: string[] = [];
-  const extra = Object.keys(value).filter((key) => key !== "concern");
+  const extra = Object.keys(value).filter((key) => key !== "concern" && key !== "tests");
   if (extra.length) errors.push(`${place}/${SUITE_FILE}: unknown ${extra.map((key) => `"${key}"`).join(", ")}`);
-  const concern = concernError(value);
+  // A `concern` is only accepted, as Suites written before the relation hold one: it is no relation and means nothing.
+  const concern = "concern" in value ? concernError(value) : undefined;
   if (concern) errors.push(`${place}/${SUITE_FILE}: ${concern}`);
+  const { tests, errors: invalid } = "tests" in value ? suiteTests(value.tests) : { tests: [], errors: [] };
+  errors.push(...invalid.map((error) => `${place}/${SUITE_FILE}: ${error}`));
   const cases = fs
     .readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((entry) => entry.isFile() && CASE.test(entry.name))
     .map((entry) => path.relative(dir, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"))
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   if (!cases.length) errors.push(`${place}: holds no Case`);
-  return errors.length ? { errors } : { suite: { place, concern: value.concern as string, cases }, errors };
+  if (errors.length) return { errors };
+  return {
+    suite: { place, ...("concern" in value ? { concern: value.concern as string } : {}), tests, cases },
+    errors,
+  };
 }
 
 /** Every Suite the Plan at `plan` (relative to `root`) collects, with every way the Plan, a Suite or a collected Carrier is broken. */
