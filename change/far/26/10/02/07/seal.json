@@ -11,6 +11,10 @@
       "sha256": "322f7080a92cc7e7dd21bbfb52d01198e284effa2aa2380589fd078d5bcf7a8f"
     },
     {
+      "path": "idea/less-is-more.md",
+      "sha256": "156431a6e7513a2f15eb1e5f00f2e39bcb719d6eeab27fefa0410e1913c63f64"
+    },
+    {
       "path": "regression.md",
       "sha256": "2100c4e6a1bcf68e759e10b75d11c111c38bed58371731ff9cb6cbd70e34ad2a"
     },
@@ -39,5 +43,5 @@
       "sha256": "1f619c9c544f0e00dc37d591f3af0f34077a86b6e9483313d6caa145364b1f96"
     }
   ],
-  "seal": "1264fedd8e792bb6938ae0307506de983c25c8479d01f86ec366e3ba33758d60"
+  "seal": "f5297d3fcd102cc8c5912cdf489f8614aa79a965c60d9aaab826b61b67732b5e"
 }
