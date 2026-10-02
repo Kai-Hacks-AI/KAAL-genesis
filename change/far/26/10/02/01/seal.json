@@ -4,7 +4,7 @@
   "files": [
     {
       "path": "architecture/a-far-record-is-the-identity-of-the-hit-it-records.md",
-      "sha256": "7b50e9245af442ffb702aaa301964249eefb6092c58b2e452be3db0a0e4a851f"
+      "sha256": "506033669dc31233176ec33aef2156edec58567cceee6e5191e592d9730afe68"
     },
     {
       "path": "authorise.md",
@@ -31,5 +31,5 @@
       "sha256": "4497c87d9c5d64c62fa44c8ab4798bef0167f98ca1f480aca72877e8d36a80e7"
     }
   ],
-  "seal": "05a7e40c775a2e2321643b5791590715d787fb10228f2928594e6a1927d0f029"
+  "seal": "36c2353882e69d4b86abd94f1d66d085077f2aa82c82d6ec3995f25d17276e66"
 }
