@@ -7,6 +7,7 @@
 - changes-checked-against-seals-of-target-branch
 - closed-change-cannot-change-unnoticed
 - closed-learning-integrity
+- delivery-admitted-by-recognized-origin
 - git-independence
 - github-independence
 - kaal-context-in-brain-not-agent-guidance

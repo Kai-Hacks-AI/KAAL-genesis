@@ -1,0 +1,40 @@
+name: far-13-scratch
+on:
+  push:
+    branches: [claude/project-thread-6hdnqk]
+permissions:
+  contents: read
+jobs:
+  run:
+    name: scratch-${{ matrix.where }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - where: linux
+            os: ubuntu-latest
+          - where: windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: a67d45dd2ace1a284a1f20c8736bb77e9af31fd1
+          path: candidate
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm ci
+        working-directory: candidate
+      - shell: bash
+        run: |
+          code=0
+          npm run --silent environment:run -- change/far/26/10/02/05/runs/01/plan.md candidate --candidate-identity far/26/10/02/05 > run.txt || code=$?
+          echo "exit $code"
+          echo "=====BEGIN-RUN-${{ matrix.where }}"
+          cat run.txt
+          echo "=====END-RUN-${{ matrix.where }}"

@@ -1,3 +1,3 @@
 # Feature
 
-No protection identities.
+- delivery-admitted-by-recognized-origin

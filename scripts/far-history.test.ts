@@ -355,24 +355,30 @@ test("FAR-12 admits a Linux Run and a Windows Run that each state the Hit the re
   }
 });
 
-// FAR-13: the Hit that tests the guard of the main line, with the refusal of an unnamed agent branch as its failing case. The
-// guard's rule lives in a script outside any Change's test/, so no Test Case tests it and it earns no Requirement or Defect: R₁₃ = R₁₂ and its
-// Plan is Plan₁₂'s bytes. Its record is the identity of the Hit it records, and its Runs state it.
+// FAR-13: the Hit that tests the guard of the main line, with the refusal of an unnamed agent branch as its failing case.
+// Its evidence held a delivery truth no Requirement stated: FAR found that now, so the Requirement is born in this record and
+// F₁₃ names it, with one Case that drives the candidate's own admission entry point. Earlier records are left as they were.
+// R₁₃ = R₁₂ and the new identity (23), and its Runs state the record's identity.
 const FAR_13 = "change/far/26/10/02/05";
 const FAR_13_PLAN = `${FAR_13}/runs/01/plan.md`;
+const FAR_13_NEW = "delivery-admitted-by-recognized-origin";
 const FAR_13_RUNS = { linux: `${FAR_13}/runs/01/run-linux.md`, windows: `${FAR_13}/runs/01/run-windows.md` };
 
-test("FAR-13 is written under Authorise: no protection changes, so its Regression is FAR-12's", () => {
+test("FAR-13 is written under Feature: it names one Requirement, so its Regression is FAR-12's and that", () => {
   assert.match(fs.readFileSync(`${FAR_13}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
-  assert.deepEqual(identities(`${FAR_13}/feature.md`), []);
+  assert.deepEqual(identities(`${FAR_13}/feature.md`), [FAR_13_NEW]);
   assert.deepEqual(identities(`${FAR_13}/authorise.md`), []);
-  const result = computeRegression({ previous: identities(`${FAR_12}/regression.md`), feature: [], authorise: [] });
+  const result = computeRegression({
+    previous: identities(`${FAR_12}/regression.md`),
+    feature: [FAR_13_NEW],
+    authorise: [],
+  });
   assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
   assert.deepEqual(result.regression, identities(`${FAR_13}/regression.md`).sort());
-  assert.equal(result.regression.length, 22);
+  assert.equal(result.regression.length, 23);
 });
 
-test("Plan₁₃ is exactly what R₁₃ derives under the decisions Plan₉ was made under, and is Plan₁₂'s bytes", () => {
+test("Plan₁₃ is exactly what R₁₃ derives under the decisions Plan₉ was made under, and adds the one Case that tests it", () => {
   const { cases, errors } = kaalTestCases();
   assert.deepEqual(errors, []);
   const decisions = kaalInstanceRequirements();
@@ -381,8 +387,8 @@ test("Plan₁₃ is exactly what R₁₃ derives under the decisions Plan₉ was
   const derived = testPlanProtecting(cases, "requirement", identities(`${FAR_13}/regression.md`), required);
   assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
   assert.equal(fs.readFileSync(FAR_13_PLAN, "utf8"), derived.plan);
-  assert.equal(fs.readFileSync(FAR_13_PLAN, "utf8"), fs.readFileSync(FAR_12_PLAN, "utf8"));
-  assert.equal(derived.instances.length, 22);
+  assert.notEqual(fs.readFileSync(FAR_13_PLAN, "utf8"), fs.readFileSync(FAR_12_PLAN, "utf8"));
+  assert.equal(derived.instances.length, 23);
 });
 
 test("FAR-13 admits a Linux Run and a Windows Run that each state the Hit the record is about, and together evidence Plan₁₃", () => {
