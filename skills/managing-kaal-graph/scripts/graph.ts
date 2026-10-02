@@ -2,11 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 
-/** A Reference: a relation and a target, both opaque names. It belongs to the Node that states it. */
-export type Reference = { relation: string; target: string };
-
 /** A Node: a durable, immutable, addressable thing with an identity in the scope (directory) that holds it, and a type naming what it is. */
-export type Node = { name: string; type: string; meaning: string; references: Reference[]; file: string };
+export type Node = { name: string; type: string; meaning: string; file: string };
 
 /** Windows reserves these device names as file names, with or without an extension. */
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
@@ -20,7 +17,7 @@ export const MAX_NAME = 64;
  * (any script, composed form) with single spaces between, no Windows reserved
  * device name. Two names that differ only in case are one name, because a file
  * system may say so. This is the identity of Nodes held here and no more: a
- * Reference target or a type is an opaque name and owes this format nothing.
+ * type is an opaque name and owes this format nothing.
  */
 export function nameError(name: string): string | undefined {
   if (name.length > MAX_NAME) return `name "${name.slice(0, 16)}..." is longer than ${MAX_NAME} characters`;
@@ -36,26 +33,14 @@ function framed(text: string): string {
   return text.replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
 }
 
-/** Why a Reference is not one, or nothing. A relation and a target are non-blank names; nothing more is asked of either. */
-export function referenceError(reference: unknown): string | undefined {
-  if (typeof reference !== "object" || reference === null || Array.isArray(reference))
-    return "a reference must be a mapping";
-  const { relation, target } = reference as { relation?: unknown; target?: unknown };
-  if (typeof relation !== "string" || !relation.trim()) return "a reference must name a relation";
-  if (typeof target !== "string" || !target.trim()) return "a reference must name a target";
-  return undefined;
-}
-
-/** Why a type is not one, or nothing. Like a Reference's target it is a non-blank name; whether it names a Node is not asked here. */
+/** Why a type is not one, or nothing. It is a non-blank name; whether it names a Node is not asked here. */
 export function typeError(type: unknown): string | undefined {
   return typeof type === "string" && type.trim() ? undefined : "a Node must name its type";
 }
 
-/** The text of a Node file: frontmatter holding its name, its type and the References it states, then its meaning. */
-export function render(name: string, type: string, meaning: string, references: Reference[] = []): string {
+/** The text of a Node file: frontmatter holding its name and its type, then its meaning. */
+export function render(name: string, type: string, meaning: string): string {
   const data: Record<string, unknown> = { name, type: type.trim() };
-  if (references.length)
-    data.references = references.map((r) => ({ relation: r.relation.trim(), target: r.target.trim() }));
   return `---\n${YAML.stringify(data).trimEnd()}\n---\n\n${framed(meaning)}\n`;
 }
 
@@ -70,7 +55,7 @@ export function parse(text: string, file: string): Node | string {
     return `${file}: frontmatter is not valid YAML`;
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return `${file}: frontmatter must be a mapping`;
-  const { name, type, references } = data as { name?: unknown; type?: unknown; references?: unknown };
+  const { name, type } = data as { name?: unknown; type?: unknown };
   if (typeof name !== "string") return `${file}: name is required`;
   const error = nameError(name);
   if (error) return `${file}: ${error}`;
@@ -78,22 +63,14 @@ export function parse(text: string, file: string): Node | string {
   if (typeof type !== "string" || typeError(type)) return `${file}: ${typeError(type)}`;
   const meaning = framed(match[2]);
   if (!meaning) return `${file}: a Node must give its meaning`;
-  if (references !== undefined && !Array.isArray(references)) return `${file}: references must be a list`;
-  const stated: Reference[] = [];
-  for (const reference of references ?? []) {
-    const bad = referenceError(reference);
-    if (bad) return `${file}: ${bad}`;
-    const { relation, target } = reference as Reference;
-    stated.push({ relation: relation.trim(), target: target.trim() });
-  }
-  return { name, type: type.trim(), meaning, references: stated, file };
+  return { name, type: type.trim(), meaning, file };
 }
 
 /**
  * Every Node in the scope `dir`, and everything that claims to be one: the
  * `*.md` entries directly in it, each a regular file holding a Node. The scope
  * owns its names, so a name is unique here and nowhere else is asked. Whether a
- * Reference's target is a Node here is never asked either. A missing scope
+ * type names a Node here is never asked either. A missing scope
  * holds no Nodes.
  */
 export function readNodes(dir: string): { nodes: Node[]; errors: string[] } {
@@ -121,15 +98,4 @@ export function readNodes(dir: string): { nodes: Node[]; errors: string[] } {
     else seen.set(folded, name);
   }
   return { nodes, errors };
-}
-
-/**
- * The Nodes in this scope that state a Reference to `target`, with the
- * relation each states. Derived from the referrers every time; the target
- * records nothing and need not be a Node.
- */
-export function referrersOf(nodes: Node[], target: string): { referrer: string; relation: string }[] {
-  return nodes.flatMap((n) =>
-    n.references.filter((r) => r.target === target).map((r) => ({ referrer: n.name, relation: r.relation })),
-  );
 }

@@ -1,57 +1,33 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { nameError, referenceError, render, type Reference, typeError } from "./graph.js";
+import { nameError, render, typeError } from "./graph.js";
 
 /**
  * Births the Node `name` in the scope `dir`: `<dir>/<name>.md`, never over an
- * existing file. A Node states its References when it is born, because they
- * are part of the referrer and a Node never changes. Refuses an unportable name,
- * a blank type, a blank meaning, a malformed Reference and a symlinked dir. Returns the file.
+ * existing file, so a Node is never rewritten. Refuses an unportable name, a
+ * blank type, a blank meaning and a symlinked dir. Returns the file.
  */
-export function birthNode(
-  dir: string,
-  name: string,
-  type: string,
-  meaning: string,
-  references: Reference[] = [],
-): string {
+export function birthNode(dir: string, name: string, type: string, meaning: string): string {
   const error = nameError(name) ?? typeError(type);
   if (error) throw new Error(error);
   if (!meaning.trim()) throw new Error("a Node must give its meaning");
-  for (const reference of references) {
-    const bad = referenceError(reference);
-    if (bad) throw new Error(bad);
-  }
   if (fs.lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${dir}: symlink`);
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.md`);
   // "wx" refuses to overwrite: a Node is never rewritten.
-  fs.writeFileSync(file, render(name, type, meaning, references), { flag: "wx" });
+  fs.writeFileSync(file, render(name, type, meaning), { flag: "wx" });
   return file;
 }
 
-/** `relation=target`, split at the first `=`: a relation holds none, a target may. */
-function parseReference(text: string): Reference {
-  const at = text.indexOf("=");
-  return { relation: text.slice(0, at), target: text.slice(at + 1) };
-}
-
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const args = process.argv.slice(2);
-  const references: Reference[] = [];
-  const rest: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--reference" && args[i + 1]?.includes("=")) references.push(parseReference(args[++i]));
-    else rest.push(args[i]);
-  }
-  const [dir, name, type, meaning, ...extra] = rest;
+  const [dir, name, type, meaning, ...extra] = process.argv.slice(2);
   if (!dir || !name || !type || !meaning || extra.length) {
-    console.error("usage: birth.ts <dir> <name> <type> <meaning> [--reference <relation>=<target>]...");
+    console.error("usage: birth.ts <dir> <name> <type> <meaning>");
     process.exitCode = 2;
   } else {
     try {
-      console.log(birthNode(dir, name, type, meaning, references));
+      console.log(birthNode(dir, name, type, meaning));
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exitCode = 1;

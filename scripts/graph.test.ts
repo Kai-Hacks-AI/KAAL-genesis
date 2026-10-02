@@ -25,7 +25,6 @@ test("KAAL's graph is valid and holds exactly the three Nodes born so far", () =
 test("KAAL Kernel is the first Node: of type Definition, and it says only what a Definition and its name, type and body are", () => {
   const kernel = byName().get("KAAL Kernel")!;
   assert.equal(kernel.type, "Definition");
-  assert.deepEqual(kernel.references, []);
   assert.match(kernel.meaning, /A Definition is a Markdown file that defines a thing\./);
   assert.match(kernel.meaning, /`name`.*`type`/s);
   assert.match(kernel.meaning, /Markdown body/);
@@ -37,11 +36,10 @@ test("KAAL Kernel is the first Node: of type Definition, and it says only what a
 test("Reference is born from the Kernel alone: name, type Definition and a body, read like any Definition", () => {
   const reference = byName().get("Reference")!;
   assert.equal(reference.type, "Definition");
-  assert.deepEqual(reference.references, []);
   assert.match(reference.meaning, /^A Reference belongs to its referrer\. It names a relation and a target\./);
   assert.match(reference.meaning, /requires the target to know nothing about its referrers\.$/);
   // Nothing beyond the Kernel's contract was needed: its file is the contract's three parts and nothing else.
-  assert.deepEqual(Object.keys(reference).sort(), ["file", "meaning", "name", "references", "type"]);
+  assert.deepEqual(Object.keys(reference).sort(), ["file", "meaning", "name", "type"]);
   assert.equal(
     fs.readFileSync(reference.file, "utf8").replace(/\r\n/g, "\n").split("\n---\n")[0],
     "---\nname: Reference\ntype: Definition",
