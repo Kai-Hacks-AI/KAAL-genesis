@@ -25,7 +25,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       for (const id of ids) {
         const n = nodes.find((x) => x.id === id)!;
         const refs = n.references.map((r) => `${r.relation} -> ${r.target}\n`).join("");
-        console.log(`${n.id}\n\n${n.meaning}\n\n${refs}`);
+        console.log(`${n.id}: ${n.type}\n\n${n.meaning}\n\n${refs}`);
       }
     }
   }

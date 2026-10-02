@@ -5,8 +5,8 @@ import YAML from "yaml";
 /** A Reference: a relation and a target, both opaque names. It belongs to the Node that states it. */
 export type Reference = { relation: string; target: string };
 
-/** A Node: a durable, immutable, addressable thing with an identity in the scope (directory) that holds it. */
-export type Node = { id: string; meaning: string; references: Reference[]; file: string };
+/** A Node: a durable, immutable, addressable thing with an identity in the scope (directory) that holds it, and a type naming what it is. */
+export type Node = { id: string; type: string; meaning: string; references: Reference[]; file: string };
 
 /** Windows reserves these device names as file names, with or without an extension. */
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
@@ -41,9 +41,14 @@ export function referenceError(reference: unknown): string | undefined {
   return undefined;
 }
 
-/** The text of a Node file: frontmatter holding its id and the References it states, then its meaning. */
-export function render(id: string, meaning: string, references: Reference[] = []): string {
-  const data: Record<string, unknown> = { id };
+/** Why a type is not one, or nothing. Like a Reference's target it is a non-blank name; whether it names a Node is not asked here. */
+export function typeError(type: unknown): string | undefined {
+  return typeof type === "string" && type.trim() ? undefined : "a Node must name its type";
+}
+
+/** The text of a Node file: frontmatter holding its id, its type and the References it states, then its meaning. */
+export function render(id: string, type: string, meaning: string, references: Reference[] = []): string {
+  const data: Record<string, unknown> = { id, type: type.trim() };
   if (references.length)
     data.references = references.map((r) => ({ relation: r.relation.trim(), target: r.target.trim() }));
   return `---\n${YAML.stringify(data).trimEnd()}\n---\n\n${framed(meaning)}\n`;
@@ -60,11 +65,12 @@ export function parse(text: string, file: string): Node | string {
     return `${file}: frontmatter is not valid YAML`;
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return `${file}: frontmatter must be a mapping`;
-  const { id, references } = data as { id?: unknown; references?: unknown };
+  const { id, type, references } = data as { id?: unknown; type?: unknown; references?: unknown };
   if (typeof id !== "string") return `${file}: id is required`;
   const error = idError(id);
   if (error) return `${file}: ${error}`;
   if (path.basename(file) !== `${id}.md`) return `${file}: file name must be ${id}.md`;
+  if (typeof type !== "string" || typeError(type)) return `${file}: ${typeError(type)}`;
   const meaning = framed(match[2]);
   if (!meaning) return `${file}: a Node must give its meaning`;
   if (references !== undefined && !Array.isArray(references)) return `${file}: references must be a list`;
@@ -75,7 +81,7 @@ export function parse(text: string, file: string): Node | string {
     const { relation, target } = reference as Reference;
     stated.push({ relation: relation.trim(), target: target.trim() });
   }
-  return { id, meaning, references: stated, file };
+  return { id, type: type.trim(), meaning, references: stated, file };
 }
 
 /**

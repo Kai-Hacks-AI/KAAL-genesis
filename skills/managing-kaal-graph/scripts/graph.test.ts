@@ -13,36 +13,52 @@ const scope = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "graph-")), 
 const bytes = (file: string) => fs.readFileSync(file);
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const NODE = "A Node is a durable, immutable, addressable thing with an identity in the scope that owns it.";
-const REFERENCE = "A Reference belongs to its referrer. It names a relation and a target.";
-
-test("Node Node can exist as the root semantic Node: it defines Node and needs no other Node to exist", () => {
+test("a Node may be its own type and its own referent: a self-defining genesis needs no other Node to exist", () => {
   const dir = scope();
-  const file = birthNode(dir, "node", NODE);
-  assert.deepEqual(readNodes(dir), { nodes: [{ id: "node", meaning: NODE, references: [], file }], errors: [] });
+  const file = birthNode(dir, "definition", "definition", "Defines.", [
+    { relation: "definition", target: "definition" },
+  ]);
+  assert.deepEqual(readNodes(dir), {
+    nodes: [
+      {
+        id: "definition",
+        type: "definition",
+        meaning: "Defines.",
+        references: [{ relation: "definition", target: "definition" }],
+        file,
+      },
+    ],
+    errors: [],
+  });
 });
 
-test("Node Reference is itself a Node, read and checked by the same semantics as Node Node", () => {
+test("every Node, whatever it defines, is one representation read and checked by the same rules", () => {
   const dir = scope();
-  birthNode(dir, "node", NODE);
-  birthNode(dir, "reference", REFERENCE, [{ relation: "defined-using", target: "node" }]);
+  for (const id of ["definition", "reference", "node"]) birthNode(dir, id, "definition", `Meaning of ${id}.`);
   const { nodes, errors } = readNodes(dir);
   assert.deepEqual(errors, []);
-  // One representation: the same two facts and the same file shape, so one reader reads both.
   assert.deepEqual(
     nodes.map((n) => n.id),
-    ["node", "reference"],
+    ["definition", "node", "reference"],
   );
   for (const n of nodes) assert.equal(typeof parse(fs.readFileSync(n.file, "utf8"), n.file), "object");
-  assert.deepEqual(nodes[1].references, [{ relation: "defined-using", target: "node" }]);
+});
+
+test("a type is a name the skill reads and owes nothing: it need not resolve, but it must be stated", () => {
+  const dir = scope();
+  birthNode(dir, "a", "no-such-node", "x");
+  birthNode(dir, "b", "far/26/10/01/01", "y");
+  assert.deepEqual(readNodes(dir).errors, []);
+  assert.throws(() => birthNode(dir, "c", " ", "z"), /type/);
+  assert.equal(fs.existsSync(path.join(dir, "c.md")), false);
 });
 
 test("a Node is immutable after birth: it is never rewritten, and nothing here edits one", () => {
   const dir = scope();
-  const file = birthNode(dir, "a", "One.");
+  const file = birthNode(dir, "a", "t", "One.");
   const before = bytes(file);
-  assert.throws(() => birthNode(dir, "a", "Two."), /EEXIST/);
-  assert.throws(() => birthNode(dir, "a", "One.", [{ relation: "r", target: "t" }]), /EEXIST/);
+  assert.throws(() => birthNode(dir, "a", "t", "Two."), /EEXIST/);
+  assert.throws(() => birthNode(dir, "a", "t", "One.", [{ relation: "r", target: "t" }]), /EEXIST/);
   assert.deepEqual(bytes(file), before);
   // The skill's whole surface is birth, read and check: no export writes over a Node.
   const source = fs.readdirSync(here).filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"));
@@ -54,8 +70,8 @@ test("a Node is immutable after birth: it is never rewritten, and nothing here e
 
 test("a Reference is owned entirely by its referrer: it is in the referrer's own bytes and nowhere else", () => {
   const dir = scope();
-  const target = birthNode(dir, "target", "The target.");
-  const referrer = birthNode(dir, "referrer", "The referrer.", [{ relation: "mentions", target: "target" }]);
+  const target = birthNode(dir, "target", "t", "The target.");
+  const referrer = birthNode(dir, "referrer", "t", "The referrer.", [{ relation: "mentions", target: "target" }]);
   assert.match(fs.readFileSync(referrer, "utf8"), /relation: mentions\n\s+target: target/);
   assert.doesNotMatch(fs.readFileSync(target, "utf8"), /referrer|mentions/);
   assert.deepEqual(readNodes(dir).nodes.find((n) => n.id === "referrer")!.references, [
@@ -66,17 +82,17 @@ test("a Reference is owned entirely by its referrer: it is in the referrer's own
 test("adding a Reference does not mutate its target, whether the target is born, in another scope, or just a name", () => {
   const dir = scope();
   const other = scope();
-  const inScope = birthNode(dir, "target", "The target.");
-  const elsewhere = birthNode(other, "target", "Another Node with the same id in another scope.");
+  const inScope = birthNode(dir, "target", "t", "The target.");
+  const elsewhere = birthNode(other, "target", "t", "Another Node with the same id in another scope.");
   const [a, b] = [bytes(inScope), bytes(elsewhere)];
   const stat = fs.statSync(inScope).mtimeMs;
-  birthNode(dir, "one", "x", [{ relation: "r", target: "target" }]);
-  birthNode(dir, "two", "y", [{ relation: "r", target: "target" }]);
+  birthNode(dir, "one", "t", "x", [{ relation: "r", target: "target" }]);
+  birthNode(dir, "two", "t", "y", [{ relation: "r", target: "target" }]);
   assert.deepEqual(bytes(inScope), a);
   assert.deepEqual(bytes(elsewhere), b);
   assert.equal(fs.statSync(inScope).mtimeMs, stat);
   // A target that is no Node, and no id of this form, is accepted and owed nothing.
-  birthNode(dir, "external", "z", [
+  birthNode(dir, "external", "t", "z", [
     { relation: "r", target: "far/26/10/01/01" },
     { relation: "r", target: "Mixed Case 42" },
   ]);
@@ -86,10 +102,10 @@ test("adding a Reference does not mutate its target, whether the target is born,
 
 test("reverse relationships are derived from the referrers, never written into the target", () => {
   const dir = scope();
-  const target = birthNode(dir, "target", "The target.");
+  const target = birthNode(dir, "target", "t", "The target.");
   const before = bytes(target);
-  birthNode(dir, "one", "x", [{ relation: "r", target: "target" }]);
-  birthNode(dir, "two", "y", [
+  birthNode(dir, "one", "t", "x", [{ relation: "r", target: "target" }]);
+  birthNode(dir, "two", "t", "y", [
     { relation: "s", target: "target" },
     { relation: "r", target: "elsewhere" },
   ]);
@@ -107,8 +123,8 @@ test("reverse relationships are derived from the referrers, never written into t
 test("different relation identities coexist, and the same relation can name many targets, without Core reading a meaning", () => {
   const dir = scope();
   const relations = ["tests", "https://example.org/relation/blocks", "is-defect-of", "Ünïcode relation", "a=b"];
-  birthNode(dir, "t", "A target.");
-  birthNode(dir, "r", "A referrer.", [
+  birthNode(dir, "t", "t", "A target.");
+  birthNode(dir, "r", "t", "A referrer.", [
     ...relations.map((relation) => ({ relation, target: "t" })),
     { relation: "tests", target: "u" },
   ]);
@@ -128,7 +144,8 @@ test("co-birth is possible: Nodes may name each other in either order, and nothi
     ["b", "a"],
   ]) {
     const dir = scope();
-    for (const id of order) birthNode(dir, id, `Node ${id}.`, [{ relation: "sees", target: id === "a" ? "b" : "a" }]);
+    for (const id of order)
+      birthNode(dir, id, "t", `Node ${id}.`, [{ relation: "sees", target: id === "a" ? "b" : "a" }]);
     const { nodes, errors } = readNodes(dir);
     assert.deepEqual(errors, []);
     assert.deepEqual(referrersOf(nodes, "a"), [{ referrer: "b", relation: "sees" }]);
@@ -139,8 +156,8 @@ test("co-birth is possible: Nodes may name each other in either order, and nothi
 
 test("identity belongs to the scope: the same id in two scopes is two Nodes, and no scope is asked about another", () => {
   const [one, two] = [scope(), scope()];
-  birthNode(one, "a", "In one.");
-  birthNode(two, "a", "In two.");
+  birthNode(one, "a", "t", "In one.");
+  birthNode(two, "a", "t", "In two.");
   assert.equal(readNodes(one).nodes[0].meaning, "In one.");
   assert.equal(readNodes(two).nodes[0].meaning, "In two.");
 });
@@ -150,27 +167,31 @@ test("check refuses what is not a Node, and what is a Reference only in name", (
     ["Node.\n", /missing YAML frontmatter/],
     ["---\nid: [\n---\nx\n", /not valid YAML/],
     ["---\n- a\n---\nx\n", /mapping/],
-    ["---\nid: 1\n---\nx\n", /id is required/],
-    ["---\nid: A\n---\nx\n", /kebab-case/],
-    ["---\nid: other\n---\nx\n", /file name must be other\.md/],
-    ["---\nid: a\n---\n  \n", /meaning/],
-    ["---\nid: a\nreferences: r\n---\nx\n", /must be a list/],
-    ["---\nid: a\nreferences: [r]\n---\nx\n", /must be a mapping/],
-    ["---\nid: a\nreferences:\n  - target: t\n---\nx\n", /relation/],
-    ["---\nid: a\nreferences:\n  - relation: ' '\n    target: t\n---\nx\n", /relation/],
-    ["---\nid: a\nreferences:\n  - relation: r\n---\nx\n", /target/],
-    ["---\nid: a\nreferences:\n  - relation: r\n    target: 7\n---\nx\n", /target/],
+    ["---\nid: 1\ntype: t\n---\nx\n", /id is required/],
+    ["---\nid: a\n---\nx\n", /name its type/],
+    ["---\nid: a\ntype: 3\n---\nx\n", /name its type/],
+    ["---\nid: a\ntype: ' '\n---\nx\n", /name its type/],
+    ["---\nid: A\ntype: t\n---\nx\n", /kebab-case/],
+    ["---\nid: other\ntype: t\n---\nx\n", /file name must be other\.md/],
+    ["---\nid: a\ntype: t\n---\n  \n", /meaning/],
+    ["---\nid: a\ntype: t\nreferences: r\n---\nx\n", /must be a list/],
+    ["---\nid: a\ntype: t\nreferences: [r]\n---\nx\n", /must be a mapping/],
+    ["---\nid: a\ntype: t\nreferences:\n  - target: t\n---\nx\n", /relation/],
+    ["---\nid: a\ntype: t\nreferences:\n  - relation: ' '\n    target: t\n---\nx\n", /relation/],
+    ["---\nid: a\ntype: t\nreferences:\n  - relation: r\n---\nx\n", /target/],
+    ["---\nid: a\ntype: t\nreferences:\n  - relation: r\n    target: 7\n---\nx\n", /target/],
   ];
   for (const [text, message] of cases) assert.match(String(parse(text, "a.md")), message, text);
   for (const id of ["A", "a--b", "a.b", "a/b", "nul", "", "x".repeat(65)]) assert.ok(idError(id), id);
   const dir = scope();
-  assert.throws(() => birthNode(dir, "a", " \n"), /meaning/);
-  assert.throws(() => birthNode(dir, "a", "x", [{ relation: "", target: "t" }]), /relation/);
-  assert.throws(() => birthNode(dir, "a", "x", [{ relation: "r", target: " " }]), /target/);
+  assert.throws(() => birthNode(dir, "a", "t", " \n"), /meaning/);
+  assert.throws(() => birthNode(dir, "a", "t", "x", [{ relation: "", target: "t" }]), /relation/);
+  assert.throws(() => birthNode(dir, "a", "t", "x", [{ relation: "r", target: " " }]), /target/);
   assert.deepEqual(fs.existsSync(dir) ? fs.readdirSync(dir) : [], []);
   // Other frontmatter is neither read nor refused.
-  assert.deepEqual(parse("---\nid: a\nsupersedes: b\n---\nx\n", "a.md"), {
+  assert.deepEqual(parse("---\nid: a\ntype: t\nsupersedes: b\n---\nx\n", "a.md"), {
     id: "a",
+    type: "t",
     meaning: "x",
     references: [],
     file: "a.md",
@@ -182,13 +203,19 @@ test("a rendered Node parses back to the same Node", () => {
     { relation: "r", target: "far/26/10/01/01" },
     { relation: "s", target: "42" },
   ];
-  const text = render("a", "  Meaning\n\nmore.\n\n", refs);
-  assert.deepEqual(parse(text, "a.md"), { id: "a", meaning: "  Meaning\n\nmore.", references: refs, file: "a.md" });
+  const text = render("a", "t", "  Meaning\n\nmore.\n\n", refs);
+  assert.deepEqual(parse(text, "a.md"), {
+    id: "a",
+    type: "t",
+    meaning: "  Meaning\n\nmore.",
+    references: refs,
+    file: "a.md",
+  });
 });
 
 test("only *.md regular files directly in the scope are candidates; a missing scope holds none", () => {
   const dir = scope();
-  birthNode(dir, "a", "x");
+  birthNode(dir, "a", "t", "x");
   fs.writeFileSync(path.join(dir, "notes.txt"), "not a node");
   fs.mkdirSync(path.join(dir, "sub"));
   fs.writeFileSync(path.join(dir, "sub", "b.md"), "not directly in the scope");
@@ -220,12 +247,12 @@ test("the skill stands alone: its code imports nothing outside itself, and it ru
       cwd: path.dirname(dir),
       shell: process.platform === "win32",
     });
-  assert.equal(run("birth.ts", dir, "a", "One.").status, 0);
-  assert.equal(run("birth.ts", dir, "b", "Two.", "--reference", "r=a", "--reference", "s=x=y").status, 0);
-  assert.equal(run("birth.ts", dir, "a", "Again.").status, 1);
+  assert.equal(run("birth.ts", dir, "a", "t", "One.").status, 0);
+  assert.equal(run("birth.ts", dir, "b", "t", "Two.", "--reference", "r=a", "--reference", "s=x=y").status, 0);
+  assert.equal(run("birth.ts", dir, "a", "t", "Again.").status, 1);
   assert.equal(run("validate.ts", dir).status, 0);
   assert.deepEqual(run("read.ts", dir).stdout.trim().split(/\r?\n/), ["a", "b"]);
-  assert.match(run("read.ts", dir, "b").stdout, /Two\.\n\nr -> a\ns -> x=y/);
+  assert.match(run("read.ts", dir, "b").stdout, /b: t\n\nTwo\.\n\nr -> a\ns -> x=y/);
   assert.equal(run("read.ts", dir, "--to", "a").stdout.trim(), "b r");
   assert.equal(run("read.ts", dir, "nope").status, 1);
   fs.writeFileSync(path.join(dir, "bad.md"), "not a node");
@@ -239,7 +266,7 @@ test("nothing is retrofitted: records of other kinds beside a scope are left exa
   const idea = path.join(legacy, "an-idea.md");
   fs.writeFileSync(idea, "---\nid: an-idea\nidea: It could be so.\n---\n\nWhy.\n");
   const before = bytes(idea);
-  birthNode(dir, "a", "x", [{ relation: "from", target: "an-idea" }]);
+  birthNode(dir, "a", "t", "x", [{ relation: "from", target: "an-idea" }]);
   assert.deepEqual(readNodes(dir).errors, []);
   assert.deepEqual(
     readNodes(dir).nodes.map((n) => n.id),
