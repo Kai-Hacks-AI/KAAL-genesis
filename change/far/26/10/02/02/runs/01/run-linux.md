@@ -1,0 +1,27 @@
+plan change/far/26/10/02/02/runs/01/plan.md
+candidate <historical candidate>
+candidate-identity far/26/10/02/02
+conditions node v22.23.3 linux x64
+pass change/far/26/09/26/01/test/genesis/agent-guidance-scoped-and-concise.test.ts
+pass change/far/26/09/26/01/test/genesis/brain-nodes-born-through-one-mechanism.test.ts
+pass change/far/26/09/26/01/test/genesis/brain-structure-validation.test.ts
+pass change/far/26/09/26/01/test/genesis/closed-learning-integrity.test.ts
+pass change/far/26/09/26/01/test/genesis/kaal-context-in-brain-not-agent-guidance.test.ts
+pass change/far/26/09/26/01/test/genesis/kaal-meaning-in-brain-not-skills.test.ts
+pass change/far/26/09/26/01/test/genesis/past-understanding-retained.test.ts
+pass change/far/26/09/26/01/test/genesis/seal-state-written-only-by-sealing-on-main.test.ts
+pass change/far/26/09/26/01/test/genesis/skills-born-from-own-init.test.ts
+pass change/far/26/09/26/01/test/genesis/skills-follow-agent-skills-standard.test.ts
+pass change/far/26/09/26/01/test/genesis/skills-independent-capabilities.test.ts
+pass change/far/26/09/30/01/test/change/changes-are-immutable-occurrences-beneath-their-lineage.test.ts
+pass change/far/26/09/30/01/test/change/closed-change-cannot-change-unnoticed.test.ts
+pass change/far/26/09/30/01/test/genesis-seals/changes-checked-against-seals-of-target-branch.test.ts
+pass change/far/26/09/30/04/test/reviewing/review-round-justified-by-confidence-in-responsibility.test.ts
+pass change/far/26/09/30/04/test/reviewing/reviewing-ends-every-loop-in-one-of-four-outcomes.test.ts
+pass change/far/26/09/30/04/test/reviewing/reviewing-is-independent-of-what-it-reviews.test.ts
+pass change/far/26/09/30/04/test/reviewing/reviewing-is-instructions-not-a-script.test.ts
+pass change/git-independence/26/10/01/01/test/no-git.test.ts
+pass change/github-independence/26/10/01/01/test/no-github.test.ts
+pass change/execution-environments/26/10/01/01/test/core-executes.test.ts[environment=linux]
+unrun change/execution-environments/26/10/01/01/test/core-executes.test.ts[environment=windows]
+incomplete
