@@ -511,3 +511,12 @@ test("what Core reports as available is what the catalogue lists, whatever else 
   );
   assert.equal(after.available.length, names.length);
 });
+
+test("one authority: the Kernel Core installs is the file KAAL's graph holds, byte for byte", () => {
+  const root = temp();
+  init(root);
+  assert.equal(
+    fs.readFileSync(kernel(root), "utf8"),
+    fs.readFileSync(new URL(`../graph/${KERNEL_FILE}`, import.meta.url), "utf8"),
+  );
+});
