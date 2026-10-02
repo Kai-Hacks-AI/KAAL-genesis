@@ -33,6 +33,7 @@ Derived, not authored: the Carriers that hold the Test Cases active for each req
 - brain-structure-validation
 - changes-are-immutable-occurrences-beneath-their-lineage
 - changes-checked-against-seals-of-target-branch
+- check-named-by-what-it-asserts
 - closed-change-cannot-change-unnoticed
 - closed-learning-integrity
 - delivery-admitted-by-recognized-origin

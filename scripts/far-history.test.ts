@@ -465,40 +465,47 @@ test("FAR-14 admits a Linux Run and a Windows Run that each state the Hit the re
   }
 });
 
-// FAR-15: the Hit that names checks by what they assert and not where they run. It states two Delivery Requirements no record
-// stated, and only one has honest evidence: a check carries an environment in its name only where it runs KAAL's tests under an
-// environment KAAL requires. So F₁₅ names that one, A₁₅ is empty and R₁₅ = R₁₄ and that identity (24). The other,
-// that a check is named by what it asserts, is stated and has no Case: it is not in F₁₅ or R₁₅, and the Hit is not complete
-// while it stays undefended. The Plan adds the one Case, and the Runs state the record's identity.
+// FAR-15: the Hit that names checks by what they assert and not where they run. It gives birth to two Delivery Requirements
+// no record stated, so F₁₅ is both, projected from the Requirements born on this Change, A₁₅ is empty and R₁₅ = R₁₄ and
+// those two identities (25). Only one has honest evidence: a check carries an environment in its name only where it runs KAAL's
+// tests under an environment KAAL requires. The other, that a check is named by what it asserts, has no Case. It stays in F₁₅
+// and R₁₅ and stays red, and the Hit is not complete while it is undefended. The Plan adds the one Case, and the Runs state the
+// record's identity.
 const FAR_15 = "change/far/26/10/02/07";
 const FAR_15_PLAN = `${FAR_15}/runs/01/plan.md`;
 const FAR_15_NEW = "environment-in-check-name-only-where-asserted";
 const FAR_15_UNDEFENDED = "check-named-by-what-it-asserts";
 const FAR_15_RUNS = { linux: `${FAR_15}/runs/01/run-linux.md`, windows: `${FAR_15}/runs/01/run-windows.md` };
 
-test("FAR-15 states a second Requirement that no Case tests, kept out of its Feature and Regression", () => {
+test("FAR-15's Feature is the two Requirements born on it, and the one no Case tests stays red", () => {
+  assert.deepEqual(identities(`${FAR_15}/feature.md`), [FAR_15_UNDEFENDED, FAR_15_NEW]);
   const text = fs.readFileSync(`${FAR_15}/requirement/${FAR_15_UNDEFENDED}.md`, "utf8");
   assert.match(text, /^A check is named by what it asserts\.$/m);
-  assert.ok(!identities(`${FAR_15}/feature.md`).includes(FAR_15_UNDEFENDED));
-  assert.ok(!identities(`${FAR_15}/regression.md`).includes(FAR_15_UNDEFENDED));
   const { cases, errors } = kaalTestCases();
   assert.deepEqual(errors, []);
+  const suites = kaalSuites();
+  assert.deepEqual(suites.errors, []);
+  // Red: nothing tests it, by a Case or by a Suite, so no Carrier of a Plan is selected for it.
   assert.deepEqual(testCasesTestingRequirement(cases, FAR_15_UNDEFENDED), []);
+  assert.deepEqual(
+    suites.suites.filter((suite) => suite.tests.some((t) => t.kind === "requirement" && t.id === FAR_15_UNDEFENDED)),
+    [],
+  );
   assert.equal(testCasesTestingRequirement(cases, FAR_15_NEW).length, 1);
 });
 
-test("FAR-15 adds one Feature identity and no Authorise: its Regression is FAR-14's and that", () => {
+test("FAR-15 adds its two born Requirements and no Authorise: its Regression is FAR-14's and those", () => {
   assert.match(fs.readFileSync(`${FAR_15}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
-  assert.deepEqual(identities(`${FAR_15}/feature.md`), [FAR_15_NEW]);
+  assert.deepEqual(identities(`${FAR_15}/feature.md`), [FAR_15_UNDEFENDED, FAR_15_NEW]);
   assert.deepEqual(identities(`${FAR_15}/authorise.md`), []);
   const result = computeRegression({
     previous: identities(`${FAR_14}/regression.md`),
-    feature: [FAR_15_NEW],
+    feature: [FAR_15_UNDEFENDED, FAR_15_NEW],
     authorise: [],
   });
   assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
   assert.deepEqual(result.regression, identities(`${FAR_15}/regression.md`).sort());
-  assert.equal(result.regression.length, 24);
+  assert.equal(result.regression.length, 25);
 });
 
 test("Plan₁₅ is exactly what R₁₅ derives under the decisions Plan₉ was made under, and adds the one Case that tests the Requirement it adds", () => {
