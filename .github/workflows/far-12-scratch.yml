@@ -1,0 +1,52 @@
+# THROWAWAY, removed before the pull request: obtain the Runs of Plan 12 against the Hit on each host.
+name: far-12-scratch
+
+on:
+  push:
+    branches: [claude/project-thread-qdw41a]
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: scratch-${{ matrix.where }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - where: linux
+            os: ubuntu-latest
+          - where: windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: 35aac9a22a6c2729ca914ce5276813975a9de9e5
+          path: candidate
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm ci
+        working-directory: candidate
+      - name: Run of the Plan against the Hit
+        shell: bash
+        run: |
+          code=0
+          npm run --silent environment:run -- change/far/26/10/02/04/runs/01/plan.md candidate --candidate-identity far/26/10/02/04 > run.txt || code=$?
+          echo "=====RUN-BEGIN"
+          cat run.txt
+          echo "=====RUN-END exit=$code"
+      - name: Probe the symlink case where the Hit un-skipped it
+        shell: bash
+        working-directory: candidate
+        run: |
+          code=0
+          npx tsx --test skills/using-skills/scripts/skills.test.ts > ../probe.txt 2>&1 || code=$?
+          echo "=====PROBE-BEGIN"
+          grep -E "^(# (tests|pass|fail|skipped|cancelled)|not ok|ok .*scratch copy keeps symlinks)|symlink" ../probe.txt || true
+          echo "=====PROBE-END exit=$code"
