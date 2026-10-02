@@ -22,17 +22,19 @@ import {
 const LEARNING = /^\d{2}$/;
 
 /**
- * Learnings admitted open, by the files they hold, before sealing had to keep an
- * open learning from preceding a sealed one in its lineage. Stronger sealing
- * does not retroactively invalidate what an earlier regime admitted, so each is
- * history as it was admitted: outside its lineage's chain, never sealed, and held
- * to exactly the bytes admitted. This is not a way for a new learning to stay open.
+ * Open learnings that were legally admitted as the open tail of their lineage,
+ * by the exact files they hold, and are kept as immutable bootstrap history when
+ * another path later advances and seals the same lineage without them. Each is
+ * outside its lineage's chain, never sealed, and held to exactly the bytes
+ * admitted. This is not a way for a new learning to stay open: any other open
+ * learning ahead of a sealed one is still refused.
  *
- * `requirements/26/10/01/01` was admitted on kaal/far with the Change that
- * integrated adapter work (#162), where it was the newest and only open learning
- * of its lineage. Main sealed `requirements/26/10/02/01` after it, so main
- * falling forward into kaal/far would otherwise put an open learning before a
- * sealed one. The learning is absent from main until then.
+ * `requirements/26/10/01/01` was admitted on kaal/far with #162, where it was
+ * the open tail of its lineage, which the sealing rule allows. On main the same
+ * lineage was advanced to the sealed `requirements/26/10/02/01` without it. When
+ * the two paths compose, the lineage reads sealed, open, sealed, which the rule
+ * correctly refuses; KAAL keeps this one admitted tail rather than rewriting,
+ * sealing or deleting it. The learning is absent from main until then.
  */
 export type Admitted = ReadonlyMap<string, ReadonlyMap<string, string>>;
 
