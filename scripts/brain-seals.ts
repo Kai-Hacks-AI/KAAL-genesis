@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
@@ -20,8 +21,58 @@ import {
 
 const LEARNING = /^\d{2}$/;
 
+/**
+ * Open learnings that were legally admitted as the open tail of their lineage,
+ * by the exact files they hold, and are kept as immutable bootstrap history when
+ * another path later advances and seals the same lineage without them. Each is
+ * outside its lineage's chain, never sealed, and held to exactly the bytes
+ * admitted. This is not a way for a new learning to stay open: any other open
+ * learning ahead of a sealed one is still refused.
+ *
+ * `requirements/26/10/01/01` was admitted on kaal/far with #162, where it was
+ * the open tail of its lineage, which the sealing rule allows. On main the same
+ * lineage was advanced to the sealed `requirements/26/10/02/01` without it. When
+ * the two paths compose, the lineage reads sealed, open, sealed, which the rule
+ * correctly refuses; KAAL keeps this one admitted tail rather than rewriting,
+ * sealing or deleting it. The learning is absent from main until then.
+ */
+export type Admitted = ReadonlyMap<string, ReadonlyMap<string, string>>;
+
+export const ADMITTED_OPEN: Admitted = new Map([
+  [
+    "requirements/26/10/01/01",
+    new Map([["nodes/required-instances.md", "86913a6f2425222d214d90ba7c27ffc073ab3ff9080fbc60a120bdd0900b508f"]]),
+  ],
+]);
+
+/** What stops an admitted learning being exactly what was admitted: a changed, missing, added or sealed file. */
+export function admittedErrors(root = ROOT, admittedOpen: Admitted = ADMITTED_OPEN): string[] {
+  const errors: string[] = [];
+  for (const [unit, admitted] of admittedOpen) {
+    const dir = path.join(root, unit);
+    if (!fs.existsSync(dir)) continue;
+    const found = new Map<string, string>();
+    const walk = (current: string) => {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        const relative = path.relative(dir, full).split(path.sep).join("/");
+        if (entry.isDirectory()) walk(full);
+        else if (entry.isFile()) found.set(relative, createHash("sha256").update(fs.readFileSync(full)).digest("hex"));
+        else errors.push(`${unit}/${relative}: not a file in an admitted open learning`);
+      }
+    };
+    walk(dir);
+    for (const [file, hash] of found) {
+      if (!admitted.has(file)) errors.push(`${unit}/${file}: added to an admitted open learning`);
+      else if (admitted.get(file) !== hash) errors.push(`${unit}/${file}: changed after admission`);
+    }
+    for (const file of admitted.keys()) if (!found.has(file)) errors.push(`${unit}/${file}: removed after admission`);
+  }
+  return errors;
+}
+
 /** Every lineage's learnings as units, oldest first: `<lineage>/YY/MM/DD/CC`. */
-export function brainChains(root = ROOT): Map<string, string[]> {
+export function brainChains(root = ROOT, admittedOpen: Admitted = ADMITTED_OPEN): Map<string, string[]> {
   const chains = new Map<string, string[]>();
   if (!fs.existsSync(root)) return chains;
   const dirs = (dir: string) =>
@@ -35,7 +86,9 @@ export function brainChains(root = ROOT): Map<string, string[]> {
     // YY/MM/DD/CC are fixed-width, so sorting each level orders learnings in time.
     const walk = (dir: string, parts: string[]) => {
       if (parts.length === 4) {
-        units.push([lineage, ...parts].join("/"));
+        const unit = [lineage, ...parts].join("/");
+        // An admitted open learning is history outside the chain, held by admittedErrors.
+        if (!admittedOpen.has(unit)) units.push(unit);
         return;
       }
       for (const part of dirs(dir).filter((d) => LEARNING.test(d))) walk(path.join(dir, part), [...parts, part]);
@@ -50,8 +103,8 @@ export function brainChains(root = ROOT): Map<string, string[]> {
  * The chains to check: every lineage in BRAIN, and every chain recorded in the
  * heads even if its lineage is gone, so removing a whole lineage is noticed.
  */
-function chainsToCheck(root: string): Map<string, string[]> {
-  const chains = brainChains(root);
+function chainsToCheck(root: string, admittedOpen: Admitted): Map<string, string[]> {
+  const chains = brainChains(root, admittedOpen);
   for (const chain of readHeads(root).keys()) if (!chains.has(chain)) chains.set(chain, []);
   return chains;
 }
@@ -62,22 +115,22 @@ function chainsToCheck(root: string): Map<string, string[]> {
  * requires the whole BRAIN to be valid and every existing seal intact, and
  * refuses before writing anything, never leaving BRAIN partly closed.
  */
-export function sealBrain(root = ROOT): string[] {
-  const errors = brainErrors(root);
+export function sealBrain(root = ROOT, admittedOpen: Admitted = ADMITTED_OPEN): string[] {
+  const errors = brainErrors(root, admittedOpen);
   if (errors.length) throw new Error(`refusing to seal BRAIN:\n${errors.join("\n")}`);
   // One transaction under one lock: a lineage that fails while sealing (an
   // entry that cannot be sealed, a failed write) leaves every lineage as it was.
   return sealChains(
     root,
-    [...brainChains(root)].filter(([, units]) => units.length),
+    [...brainChains(root, admittedOpen)].filter(([, units]) => units.length),
   );
 }
 
 /** Every broken seal in BRAIN, lineage by lineage. */
-export function checkBrain(root = ROOT): string[] {
+export function checkBrain(root = ROOT, admittedOpen: Admitted = ADMITTED_OPEN): string[] {
   let chains: Map<string, string[]>;
   try {
-    chains = chainsToCheck(root);
+    chains = chainsToCheck(root, admittedOpen);
   } catch (e) {
     return [`${HEADS_FILE}: unreadable chain heads (${e instanceof Error ? e.message : String(e)})`];
   }
@@ -151,6 +204,6 @@ export function sealingOutputErrors(nameStatus: string, root = ROOT): string[] {
 }
 
 /** Everything that stops a BRAIN from being sealed: invalid nodes and broken seals. */
-export function brainErrors(root = ROOT): string[] {
-  return [...validate(root), ...checkBrain(root)];
+export function brainErrors(root = ROOT, admittedOpen: Admitted = ADMITTED_OPEN): string[] {
+  return [...validate(root), ...checkBrain(root, admittedOpen), ...admittedErrors(root, admittedOpen)];
 }
