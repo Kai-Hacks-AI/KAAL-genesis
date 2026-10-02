@@ -1,0 +1,11 @@
+{
+  "unit": "skills/26/10/02/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/using-skills.md",
+      "sha256": "da8d796f2eaf1167f62534e411793361b0e77776b2524ee988e67b6a7f5e5d2d"
+    }
+  ],
+  "seal": "90d5d02aeae04faf26d8fdcd3387a118828d99b8d201ee09b32e7fc8b587f765"
+}
