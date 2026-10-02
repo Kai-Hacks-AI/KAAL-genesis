@@ -396,7 +396,7 @@ test("FAR-13 admits a Linux Run and a Windows Run that each state the Hit the re
   for (const alone of [linux, windows]) assert.equal(planEvidence([alone]).evidence?.evidenced, false);
   // Runs that concern the previous Hit are refused, though they evidence the same Plan.
   const previous = [readRun(FAR_12_RUNS.linux), readRun(FAR_12_RUNS.windows)];
-  assert.match(admissionErrors(FAR_13, FAR_13_PLAN, previous).join("\n"), /Run 1 states far\/26\/10\/02\/03/);
+  assert.match(admissionErrors(FAR_13, FAR_13_PLAN, previous).join("\n"), /Run 1 states far\/26\/10\/02\/04/);
   for (const file of Object.values(FAR_13_RUNS)) {
     const text = fs.readFileSync(file, "utf8");
     assert.match(text, /^candidate <historical candidate>$/m, file);
