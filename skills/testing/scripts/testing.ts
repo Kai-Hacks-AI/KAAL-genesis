@@ -309,6 +309,45 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
   };
 }
 
+/**
+ * The Cases of the Suites given whose `tests` names at least one of `targets`,
+ * each a `kind` and `id`, in today's representation of a Suite, where its Cases
+ * are the Case files beneath its directory. A Case is named here as the Carrier
+ * path it has, the Suite's place and its path beneath it, so that is all this
+ * says about membership: it does not define what composes a Suite and Cases in
+ * general, nor settle a Case shared by Suites. A Suite that claims a target is
+ * sufficient evidence for it only through its Cases, so a derived Plan must
+ * hold them for a Run to execute. Each Carrier path appears once, with the
+ * targets it is selected for, sorted by path and then by kind and id. It is
+ * computed from the Suites given and what they declare, never stored. A Suite
+ * is not superseded: supersession is a Test Case's.
+ */
+export function suiteCasesTesting(
+  suites: readonly Suite[],
+  targets: readonly Tests[],
+): { carrier: string; targets: Tests[] }[] {
+  const key = ({ kind, id }: Tests) => JSON.stringify([kind, id]);
+  const wanted = new Map(targets.map((t) => [key(t), { kind: t.kind, id: t.id }]));
+  const selected = new Map<string, Map<string, Tests>>();
+  for (const suite of suites) {
+    const claimed = suite.tests.map(key).filter((k) => wanted.has(k));
+    if (!claimed.length) continue;
+    for (const file of suite.cases) {
+      const carrier = `${suite.place}/${file}`;
+      const into = selected.get(carrier) ?? new Map<string, Tests>();
+      for (const k of claimed) into.set(k, wanted.get(k)!);
+      selected.set(carrier, into);
+    }
+  }
+  const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  return [...selected.entries()]
+    .sort(([a], [b]) => compare(a, b))
+    .map(([carrier, into]) => ({
+      carrier,
+      targets: [...into.values()].sort((a, b) => compare(a.kind, b.kind) || compare(a.id, b.id)),
+    }));
+}
+
 /** Every Suite the Plan at `plan` (relative to `root`) collects, with every way the Plan, a Suite or a collected Carrier is broken. */
 export function readPlanSuites(root: string, plan: string): { plan?: Plan; suites: Suite[]; errors: string[] } {
   const read = readPlan(path.join(root, plan));

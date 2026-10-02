@@ -11,7 +11,17 @@ import {
   type PlanEntry,
 } from "../skills/testing/scripts/supersession.js";
 import { readTestCases, testCasesTesting, type TestCase } from "../skills/testing/scripts/test-cases.js";
-import { CASE, instanceId, PARAMETER, type Instance, type Parameters } from "../skills/testing/scripts/testing.js";
+import {
+  CASE,
+  instanceId,
+  PARAMETER,
+  readSuite,
+  SUITE_FILE,
+  suiteCasesTesting,
+  type Instance,
+  type Parameters,
+  type Suite,
+} from "../skills/testing/scripts/testing.js";
 import { kaalDefects } from "./defects.js";
 import { kaalRequirements } from "./requirements.js";
 
@@ -85,6 +95,46 @@ export function kaalTestCases(repo = "."): { cases: TestCase[]; errors: string[]
   return { cases, errors };
 }
 
+/**
+ * The Suites beneath KAAL's Changes' `test/`, each a directory holding a
+ * `suite.json`, at any depth, as places posix from `repo`, with everything that
+ * stops one being a Suite: anything Testing refuses in it, a kind KAAL does not
+ * test, and an id that names no Requirement or Defect. A Suite's `tests` is the
+ * same declaration as a Test Case's and is held to the same kinds and ids.
+ */
+export function kaalSuites(repo = "."): { suites: Suite[]; errors: string[] } {
+  const requirements = kaalRequirements(repo);
+  const defects = kaalDefects(repo);
+  const known: Record<string, Set<string>> = {
+    requirement: new Set(requirements.requirements.map((r) => r.id)),
+    defect: new Set(defects.defects.map((d) => d.id)),
+  };
+  const suites: Suite[] = [];
+  const errors: string[] = [...requirements.errors, ...defects.errors];
+  for (const change of readChanges(path.join(repo, CHANGE_ROOT)).changes) {
+    const dir = path.join(repo, CHANGE_ROOT, change.lineage, ...change.occurrence.split("/"), TEST_DIR);
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
+    const places = fs
+      .readdirSync(dir, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && e.name === SUITE_FILE)
+      .map((e) => path.relative(repo, e.parentPath).split(path.sep).join("/"))
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const place of places) {
+      const read = readSuite(repo, place);
+      errors.push(...read.errors);
+      if (!read.suite) continue;
+      suites.push(read.suite);
+      for (const { kind, id } of read.suite.tests) {
+        if (!Object.hasOwn(known, kind))
+          errors.push(`${place}/${SUITE_FILE} tests ${kind} "${id}", but a Suite may test only ${KINDS.join(" or ")}`);
+        else if (!known[kind].has(id))
+          errors.push(`${place}/${SUITE_FILE} tests ${kind} "${id}", which names no ${kind}`);
+      }
+    }
+  }
+  return { suites, errors: [...new Set(errors)] };
+}
+
 /** The identities of the Test Cases, among `cases`, that test the Requirement `id`. */
 export const testCasesTestingRequirement = (cases: TestCase[], id: string): string[] =>
   testCasesTesting(cases, "requirement", id);
@@ -100,19 +150,27 @@ export const currentTestCasesTestingRequirement = (cases: TestCase[], id: string
 /**
  * The Carriers that hold the Test Cases active for any of the Requirements or
  * Defects `ids` of `kind`, the protection a Run of them demonstrates: derived
- * runnable scope, computed from the Test Cases and what they declare, never
- * from a Suite or a stored list. Which identities are protected is for the
- * caller to say; what makes a Test Case active is Testing's.
+ * runnable scope, computed from the Test Cases and the Suites and what they declare, never
+ * from a stored list. Which identities are protected is for the
+ * caller to say; what makes a Test Case active is Testing's. The Case files beneath a
+ * Suite whose `tests` names one of them are Carriers too (in today's representation of a Suite), the evidence the
+ * Suite's claim is made of.
  */
 export const carriersProtecting = (
   cases: TestCase[],
   kind: (typeof KINDS)[number],
   ids: readonly string[],
-): { carriers: string[] } | { errors: string[] } =>
-  carriersCurrentlyTesting(
-    cases,
-    ids.map((id) => ({ kind, id })),
-  );
+  suites: readonly Suite[] = [],
+): { carriers: string[] } | { errors: string[] } => {
+  const targets = ids.map((id) => ({ kind, id }));
+  const answer = carriersCurrentlyTesting(cases, targets);
+  if ("errors" in answer) return answer;
+  return {
+    carriers: [...new Set([...answer.carriers, ...suiteCasesTesting(suites, targets).map((e) => e.carrier)])].sort(
+      compare,
+    ),
+  };
+};
 
 /*
  * Which instances a Plan requires is KAAL's decision, and a Change keeps it
@@ -231,7 +289,10 @@ const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
  * Requirement no decision names. A Test Case is a Carrier here, as Testing can
  * name only the file that executes it. Each instance once, sorted by identity.
  */
-export function requiredInstances(entries: readonly PlanEntry[], required: readonly InstanceRequirement[]): Instance[] {
+export function requiredInstances(
+  entries: readonly (Pick<PlanEntry, "carrier" | "targets"> & { name?: string })[],
+  required: readonly InstanceRequirement[],
+): Instance[] {
   const instances = new Map<string, Instance>();
   for (const { carrier, targets } of entries)
     for (const { kind, id } of targets) {
@@ -261,7 +322,9 @@ const parameterisedNote = (kind: string): string =>
  * the ids that select it, and the instances a Run executes, each Carrier under
  * the parameters `required` says the Requirement it is selected for is
  * required under, and under none for a Defect or a Requirement it names no
- * decision of. Derived, never stored: a Plan file made of it is discarded and
+ * decision of. A Suite whose `tests` names one of them contributes, in today's representation of a Suite, the Case files beneath it the
+ * same way: they are the evidence its claim needs, and a Plan without them would
+ * demonstrate nothing of it. Derived, never stored: a Plan file made of it is discarded and
  * made again from the sources as it was. Which identities are protected is for
  * the caller to say.
  */
@@ -270,13 +333,12 @@ export function testPlanProtecting(
   kind: (typeof KINDS)[number],
   ids: readonly string[],
   required: readonly InstanceRequirement[] = [],
+  suites: readonly Suite[] = [],
 ): { entries: PlanEntry[]; carriers: string[]; instances: Instance[]; plan: string } | { errors: string[] } {
-  const answer = testCasesProtecting(
-    cases,
-    ids.map((id) => ({ kind, id })),
-  );
+  const targets = ids.map((id) => ({ kind, id }));
+  const answer = testCasesProtecting(cases, targets);
   if ("errors" in answer) return answer;
-  const instances = requiredInstances(answer.entries, required);
+  const instances = requiredInstances([...answer.entries, ...suiteCasesTesting(suites, targets)], required);
   const carriers = [...new Set(instances.map((i) => i.carrier))];
   const parameterised = instances.some((i) => Object.keys(i.parameters).length > 0);
   const protectedIds = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -325,8 +387,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   } else {
     const tested = kaalTestCases();
     const instances = kaalInstanceRequirements();
+    const suiteRead = kaalSuites();
     const cases = tested.cases;
-    const errors = [...tested.errors, ...instances.errors];
+    const errors = [...tested.errors, ...instances.errors, ...suiteRead.errors];
     if (errors.length) {
       console.error(errors.join("\n"));
       process.exitCode = 1;
@@ -334,13 +397,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       const ids = [id, ...rest];
       const k = kind as (typeof KINDS)[number];
       if (plan) {
-        const answer = testPlanProtecting(cases, k, ids, instances.required);
+        const answer = testPlanProtecting(cases, k, ids, instances.required, suiteRead.suites);
         if ("errors" in answer) {
           console.error(answer.errors.join("\n"));
           process.exitCode = 1;
         } else process.stdout.write(answer.plan);
       } else {
-        const answer = carriersProtecting(cases, k, ids);
+        const answer = carriersProtecting(cases, k, ids, suiteRead.suites);
         if ("errors" in answer) {
           console.error(answer.errors.join("\n"));
           process.exitCode = 1;
