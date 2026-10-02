@@ -169,6 +169,52 @@ export function birthErrors(dir: string, timeout = 60_000): string[] {
 }
 
 /**
+ * Whether the skill at `dir`, if it collects, collects the way the contract
+ * says: a skill declares that it collects by having `scripts/collect.ts`, run
+ * as `tsx scripts/collect.ts <scope>`, which for a scope holding nothing exits
+ * 0 and prints `[]`. A skill without `scripts/collect.ts` makes no such
+ * claim and has nothing to check. The skill's own code runs as the caller,
+ * from an empty scratch directory, over an empty scope, and must finish
+ * within `timeout` milliseconds; this bounds it, it is not a sandbox. What a
+ * scope holding something yields is the skill's own, so it is not checked.
+ */
+export function collectErrors(dir: string, timeout = 60_000): string[] {
+  const skill = path.basename(dir);
+  const script = path.resolve(dir, "scripts", "collect.ts");
+  if (!fs.lstatSync(script, { throwIfNoEntry: false })) return [];
+  if (!isFile(script)) return [`${skill}: scripts/collect.ts is not a regular file`];
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "skill-"));
+  try {
+    const scope = path.join(scratch, "scope");
+    fs.mkdirSync(scope);
+    const run = spawnSync(process.execPath, ["--import", TSX, script, scope], {
+      cwd: scratch,
+      encoding: "utf8",
+      maxBuffer: 1 << 20,
+      timeout,
+      killSignal: "SIGKILL",
+    });
+    if ((run.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT")
+      return [`${skill}: running scripts/collect.ts did not finish within ${timeout} ms`];
+    if (run.error || run.status !== 0)
+      return [
+        `${skill}: collecting an empty scope failed (${run.status === null ? `signal ${run.signal}` : `exit code ${run.status}`}); an empty scope holds nothing, so collect.ts must exit 0`,
+      ];
+    let collected: unknown;
+    try {
+      collected = JSON.parse(run.stdout);
+    } catch {
+      collected = undefined;
+    }
+    return Array.isArray(collected) && collected.length === 0
+      ? []
+      : [`${skill}: collecting an empty scope must print the JSON array []`];
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/**
  * Every error of every skill in `skillsDir`, where each directory is a skill,
  * in name order. A skill that cannot be checked at all is reported as an
  * error of that skill; it never stops the others from being checked.
@@ -182,7 +228,7 @@ export function checkSkills(skillsDir: string): string[] {
     .flatMap((skill) => {
       const dir = path.join(skillsDir, skill);
       try {
-        return [...standardErrors(dir), ...birthErrors(dir)];
+        return [...standardErrors(dir), ...birthErrors(dir), ...collectErrors(dir)];
       } catch (e) {
         return [`${skill}: could not be checked (${e instanceof Error ? e.message : String(e)})`];
       }

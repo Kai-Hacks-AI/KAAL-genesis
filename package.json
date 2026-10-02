@@ -7,7 +7,8 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts extensions/*/*.test.ts",
+    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts extensions/*/*.test.ts core/*.test.ts",
+    "kaal": "tsx core/kaal.ts",
     "genesis": "tsx scripts/genesis.ts",
     "brain:create": "tsx skills/using-brain/scripts/create-brain.ts",
     "brain:create-node": "tsx skills/using-brain/scripts/create-node.ts",
@@ -21,6 +22,7 @@
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
+    "requirements:collect": "tsx skills/managing-requirements/scripts/collect.ts",
     "requirements:check": "tsx scripts/requirements.ts",
     "feature:compute": "tsx scripts/feature.ts",
     "test-cases:check": "tsx scripts/test-cases.ts",
