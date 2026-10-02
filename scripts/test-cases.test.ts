@@ -438,7 +438,7 @@ test("`test-cases.ts plan <kind> <id>...` prints the Plan file, and refuses a wr
     assert.equal(run(...args).status, 2, args.join(" "));
 });
 
-test("a Suite that tests a Requirement puts its Cases in the Plan that protects it, each once and for it alone", () => {
+test("a Suite that tests a Requirement puts the Case files beneath it in the Plan that protects it, each Carrier once and for it alone", () => {
   const { dir } = repo({
     "one.test.ts": tc("states nothing", undefined),
     "two.test.ts": tc("also states nothing", undefined) + tc("states it too", '{ requirement: ["r1"] }'),

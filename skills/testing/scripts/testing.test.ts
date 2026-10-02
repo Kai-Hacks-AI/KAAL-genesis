@@ -377,7 +377,7 @@ test("refuses a Suite's tests that is not an object of kinds, each a non-empty l
   assert.deepEqual(errors("extra"), ['extra/suite.json: unknown "cases"']);
 });
 
-test("the Cases of the Suites that test a target are those Suites' Cases, each once with the targets it is selected for", () => {
+test("in today's representation the Case files beneath each Suite that tests a target are selected, each Carrier path once with the targets it is selected for", () => {
   const suite = (place: string, tests: { kind: string; id: string }[], cases: string[]) => ({ place, tests, cases });
   const suites = [
     suite(

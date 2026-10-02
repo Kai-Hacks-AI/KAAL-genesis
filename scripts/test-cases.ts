@@ -150,10 +150,10 @@ export const currentTestCasesTestingRequirement = (cases: TestCase[], id: string
 /**
  * The Carriers that hold the Test Cases active for any of the Requirements or
  * Defects `ids` of `kind`, the protection a Run of them demonstrates: derived
- * runnable scope, computed from the Test Cases and what they declare, never
- * from a Suite or a stored list. Which identities are protected is for the
- * caller to say; what makes a Test Case active is Testing's. The Cases of a
- * Suite whose `tests` names one of them are Carriers too, the evidence the
+ * runnable scope, computed from the Test Cases and the Suites and what they declare, never
+ * from a stored list. Which identities are protected is for the
+ * caller to say; what makes a Test Case active is Testing's. The Case files beneath a
+ * Suite whose `tests` names one of them are Carriers too (in today's representation of a Suite), the evidence the
  * Suite's claim is made of.
  */
 export const carriersProtecting = (
@@ -322,7 +322,7 @@ const parameterisedNote = (kind: string): string =>
  * the ids that select it, and the instances a Run executes, each Carrier under
  * the parameters `required` says the Requirement it is selected for is
  * required under, and under none for a Defect or a Requirement it names no
- * decision of. A Suite whose `tests` names one of them contributes its Cases the
+ * decision of. A Suite whose `tests` names one of them contributes, in today's representation of a Suite, the Case files beneath it the
  * same way: they are the evidence its claim needs, and a Plan without them would
  * demonstrate nothing of it. Derived, never stored: a Plan file made of it is discarded and
  * made again from the sources as it was. Which identities are protected is for

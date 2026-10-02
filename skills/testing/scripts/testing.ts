@@ -311,13 +311,16 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
 
 /**
  * The Cases of the Suites given whose `tests` names at least one of `targets`,
- * each a `kind` and `id`, as posix paths from the testing root (the Suite's
- * place and the Case's path beneath it): a Suite that claims a target is
- * sufficient evidence for it only through its Cases, so each is what a Run must
- * execute. Each Case once, whatever number of Suites and targets select it,
- * with the targets it is selected for, sorted by path and then by kind and id.
- * It is computed from the Suites given and what they declare, never stored. A
- * Suite is not superseded: supersession is a Test Case's.
+ * each a `kind` and `id`, in today's representation of a Suite, where its Cases
+ * are the Case files beneath its directory. A Case is named here as the Carrier
+ * path it has, the Suite's place and its path beneath it, so that is all this
+ * says about membership: it does not define what composes a Suite and Cases in
+ * general, nor settle a Case shared by Suites. A Suite that claims a target is
+ * sufficient evidence for it only through its Cases, so a derived Plan must
+ * hold them for a Run to execute. Each Carrier path appears once, with the
+ * targets it is selected for, sorted by path and then by kind and id. It is
+ * computed from the Suites given and what they declare, never stored. A Suite
+ * is not superseded: supersession is a Test Case's.
  */
 export function suiteCasesTesting(
   suites: readonly Suite[],
