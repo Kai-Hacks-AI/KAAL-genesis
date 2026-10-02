@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import { computeRegression } from "../skills/testing/scripts/regression.js";
-import { kaalTestCases, testPlanProtecting } from "./test-cases.js";
+import {
+  instanceId,
+  planEvidence,
+  planInstances,
+  readPlanSuites,
+  readReport,
+  type Outcomes,
+} from "../skills/testing/scripts/testing.js";
+import { kaalInstanceRequirements, kaalTestCases, testPlanProtecting } from "./test-cases.js";
 
 // The sealed FAR checkpoints, oldest first. They were written when Authorise was
 // called Acceptance and say so; sealing keeps them exactly as written. They are
@@ -92,4 +100,113 @@ test("each Plan written under Authorise is exactly what its Regression derives f
     assert.equal(derived.carriers.includes(stale), false, at);
     assert.equal(derived.carriers.length, carriers, at);
   }
+});
+
+// FAR-9: the Hit that accepts Requirements Management. Its record is the first to admit Runs that state what they
+// judged. A FAR record is the identity of the Hit it records, its own occurrence without the root, and each Run it
+// admits states that identity; FAR judges that, as Testing never does, and Testing's evidence says the Runs
+// together show the Plan. Nothing here reads Git, GitHub or the host that made a Run.
+const FAR_9 = "change/far/26/10/02/01";
+const FAR_9_PLAN = `${FAR_9}/runs/01/plan.md`;
+const FAR_9_RUNS = { linux: `${FAR_9}/runs/01/run-linux.md`, windows: `${FAR_9}/runs/01/run-windows.md` };
+// The decisions Plan₉ was derived under, named: a decision a later Change births must not rewrite what a sealed Plan said.
+const FAR_9_DECISIONS = [
+  "change/execution-environments/26/10/01/02/test/instances/linux-support.md",
+  "change/execution-environments/26/10/01/02/test/instances/windows-support.md",
+];
+
+const hitOf = (record: string): string => record.replace(/^change\//, "");
+
+/** Why the Runs, each the outcomes read from its report, do not concern the Hit `record` is about, or none where they do. */
+function admissionErrors(record: string, planFile: string, runs: Outcomes[]): string[] {
+  const read = readPlanSuites(".", planFile);
+  if (read.errors.length) return read.errors;
+  const required = planInstances(read.plan!, read.suites).map(instanceId).sort();
+  const errors: string[] = [];
+  runs.forEach((run, i) => {
+    if (run.candidateIdentity !== hitOf(record))
+      errors.push(`Run ${i + 1} states ${run.candidateIdentity ?? "no candidate identity"}, not ${hitOf(record)}`);
+    if (run.plan !== planFile) errors.push(`Run ${i + 1} is a Run of ${run.plan}, not ${planFile}`);
+    const performed = [...run.passed, ...run.failed, ...run.unrun].sort();
+    if (JSON.stringify(performed) !== JSON.stringify(required))
+      errors.push(`Run ${i + 1} does not account for exactly the instances of ${planFile}`);
+    if (run.failed.length) errors.push(`Run ${i + 1} has an instance that failed`);
+  });
+  const shown = planEvidence(runs);
+  if (!shown.evidence?.evidenced) errors.push(...shown.errors, `the Runs do not evidence ${planFile}`);
+  return errors;
+}
+
+const readRun = (file: string): Outcomes => {
+  const read = readReport(fs.readFileSync(file, "utf8"));
+  assert.deepEqual(read.errors, [], file);
+  return read.outcomes!;
+};
+
+test("FAR-9 is written under Authorise: its Regression follows from FAR-8's, its Feature and its Authorise", () => {
+  assert.match(fs.readFileSync(`${FAR_9}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
+  const feature = ["git-independence", "github-independence", "linux-support", "windows-support"];
+  assert.deepEqual(identities(`${FAR_9}/feature.md`), feature);
+  assert.deepEqual(identities(`${FAR_9}/authorise.md`), []);
+  const result = computeRegression({
+    previous: identities("change/far/26/09/30/05/regression.md"),
+    feature,
+    authorise: [],
+  });
+  assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
+  assert.deepEqual(result.regression, identities(`${FAR_9}/regression.md`).sort());
+  assert.equal(result.regression.length, 22);
+});
+
+test("Plan₉ is exactly what R₉ derives under the decisions it was made under: made again, it is the same bytes", () => {
+  const { cases, errors } = kaalTestCases();
+  assert.deepEqual(errors, []);
+  const decisions = kaalInstanceRequirements();
+  assert.deepEqual(decisions.errors, []);
+  const required = decisions.required.filter((d) => FAR_9_DECISIONS.includes(d.file));
+  assert.equal(required.length, FAR_9_DECISIONS.length, "the decisions Plan₉ names exist");
+  const derived = testPlanProtecting(cases, "requirement", identities(`${FAR_9}/regression.md`), required);
+  assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
+  assert.equal(fs.readFileSync(FAR_9_PLAN, "utf8"), derived.plan);
+  // Two environments for one Carrier, and the eighteen of FAR-8 and the two independence Carriers once each.
+  assert.equal(derived.instances.length, 22);
+  assert.deepEqual(
+    [...new Set(derived.instances.flatMap((i) => Object.entries(i.parameters).map(([n, v]) => `${n}=${v}`)))].sort(),
+    ["environment=linux", "environment=windows"],
+  );
+});
+
+test("FAR-9 admits a Linux Run and a Windows Run that each state the Hit the record is about, and together evidence Plan₉", () => {
+  const linux = readRun(FAR_9_RUNS.linux);
+  const windows = readRun(FAR_9_RUNS.windows);
+  assert.deepEqual(admissionErrors(FAR_9, FAR_9_PLAN, [linux, windows]), []);
+  assert.equal(linux.candidateIdentity, "far/26/10/02/01");
+  // Each made the instances of its own environment and left the other's unrun, so neither alone shows the Plan.
+  assert.equal(linux.unrun.length, 1);
+  assert.equal(windows.unrun.length, 1);
+  assert.notDeepEqual(linux.unrun, windows.unrun);
+  for (const alone of [linux, windows]) assert.equal(planEvidence([alone]).evidence?.evidenced, false);
+  // FAR keeps no location, identifier of a commit, address, runner, artifact or workflow in what it admitted.
+  for (const file of Object.values(FAR_9_RUNS)) {
+    const text = fs.readFileSync(file, "utf8");
+    assert.match(text, /^candidate <historical candidate>$/m, file);
+    assert.doesNotMatch(text, /[0-9a-f]{40}|https?:|[A-Za-z]:\\|runner|artifact|workflow/i, file);
+  }
+});
+
+test("FAR refuses Runs that do not concern the Hit it records, whatever they show among themselves", () => {
+  const linux = readRun(FAR_9_RUNS.linux);
+  const windows = readRun(FAR_9_RUNS.windows);
+  const other = { ...windows, candidateIdentity: "far/26/09/30/05" };
+  assert.deepEqual(planEvidence([linux, other]).evidence?.evidenced, true, "Testing alone would accept them");
+  assert.match(admissionErrors(FAR_9, FAR_9_PLAN, [linux, other]).join("\n"), /Run 2 states far\/26\/09\/30\/05/);
+  const { candidateIdentity: _, ...unstated } = windows;
+  assert.match(admissionErrors(FAR_9, FAR_9_PLAN, [linux, unstated]).join("\n"), /Run 2 states no candidate identity/);
+  assert.match(admissionErrors(FAR_9, FAR_9_PLAN, [linux]).join("\n"), /do not evidence/);
+  assert.match(
+    admissionErrors(FAR_9, FAR_9_PLAN, [linux, { ...windows, plan: "change/far/26/09/30/05/runs/01/plan.md" }]).join(
+      "\n",
+    ),
+    /Run 2 is a Run of/,
+  );
 });
