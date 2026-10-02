@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { kind as entry } from "../helpers/entry.js";
 
 /** Where, inside the KAAL directory, Core keeps what this installation has registered. */
 export const REGISTRATIONS = "core/registrations.md";
@@ -77,13 +78,11 @@ export function register(root: string, kaal: string, capability: Registration): 
     throw new Error(`${location}: a capability must be installed in a directory inside ${root}`);
   if (where === kaal || where.startsWith(`${kaal}/`))
     throw new Error(`${location}: a capability is installed where its standard puts it, never inside ${kaal}`);
-  const installed = fs.lstatSync(path.join(root, ...where.split("/")), { throwIfNoEntry: false });
-  if (!installed?.isDirectory())
+  if (entry(path.join(root, ...where.split("/"))) !== "directory")
     throw new Error(`${location}: nothing is installed there, so there is nothing to register`);
   const kaalDir = path.join(root, ...kaal.split("/"));
   const file = path.join(kaalDir, ...REGISTRATIONS.split("/"));
-  if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile())
-    throw new Error(`${kaalDir}: KAAL is not initialized here`);
+  if (entry(file) !== "file") throw new Error(`${kaalDir}: KAAL is not initialized here`);
   const same = registered(kaalDir).find((r) => r.kind === kind && r.name === name);
   if (same) {
     if (same.location === where) return false;
