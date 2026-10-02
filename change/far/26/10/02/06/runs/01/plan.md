@@ -1,0 +1,52 @@
+---
+carriers:
+  - { carrier: "change/execution-environments/26/10/01/01/test/core-executes.test.ts", parameters: {"environment":"linux"} }
+  - { carrier: "change/execution-environments/26/10/01/01/test/core-executes.test.ts", parameters: {"environment":"windows"} }
+  - "change/far/26/09/26/01/test/genesis/agent-guidance-scoped-and-concise.test.ts"
+  - "change/far/26/09/26/01/test/genesis/brain-nodes-born-through-one-mechanism.test.ts"
+  - "change/far/26/09/26/01/test/genesis/brain-structure-validation.test.ts"
+  - "change/far/26/09/26/01/test/genesis/closed-learning-integrity.test.ts"
+  - "change/far/26/09/26/01/test/genesis/kaal-context-in-brain-not-agent-guidance.test.ts"
+  - "change/far/26/09/26/01/test/genesis/kaal-meaning-in-brain-not-skills.test.ts"
+  - "change/far/26/09/26/01/test/genesis/past-understanding-retained.test.ts"
+  - "change/far/26/09/26/01/test/genesis/seal-state-written-only-by-sealing-on-main.test.ts"
+  - "change/far/26/09/26/01/test/genesis/skills-born-from-own-init.test.ts"
+  - "change/far/26/09/26/01/test/genesis/skills-follow-agent-skills-standard.test.ts"
+  - "change/far/26/09/26/01/test/genesis/skills-independent-capabilities.test.ts"
+  - "change/far/26/09/30/01/test/change/changes-are-immutable-occurrences-beneath-their-lineage.test.ts"
+  - "change/far/26/09/30/01/test/change/closed-change-cannot-change-unnoticed.test.ts"
+  - "change/far/26/09/30/01/test/genesis-seals/changes-checked-against-seals-of-target-branch.test.ts"
+  - "change/far/26/09/30/04/test/reviewing/review-round-justified-by-confidence-in-responsibility.test.ts"
+  - "change/far/26/09/30/04/test/reviewing/reviewing-ends-every-loop-in-one-of-four-outcomes.test.ts"
+  - "change/far/26/09/30/04/test/reviewing/reviewing-is-independent-of-what-it-reviews.test.ts"
+  - "change/far/26/09/30/04/test/reviewing/reviewing-is-instructions-not-a-script.test.ts"
+  - "change/far/26/10/02/05/test/delivery/delivery-admitted-by-recognized-origin.test.ts"
+  - "change/git-independence/26/10/01/01/test/no-git.test.ts"
+  - "change/github-independence/26/10/01/01/test/no-github.test.ts"
+---
+
+Derived, not authored: the Carriers that hold the Test Cases active for each requirement below, each Carrier once under each set of parameters its requirement's instances are required under, computed from the Test Cases, the `tests` and `supersedes` they declare and the instances the Changes require. Made again from them, it is the same.
+
+- agent-guidance-scoped-and-concise
+- brain-nodes-born-through-one-mechanism
+- brain-structure-validation
+- changes-are-immutable-occurrences-beneath-their-lineage
+- changes-checked-against-seals-of-target-branch
+- closed-change-cannot-change-unnoticed
+- closed-learning-integrity
+- delivery-admitted-by-recognized-origin
+- git-independence
+- github-independence
+- kaal-context-in-brain-not-agent-guidance
+- kaal-meaning-in-brain-not-skills
+- linux-support
+- past-understanding-retained
+- review-round-justified-by-confidence-in-responsibility
+- reviewing-ends-every-loop-in-one-of-four-outcomes
+- reviewing-is-independent-of-what-it-reviews
+- reviewing-is-instructions-not-a-script
+- seal-state-written-only-by-sealing-on-main
+- skills-born-from-own-init
+- skills-follow-agent-skills-standard
+- skills-independent-capabilities
+- windows-support
