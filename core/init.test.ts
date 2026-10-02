@@ -121,7 +121,7 @@ const sabotage: Record<string, (kaal: string) => void> = {
     const file = path.join(kaal, KERNEL_FILE);
     fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("type: Definition", "type: Node"));
   },
-  "the Kernel renamed": (kaal) => fs.renameSync(path.join(kaal, KERNEL_FILE), path.join(kaal, "kaal kernel.md")),
+  "the Kernel renamed": (kaal) => fs.renameSync(path.join(kaal, KERNEL_FILE), path.join(kaal, "KAAL Kernels.md")),
   "the Kernel replaced by a directory": (kaal) => {
     fs.rmSync(path.join(kaal, KERNEL_FILE));
     fs.mkdirSync(path.join(kaal, KERNEL_FILE));
