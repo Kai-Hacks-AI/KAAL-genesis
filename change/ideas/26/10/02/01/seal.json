@@ -1,0 +1,11 @@
+{
+  "unit": "change/ideas/26/10/02/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "idea/less-is-more.md",
+      "sha256": "8563643fa4208ad7e933634d73e8251185f49dd040a48cc159300168fe1f6640"
+    }
+  ],
+  "seal": "381ec651fbc292c61f5af6c69230be8c143f24f76a9e1d4b7ec200cf362e92af"
+}

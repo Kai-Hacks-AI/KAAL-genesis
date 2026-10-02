@@ -7,6 +7,13 @@
     ],
     "seal": "b771b45f3372565bef6bf5a44525b7fcd2eec3821a587aa669cf5f4f7340a6dd"
   },
+  "ideas": {
+    "units": [
+      "change/ideas/26/10/02/01",
+      "change/ideas/26/10/02/02"
+    ],
+    "seal": "9b0f222b5b1957fba931ef21dc0c0a567c492a9214eab365a5c2df0105d6f540"
+  },
   "regression-testing": {
     "units": [
       "change/regression-testing/26/09/30/01"
@@ -19,5 +26,11 @@
       "change/requirements/26/09/30/02"
     ],
     "seal": "3f3a3aef20b14646aaaf058d83bdf78d128cc79a0e9009c1674b2d5a6b08a3db"
+  },
+  "windows-evidence": {
+    "units": [
+      "change/windows-evidence/26/10/01/01"
+    ],
+    "seal": "e5fa7b1480b676838957e530c5cc29f0427c4140baf702de2b6da19fa3eb6b4f"
   }
 }
