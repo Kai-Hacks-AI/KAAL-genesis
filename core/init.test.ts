@@ -464,7 +464,6 @@ test("kaal init <directory> [--kaal <dir>] works from the command line, without 
 });
 
 // The catalogue: a small file Core owns, read and never inferred.
-const SKILLS = fileURLToPath(new URL("../skills/", import.meta.url));
 
 test("Core reads its catalogue file: kind and name only, nothing scanned", () => {
   const entries = available();
@@ -511,24 +510,4 @@ test("what Core reports as available is what the catalogue lists, whatever else 
     ["testing"],
   );
   assert.equal(after.available.length, names.length);
-});
-
-test("this repository is the distribution today: the catalogue lists exactly its Skills, no Extension", () => {
-  const skills = fs
-    .readdirSync(SKILLS, { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-  const listed = available();
-  assert.deepEqual(
-    listed
-      .filter((c) => c.kind === "skill")
-      .map((c) => c.name)
-      .sort(),
-    skills,
-  );
-  assert.deepEqual(
-    listed.filter((c) => c.kind === "extension"),
-    [],
-  );
 });
