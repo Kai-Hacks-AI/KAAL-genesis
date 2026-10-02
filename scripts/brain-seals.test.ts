@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ROOT } from "../skills/using-brain/scripts/brain.js";
 import { validate } from "../skills/using-brain/scripts/validate.js";
+import fs from "node:fs";
+import path from "node:path";
 import {
+  ADMITTED_OPEN,
+  admittedErrors,
   brainChains,
   brainErrors,
   checkBrain,
@@ -190,4 +194,54 @@ test("refuses to commit anything sealing does not produce", () => {
     sealingOutputErrors(diffData("lock-added")),
     refused("brain/learning/seals.json.lock", "lock added"),
   );
+});
+
+// A learning admitted open before sealing refused an open learning ahead of a
+// sealed one. The fixture holds one between two sealed learnings of a lineage.
+const ADMITTED = new Map([
+  [
+    "genesis/26/09/25/02",
+    new Map([["nodes/d.md", "9b37858cc4c7bdb3070966121eeb21b54fd85c1673cc2158747481fa5d875d73"]]),
+  ],
+]);
+const OPEN_BEFORE_SEALED = "genesis/26/09/26/01: sealed after open unit genesis/26/09/25/02";
+
+test("an open learning before a sealed one is still refused where none was admitted", () => {
+  const root = scratchBrain("admitted-open");
+  assert.ok(checkBrain(root, new Map()).includes(OPEN_BEFORE_SEALED));
+});
+
+test("a learning admitted open stays outside its lineage's chain and sealing leaves it as it was", () => {
+  const root = scratchBrain("admitted-open");
+  assert.deepEqual(brainChains(root, ADMITTED).get("genesis"), ["genesis/26/09/25/01", "genesis/26/09/26/01"]);
+  assert.deepEqual(brainErrors(root, ADMITTED), []);
+  assert.deepEqual(sealBrain(root, ADMITTED), []);
+  assert.deepEqual(tree(root), tree(brainData("admitted-open")));
+});
+
+test("an admitted open learning is history as admitted: changed, added or removed bytes are refused", () => {
+  const unit = "genesis/26/09/25/02";
+  const changed = scratchBrain("admitted-open");
+  fs.appendFileSync(path.join(changed, unit, "nodes/d.md"), "More.\n");
+  assert.deepEqual(admittedErrors(changed, ADMITTED), [`${unit}/nodes/d.md: changed after admission`]);
+  const added = scratchBrain("admitted-open");
+  fs.writeFileSync(path.join(added, unit, "nodes/e.md"), "---\nname: e\n---\n\nNew.\n");
+  assert.deepEqual(admittedErrors(added, ADMITTED), [`${unit}/nodes/e.md: added to an admitted open learning`]);
+  const removed = scratchBrain("admitted-open");
+  fs.rmSync(path.join(removed, unit, "nodes/d.md"));
+  assert.deepEqual(admittedErrors(removed, ADMITTED), [`${unit}/nodes/d.md: removed after admission`]);
+  assert.ok(brainErrors(changed, ADMITTED).some((e) => e.endsWith("changed after admission")));
+});
+
+test("admission is for the learning named and not for another open learning born after it", () => {
+  const root = scratchBrain("admitted-open");
+  const born = path.join(root, "genesis/26/09/25/03/nodes");
+  fs.mkdirSync(born, { recursive: true });
+  fs.writeFileSync(path.join(born, "f.md"), "---\nname: f\n---\n\nA learning born open.\n");
+  assert.ok(brainErrors(root, ADMITTED).includes("genesis/26/09/26/01: sealed after open unit genesis/26/09/25/03"));
+});
+
+test("the admission KAAL holds is dormant where its learning is absent, as on main", () => {
+  assert.ok(ADMITTED_OPEN.size > 0);
+  assert.deepEqual(brainErrors(brainData("sealed"), ADMITTED_OPEN), []);
 });
