@@ -306,3 +306,51 @@ test("FAR-11 admits a Linux Run and a Windows Run that each state the Hit the re
     assert.doesNotMatch(text, /[0-9a-f]{40}|https?:|[A-Za-z]:\\|runner|artifact|workflow/i, file);
   }
 });
+
+// FAR-12: the Hit that makes a symlink test fixture portable. It protects nothing new, though it repairs a retained Defect, which no Test Case yet tests,, so R₁₂ = R₁₁ and its Plan is Plan₁₁'s bytes. Its
+// record is the identity of the Hit it records, and its Runs state it.
+const FAR_12 = "change/far/26/10/02/04";
+const FAR_12_PLAN = `${FAR_12}/runs/01/plan.md`;
+const FAR_12_RUNS = { linux: `${FAR_12}/runs/01/run-linux.md`, windows: `${FAR_12}/runs/01/run-windows.md` };
+
+test("FAR-12 is written under Authorise: no protection changes, so its Regression is FAR-11's", () => {
+  assert.match(fs.readFileSync(`${FAR_12}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
+  assert.deepEqual(identities(`${FAR_12}/feature.md`), []);
+  assert.deepEqual(identities(`${FAR_12}/authorise.md`), []);
+  const result = computeRegression({ previous: identities(`${FAR_11}/regression.md`), feature: [], authorise: [] });
+  assert.ok("regression" in result, "errors" in result ? result.errors.join("; ") : "");
+  assert.deepEqual(result.regression, identities(`${FAR_12}/regression.md`).sort());
+  assert.equal(result.regression.length, 22);
+});
+
+test("Plan₁₂ is exactly what R₁₂ derives under the decisions Plan₉ was made under, and is Plan₁₁'s bytes", () => {
+  const { cases, errors } = kaalTestCases();
+  assert.deepEqual(errors, []);
+  const decisions = kaalInstanceRequirements();
+  assert.deepEqual(decisions.errors, []);
+  const required = decisions.required.filter((d) => FAR_9_DECISIONS.includes(d.file));
+  const derived = testPlanProtecting(cases, "requirement", identities(`${FAR_12}/regression.md`), required);
+  assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
+  assert.equal(fs.readFileSync(FAR_12_PLAN, "utf8"), derived.plan);
+  assert.equal(fs.readFileSync(FAR_12_PLAN, "utf8"), fs.readFileSync(FAR_11_PLAN, "utf8"));
+  assert.equal(derived.instances.length, 22);
+});
+
+test("FAR-12 admits a Linux Run and a Windows Run that each state the Hit the record is about, and together evidence Plan₁₂", () => {
+  const linux = readRun(FAR_12_RUNS.linux);
+  const windows = readRun(FAR_12_RUNS.windows);
+  assert.deepEqual(admissionErrors(FAR_12, FAR_12_PLAN, [linux, windows]), []);
+  assert.equal(linux.candidateIdentity, "far/26/10/02/04");
+  assert.equal(linux.unrun.length, 1);
+  assert.equal(windows.unrun.length, 1);
+  assert.notDeepEqual(linux.unrun, windows.unrun);
+  for (const alone of [linux, windows]) assert.equal(planEvidence([alone]).evidence?.evidenced, false);
+  // Runs that concern the previous Hit are refused, though they evidence the same Plan.
+  const previous = [readRun(FAR_11_RUNS.linux), readRun(FAR_11_RUNS.windows)];
+  assert.match(admissionErrors(FAR_12, FAR_12_PLAN, previous).join("\n"), /Run 1 states far\/26\/10\/02\/03/);
+  for (const file of Object.values(FAR_12_RUNS)) {
+    const text = fs.readFileSync(file, "utf8");
+    assert.match(text, /^candidate <historical candidate>$/m, file);
+    assert.doesNotMatch(text, /[0-9a-f]{40}|https?:|[A-Za-z]:\\|runner|artifact|workflow/i, file);
+  }
+});
