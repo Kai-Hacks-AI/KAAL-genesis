@@ -218,26 +218,21 @@ const evidenceOf = (...reports: string[]) => {
   );
 };
 
-test("evidence.ts exposes identities that are not one on its error output, and changes neither what it prints nor how it exits", () => {
+test("evidence.ts says nothing of identities: what it prints, its error output and its exit do not depend on what the Runs state", () => {
   const dir = oneHow();
   const reports = (a?: string, b?: string) => [
     report(runPlanUnder(observeConditions(), "plan.md", dir, dir, a)),
     report(runPlanUnder({ ...observeConditions(), platform: elsewhere }, "plan.md", dir, dir, b)),
   ];
-  const agree = evidenceOf(...reports("A", "A"));
-  const none = evidenceOf(...reports());
-  const differ = evidenceOf(...reports("A", "B"));
-  const some = evidenceOf(...reports("A", undefined));
-  for (const r of [agree, none, differ, some]) {
+  const results = [reports("A", "A"), reports(), reports("A", "B"), reports("A", undefined)].map((r) =>
+    evidenceOf(...r),
+  );
+  for (const r of results) {
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /\nevidenced\n$/);
+    assert.equal(r.stderr, "", "it does not comment on what the Runs state");
+    assert.equal(r.stdout, results[0].stdout);
   }
-  assert.equal(agree.stdout, none.stdout, "what it prints does not depend on what the Runs state");
-  assert.equal(agree.stdout, differ.stdout);
-  assert.equal(agree.stderr, "");
-  assert.equal(none.stderr, "");
-  assert.match(differ.stderr, /^note: the Runs do not state one candidate identity: A, B\n$/);
-  assert.match(some.stderr, /^note: the Runs do not state one candidate identity: A, \(none\)\n$/);
 });
 
 test("run.ts states the identity it is given, and only in the form it documents", () => {

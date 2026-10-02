@@ -8,12 +8,12 @@
     },
     {
       "path": "architecture/candidate-location-and-identity-are-distinct.md",
-      "sha256": "c40815061739c6f322ee56fd4dc29e2f700d55c9a20e64abc8d590e8b151961e"
+      "sha256": "1e4da08bd4145fc7b89292f40a615b66cb5346474947b1a3e205a9b8897d7b8b"
     },
     {
       "path": "architecture/the-using-system-judges-which-candidate-its-evidence-concerns.md",
-      "sha256": "59a1b39577acf0e595ef0e3e883c7e979eb4137e405e77ba8aad2c0e95b09e11"
+      "sha256": "ea75868160e5673afdc431c0a7b6ae7ae9fb48f6f7949433e31d7a9762138da9"
     }
   ],
-  "seal": "b13b0251842520aa2014bc5538679397f75a425865f7f80b73e5216b96d88374"
+  "seal": "853ec24a0ec15102f4f1e32b1b195bbf9f1593ae82a61f109f98d7cf11ab915f"
 }

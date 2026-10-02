@@ -7,10 +7,8 @@ import { planEvidence, readReport, type Outcomes } from "./testing.js";
 // `unevidenced`, then `evidenced` or `not evidenced`. Exits 0 only when the Plan
 // is evidenced. It checks that the reports collect the same Cases, and nothing
 // about which candidate they judged or what they observed: that is for the
-// caller to ensure. Where reports state candidate identities that are not all
-// one, or only some state one, it says so on its error output and changes
-// neither what it prints nor how it exits: what the Runs state is exposed here,
-// and whether it is the candidate the caller requires is not Testing's to judge.
+// caller to ensure. A candidate identity a report states is kept by `readReport`
+// for the caller and is neither compared nor mentioned here.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const files = process.argv.slice(2);
   if (!files.length) {
@@ -29,11 +27,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       console.error(refused.join("\n"));
       process.exitCode = 1;
     } else {
-      const stated = runs.map((r) => r.candidateIdentity);
-      if (stated.some((id) => id !== undefined) && new Set(stated).size > 1)
-        console.error(
-          `note: the Runs do not state one candidate identity: ${[...new Set(stated.map((id) => id ?? "(none)"))].join(", ")}`,
-        );
       console.log(
         [
           ...evidence.passed.map((c) => `pass ${c}`),
