@@ -36,8 +36,8 @@
     },
     {
       "path": "test/delivery/suite.json",
-      "sha256": "87d8bc8580da476a68fc7cc0b4d312a3559a655c02e6951674abd68a9970e701"
+      "sha256": "378edf30b3bb8bacc6a6b9b908a8b1ebd5c4fbe7bad8e1f781e1434ed87a4270"
     }
   ],
-  "seal": "e93103c150942fc3b4ba42a76c00ec9185a1ffc818f784c15f2001fa7ca3e895"
+  "seal": "dfa10d0f1047b657a12454510d59fbce36dd65d03567d0c2773c7a2404c8a10e"
 }
