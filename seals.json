@@ -9,9 +9,10 @@
   },
   "ideas": {
     "units": [
-      "change/ideas/26/10/02/01"
+      "change/ideas/26/10/02/01",
+      "change/ideas/26/10/02/02"
     ],
-    "seal": "381ec651fbc292c61f5af6c69230be8c143f24f76a9e1d4b7ec200cf362e92af"
+    "seal": "9b0f222b5b1957fba931ef21dc0c0a567c492a9214eab365a5c2df0105d6f540"
   },
   "regression-testing": {
     "units": [
