@@ -67,6 +67,12 @@
     ],
     "seal": "d206365b9c4825f74076c040b3deb913bf59904c5bff6157a5afa5d2058feb57"
   },
+  "ideas": {
+    "units": [
+      "change/ideas/26/10/02/01"
+    ],
+    "seal": "381ec651fbc292c61f5af6c69230be8c143f24f76a9e1d4b7ec200cf362e92af"
+  },
   "regression-testing": {
     "units": [
       "change/regression-testing/26/09/30/01"
