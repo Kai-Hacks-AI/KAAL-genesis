@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { birthErrors, checkSkills, standardErrors } from "./skills.js";
+import { birthErrors, checkSkills, collectErrors, standardErrors } from "./skills.js";
 import { linkedSkill, skill, SKILLS, stuckSkill } from "./test-data.js";
 
 const LONG = "a".repeat(65);
@@ -125,4 +125,52 @@ test("checkSkills reports every skill in the directory, in name order", () => {
   assert.equal(errors.filter((e) => e.startsWith("born:")).length, 0);
   assert.ok(errors.includes("no-init: no scripts/init.ts; a skill is born from its own init"));
   assert.ok(errors.includes('unknown-field: "version" is not a field of the standard'));
+});
+
+test("a skill that declares collect.ts collects nothing from an empty scope", () => {
+  assert.deepEqual(collectErrors(skill("collects")), []);
+});
+
+test("a skill without collect.ts makes no collecting claim, so nothing is asked of it", () => {
+  assert.deepEqual(collectErrors(skill("born")), []);
+  assert.deepEqual(collectErrors(skill("no-init")), []);
+});
+
+test("collecting an empty scope must exit 0 and print the JSON array []", () => {
+  const empty = "collecting an empty scope must print the JSON array []";
+  assert.deepEqual(collectErrors(skill("collects-text")), [`collects-text: ${empty}`]);
+  assert.deepEqual(collectErrors(skill("collects-something")), [`collects-something: ${empty}`]);
+  assert.deepEqual(collectErrors(skill("collects-fails")), [
+    "collects-fails: collecting an empty scope failed (exit code 1); an empty scope holds nothing, so collect.ts must exit 0",
+  ]);
+});
+
+test("a collect.ts that does not finish in time is stopped and reported", () => {
+  assert.deepEqual(collectErrors(stuckSkill("collect-never-finishes"), 1000), [
+    "collect-never-finishes: running scripts/collect.ts did not finish within 1000 ms",
+  ]);
+});
+
+test("checkSkills holds a skill to the collecting contract it declares", () => {
+  const errors = checkSkills(SKILLS);
+  assert.deepEqual(
+    errors.filter((e) => e.startsWith("collects:")),
+    [],
+  );
+  assert.equal(errors.filter((e) => e.startsWith("collects-text:")).length, 1);
+});
+
+test("the skills KAAL keeps are born, follow the standard and keep the collecting contract they declare", () => {
+  assert.deepEqual(checkSkills(path.join(import.meta.dirname, "..", "..")), []);
+});
+
+test("a skills directory given relatively is checked as one given absolutely", () => {
+  const here = process.cwd();
+  process.chdir(SKILLS);
+  try {
+    assert.deepEqual(collectErrors("collects"), []);
+    assert.equal(collectErrors("collects-text").length, 1);
+  } finally {
+    process.chdir(here);
+  }
 });

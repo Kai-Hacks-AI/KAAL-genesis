@@ -1,0 +1,11 @@
+{
+  "unit": "change/skills/26/10/02/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "idea/kaal-skill-semantics-in-references.md",
+      "sha256": "32f5ede8df8eb6d8d6f437662a00c0a9fbbbb8bf980dfc031e178bd49ba651d2"
+    }
+  ],
+  "seal": "a992ffa0e0a405801f0a09dcbc8499096b325dc3244267c9ef393fe7ad5361a6"
+}

@@ -19,6 +19,7 @@
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
+    "requirements:collect": "tsx skills/managing-requirements/scripts/collect.ts",
     "requirements:check": "tsx scripts/requirements.ts",
     "test-cases:check": "tsx scripts/test-cases.ts",
     "defects:create": "tsx skills/managing-defects/scripts/create.ts",
