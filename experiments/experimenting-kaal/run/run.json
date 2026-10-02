@@ -1,0 +1,47 @@
+{
+  "startedAt": "2026-10-02T21:33:50.241Z",
+  "finishedAt": "2026-10-02T21:34:15.544Z",
+  "conditions": {
+    "node": "v22.22.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "host": {
+    "path": "/home/user/KAAL/experiments/experimenting-kaal/host",
+    "digest": "6568c8539f2af59ace542c7cadd6155e4275841ea15515df0b04b7b95b75ee69",
+    "manifest": {
+      ".kaal/notes.md": "0f916b19dad142b028995ac4be768f3f569411d736cf0ab3062f110954bcdc9d",
+      "AGENTS.md": "0a31ff034344b017a9e479b812fd654d1267196436fb5b77e15b09efd4827328"
+    },
+    "unchangedAfterRun": true
+  },
+  "instruction": {
+    "sha256": "fac68d216631c24ec0fb86d24e124656384e49ca0fc26226a2edc62456e3eb3e",
+    "bytes": 198
+  },
+  "capabilities": [
+    "Read",
+    "Glob",
+    "Bash(ls:*)",
+    "Bash(cat:*)"
+  ],
+  "agent": [
+    "node",
+    "/home/user/KAAL/skills/experimenting-kaal/scripts/claude-agent.mjs"
+  ],
+  "workspace": {
+    "path": "/tmp/experimenting-kaal-zK9E8r/host",
+    "ancestorsWithInstructions": []
+  },
+  "outcome": {
+    "exitCode": 0,
+    "signal": null,
+    "timedOut": false,
+    "spawnError": null
+  },
+  "changes": {
+    "added": [],
+    "modified": [],
+    "removed": []
+  }
+}

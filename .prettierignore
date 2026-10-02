@@ -10,6 +10,7 @@ skills/using-seals/test-data/
 skills/managing-change/test-data/
 skills/using-agents/test-data/
 skills/using-skills/test-data/
+skills/experimenting-kaal/test-data/
 skills/testing/test-data/
 test-data/
 package-lock.json
@@ -17,3 +18,5 @@ package-lock.json
 skills/*/SKILL.md
 # Why: scripts/genesis.test.ts
 AGENTS.md
+# Why: a Run's retained evidence is kept exactly as the Run wrote it.
+experiments/experimenting-kaal/run/

@@ -18,6 +18,7 @@
     "change:list": "tsx skills/managing-change/scripts/list.ts",
     "testing:run": "tsx skills/testing/scripts/run.ts",
     "testing:evidence": "tsx skills/testing/scripts/evidence.ts",
+    "experiment:run": "tsx skills/experimenting-kaal/scripts/run.ts",
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
