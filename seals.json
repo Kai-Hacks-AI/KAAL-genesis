@@ -45,9 +45,10 @@
       "change/far/26/10/02/03",
       "change/far/26/10/02/04",
       "change/far/26/10/02/05",
-      "change/far/26/10/02/06"
+      "change/far/26/10/02/06",
+      "change/far/26/10/02/07"
     ],
-    "seal": "cbe15655b56660bfda16cd4fd9aae4c8f273db171d93b92406cdb26471344f20"
+    "seal": "1264fedd8e792bb6938ae0307506de983c25c8479d01f86ec366e3ba33758d60"
   },
   "far-integration": {
     "units": [
