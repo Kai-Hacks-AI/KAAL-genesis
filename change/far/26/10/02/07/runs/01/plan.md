@@ -21,7 +21,7 @@ carriers:
   - "change/far/26/09/30/04/test/reviewing/reviewing-is-independent-of-what-it-reviews.test.ts"
   - "change/far/26/09/30/04/test/reviewing/reviewing-is-instructions-not-a-script.test.ts"
   - "change/far/26/10/02/05/test/delivery/delivery-admitted-by-recognized-origin.test.ts"
-  - "change/far/26/10/02/07/test/delivery/check-named-by-what-it-asserts.test.ts"
+  - "change/far/26/10/02/07/test/delivery/environment-in-check-name-only-where-asserted.test.ts"
   - "change/git-independence/26/10/01/01/test/no-git.test.ts"
   - "change/github-independence/26/10/01/01/test/no-github.test.ts"
 ---
@@ -33,10 +33,10 @@ Derived, not authored: the Carriers that hold the Test Cases active for each req
 - brain-structure-validation
 - changes-are-immutable-occurrences-beneath-their-lineage
 - changes-checked-against-seals-of-target-branch
-- check-named-by-what-it-asserts
 - closed-change-cannot-change-unnoticed
 - closed-learning-integrity
 - delivery-admitted-by-recognized-origin
+- environment-in-check-name-only-where-asserted
 - git-independence
 - github-independence
 - kaal-context-in-brain-not-agent-guidance

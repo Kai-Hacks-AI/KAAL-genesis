@@ -5,10 +5,10 @@
 - brain-structure-validation
 - changes-are-immutable-occurrences-beneath-their-lineage
 - changes-checked-against-seals-of-target-branch
-- check-named-by-what-it-asserts
 - closed-change-cannot-change-unnoticed
 - closed-learning-integrity
 - delivery-admitted-by-recognized-origin
+- environment-in-check-name-only-where-asserted
 - git-independence
 - github-independence
 - kaal-context-in-brain-not-agent-guidance

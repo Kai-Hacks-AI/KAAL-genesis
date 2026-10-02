@@ -10,7 +10,13 @@ import {
   readReport,
   type Outcomes,
 } from "../skills/testing/scripts/testing.js";
-import { kaalInstanceRequirements, kaalTestCases, testPlanProtecting } from "./test-cases.js";
+import {
+  kaalInstanceRequirements,
+  kaalSuites,
+  kaalTestCases,
+  testCasesTestingRequirement,
+  testPlanProtecting,
+} from "./test-cases.js";
 
 // The sealed FAR checkpoints, oldest first. They were written when Authorise was
 // called Acceptance and say so; sealing keeps them exactly as written. They are
@@ -459,13 +465,27 @@ test("FAR-14 admits a Linux Run and a Windows Run that each state the Hit the re
   }
 });
 
-// FAR-15: the Hit that names checks by what they assert and not where they run. It states a Delivery Requirement no record
-// stated, with the one Case that judges the candidate's own check definitions, so F₁₅ names it, A₁₅ is empty and R₁₅ = R₁₄ and
-// that identity (24). Its Plan adds the one Case, and its Runs state the record's identity.
+// FAR-15: the Hit that names checks by what they assert and not where they run. It states two Delivery Requirements no record
+// stated, and only one has honest evidence: a check carries an environment in its name only where it runs KAAL's tests under an
+// environment KAAL requires. So F₁₅ names that one, A₁₅ is empty and R₁₅ = R₁₄ and that identity (24). The other,
+// that a check is named by what it asserts, is stated and has no Case: it is not in F₁₅ or R₁₅, and the Hit is not complete
+// while it stays undefended. The Plan adds the one Case, and the Runs state the record's identity.
 const FAR_15 = "change/far/26/10/02/07";
 const FAR_15_PLAN = `${FAR_15}/runs/01/plan.md`;
-const FAR_15_NEW = "check-named-by-what-it-asserts";
+const FAR_15_NEW = "environment-in-check-name-only-where-asserted";
+const FAR_15_UNDEFENDED = "check-named-by-what-it-asserts";
 const FAR_15_RUNS = { linux: `${FAR_15}/runs/01/run-linux.md`, windows: `${FAR_15}/runs/01/run-windows.md` };
+
+test("FAR-15 states a second Requirement that no Case tests, kept out of its Feature and Regression", () => {
+  const text = fs.readFileSync(`${FAR_15}/requirement/${FAR_15_UNDEFENDED}.md`, "utf8");
+  assert.match(text, /^A check is named by what it asserts\.$/m);
+  assert.ok(!identities(`${FAR_15}/feature.md`).includes(FAR_15_UNDEFENDED));
+  assert.ok(!identities(`${FAR_15}/regression.md`).includes(FAR_15_UNDEFENDED));
+  const { cases, errors } = kaalTestCases();
+  assert.deepEqual(errors, []);
+  assert.deepEqual(testCasesTestingRequirement(cases, FAR_15_UNDEFENDED), []);
+  assert.equal(testCasesTestingRequirement(cases, FAR_15_NEW).length, 1);
+});
 
 test("FAR-15 adds one Feature identity and no Authorise: its Regression is FAR-14's and that", () => {
   assert.match(fs.readFileSync(`${FAR_15}/authorise.md`, "utf8"), /^# Authorise\r?\n/);
@@ -481,13 +501,21 @@ test("FAR-15 adds one Feature identity and no Authorise: its Regression is FAR-1
   assert.equal(result.regression.length, 24);
 });
 
-test("Plan₁₅ is exactly what R₁₅ derives under the decisions Plan₉ was made under, and adds the one Case that tests it", () => {
+test("Plan₁₅ is exactly what R₁₅ derives under the decisions Plan₉ was made under, and adds the one Case that tests the Requirement it adds", () => {
   const { cases, errors } = kaalTestCases();
   assert.deepEqual(errors, []);
   const decisions = kaalInstanceRequirements();
   assert.deepEqual(decisions.errors, []);
   const required = decisions.required.filter((d) => FAR_9_DECISIONS.includes(d.file));
-  const derived = testPlanProtecting(cases, "requirement", identities(`${FAR_15}/regression.md`), required);
+  const suites = kaalSuites();
+  assert.deepEqual(suites.errors, []);
+  const derived = testPlanProtecting(
+    cases,
+    "requirement",
+    identities(`${FAR_15}/regression.md`),
+    required,
+    suites.suites,
+  );
   assert.ok("plan" in derived, "errors" in derived ? derived.errors.join("; ") : "");
   assert.equal(fs.readFileSync(FAR_15_PLAN, "utf8"), derived.plan);
   assert.notEqual(fs.readFileSync(FAR_15_PLAN, "utf8"), fs.readFileSync(FAR_14_PLAN, "utf8"));
