@@ -12,6 +12,8 @@ The shape already existed in the record-managing Skills (managing-requirements, 
 
 Collection is local. Recursive traversal is not offered because the Requirements rule (every `*.md` directly in a directory is a Requirement) cannot hold across a tree, where Defects, Ideas and Architecture records sit as siblings. A caller that wants several places names each directory. No caller has yet needed more.
 
+The contract is declared voluntarily by having the script. Which Skills ought to declare it is not yet machine-readable, and KAAL adds no SKILL.md field or temporary metadata for it: that classification is pressure on the future KAAL graph and Skill references, not something to infer from which scripts exist.
+
 Only managing-requirements gains `collect.ts`. The other record-managing Skills fit the shape and gain it when a caller needs it, not for symmetry.
 
 The skill explains the contract. This node records why KAAL holds it.
