@@ -6,40 +6,31 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { birthNode } from "./birth.js";
-import { idError, parse, readNodes, referrersOf, render } from "./graph.js";
+import { nameError, parse, readNodes, referrersOf, render } from "./graph.js";
 
 // Outside any Git repository: the skill works over ordinary files.
 const scope = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "graph-")), "scope");
 const bytes = (file: string) => fs.readFileSync(file);
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-test("a Node may be its own type and its own referent: a self-defining genesis needs no other Node to exist", () => {
+test("a Node may be of a type nothing defines, and be the first Node: no other Node needs to exist", () => {
   const dir = scope();
-  const file = birthNode(dir, "definition", "definition", "Defines.", [
-    { relation: "definition", target: "definition" },
-  ]);
+  const file = birthNode(dir, "KAAL Kernel", "Definition", "Defines.");
   assert.deepEqual(readNodes(dir), {
-    nodes: [
-      {
-        id: "definition",
-        type: "definition",
-        meaning: "Defines.",
-        references: [{ relation: "definition", target: "definition" }],
-        file,
-      },
-    ],
+    nodes: [{ name: "KAAL Kernel", type: "Definition", meaning: "Defines.", references: [], file }],
     errors: [],
   });
+  assert.equal(path.basename(file), "KAAL Kernel.md");
 });
 
 test("every Node, whatever it defines, is one representation read and checked by the same rules", () => {
   const dir = scope();
-  for (const id of ["definition", "reference", "node"]) birthNode(dir, id, "definition", `Meaning of ${id}.`);
+  for (const name of ["KAAL Kernel", "Reference", "Node"]) birthNode(dir, name, "Definition", `Meaning of ${name}.`);
   const { nodes, errors } = readNodes(dir);
   assert.deepEqual(errors, []);
   assert.deepEqual(
-    nodes.map((n) => n.id),
-    ["definition", "node", "reference"],
+    nodes.map((n) => n.name),
+    ["KAAL Kernel", "Node", "Reference"],
   );
   for (const n of nodes) assert.equal(typeof parse(fs.readFileSync(n.file, "utf8"), n.file), "object");
 });
@@ -74,7 +65,7 @@ test("a Reference is owned entirely by its referrer: it is in the referrer's own
   const referrer = birthNode(dir, "referrer", "t", "The referrer.", [{ relation: "mentions", target: "target" }]);
   assert.match(fs.readFileSync(referrer, "utf8"), /relation: mentions\n\s+target: target/);
   assert.doesNotMatch(fs.readFileSync(target, "utf8"), /referrer|mentions/);
-  assert.deepEqual(readNodes(dir).nodes.find((n) => n.id === "referrer")!.references, [
+  assert.deepEqual(readNodes(dir).nodes.find((n) => n.name === "referrer")!.references, [
     { relation: "mentions", target: "target" },
   ]);
 });
@@ -117,7 +108,7 @@ test("reverse relationships are derived from the referrers, never written into t
   assert.deepEqual(referrersOf(nodes, "nobody-refers-here"), []);
   assert.deepEqual(referrersOf(nodes, "elsewhere"), [{ referrer: "two", relation: "r" }]);
   assert.deepEqual(bytes(target), before);
-  assert.deepEqual(readNodes(dir).nodes.find((n) => n.id === "target")!.references, []);
+  assert.deepEqual(readNodes(dir).nodes.find((n) => n.name === "target")!.references, []);
 });
 
 test("different relation identities coexist, and the same relation can name many targets, without Core reading a meaning", () => {
@@ -128,7 +119,7 @@ test("different relation identities coexist, and the same relation can name many
     ...relations.map((relation) => ({ relation, target: "t" })),
     { relation: "tests", target: "u" },
   ]);
-  const [referrer] = readNodes(dir).nodes.filter((n) => n.id === "r");
+  const [referrer] = readNodes(dir).nodes.filter((n) => n.name === "r");
   assert.deepEqual(
     referrer.references.map((x) => x.relation),
     [...relations, "tests"],
@@ -165,32 +156,41 @@ test("identity belongs to the scope: the same id in two scopes is two Nodes, and
 test("check refuses what is not a Node, and what is a Reference only in name", () => {
   const cases: [string, RegExp][] = [
     ["Node.\n", /missing YAML frontmatter/],
-    ["---\nid: [\n---\nx\n", /not valid YAML/],
+    ["---\nname: [\n---\nx\n", /not valid YAML/],
     ["---\n- a\n---\nx\n", /mapping/],
-    ["---\nid: 1\ntype: t\n---\nx\n", /id is required/],
-    ["---\nid: a\n---\nx\n", /name its type/],
-    ["---\nid: a\ntype: 3\n---\nx\n", /name its type/],
-    ["---\nid: a\ntype: ' '\n---\nx\n", /name its type/],
-    ["---\nid: A\ntype: t\n---\nx\n", /kebab-case/],
-    ["---\nid: other\ntype: t\n---\nx\n", /file name must be other\.md/],
-    ["---\nid: a\ntype: t\n---\n  \n", /meaning/],
-    ["---\nid: a\ntype: t\nreferences: r\n---\nx\n", /must be a list/],
-    ["---\nid: a\ntype: t\nreferences: [r]\n---\nx\n", /must be a mapping/],
-    ["---\nid: a\ntype: t\nreferences:\n  - target: t\n---\nx\n", /relation/],
-    ["---\nid: a\ntype: t\nreferences:\n  - relation: ' '\n    target: t\n---\nx\n", /relation/],
-    ["---\nid: a\ntype: t\nreferences:\n  - relation: r\n---\nx\n", /target/],
-    ["---\nid: a\ntype: t\nreferences:\n  - relation: r\n    target: 7\n---\nx\n", /target/],
+    ["---\nname: 1\ntype: t\n---\nx\n", /name is required/],
+    ["---\nname: a\n---\nx\n", /name its type/],
+    ["---\nname: a\ntype: 3\n---\nx\n", /name its type/],
+    ["---\nname: a\ntype: ' '\n---\nx\n", /name its type/],
+    ["---\nname: a-b\ntype: t\n---\nx\n", /words of letters and digits/],
+    ["---\nname: other\ntype: t\n---\nx\n", /file name must be other\.md/],
+    ["---\nname: a\ntype: t\n---\n  \n", /meaning/],
+    ["---\nname: a\ntype: t\nreferences: r\n---\nx\n", /must be a list/],
+    ["---\nname: a\ntype: t\nreferences: [r]\n---\nx\n", /must be a mapping/],
+    ["---\nname: a\ntype: t\nreferences:\n  - target: t\n---\nx\n", /relation/],
+    ["---\nname: a\ntype: t\nreferences:\n  - relation: ' '\n    target: t\n---\nx\n", /relation/],
+    ["---\nname: a\ntype: t\nreferences:\n  - relation: r\n---\nx\n", /target/],
+    ["---\nname: a\ntype: t\nreferences:\n  - relation: r\n    target: 7\n---\nx\n", /target/],
   ];
   for (const [text, message] of cases) assert.match(String(parse(text, "a.md")), message, text);
-  for (const id of ["A", "a--b", "a.b", "a/b", "nul", "", "x".repeat(65)]) assert.ok(idError(id), id);
+  for (const name of ["", " a", "a ", "a  b", "a-b", "a.b", "a/b", "a:b", "NUL", "con", "x".repeat(65), "e\u0301"])
+    assert.ok(nameError(name), name);
+  for (const name of ["a", "KAAL Kernel", "Größe", "Reference 2", "x".repeat(64)])
+    assert.equal(nameError(name), undefined, name);
+  // Names differing only in case are one name, because a file system may say so.
+  const folded = scope();
+  fs.mkdirSync(folded, { recursive: true });
+  fs.writeFileSync(path.join(folded, "Reference.md"), render("Reference", "t", "x"));
+  fs.writeFileSync(path.join(folded, "reference.md"), render("reference", "t", "y"));
+  if (readNodes(folded).nodes.length === 2) assert.match(readNodes(folded).errors.join("\n"), /another case/);
   const dir = scope();
   assert.throws(() => birthNode(dir, "a", "t", " \n"), /meaning/);
   assert.throws(() => birthNode(dir, "a", "t", "x", [{ relation: "", target: "t" }]), /relation/);
   assert.throws(() => birthNode(dir, "a", "t", "x", [{ relation: "r", target: " " }]), /target/);
   assert.deepEqual(fs.existsSync(dir) ? fs.readdirSync(dir) : [], []);
   // Other frontmatter is neither read nor refused.
-  assert.deepEqual(parse("---\nid: a\ntype: t\nsupersedes: b\n---\nx\n", "a.md"), {
-    id: "a",
+  assert.deepEqual(parse("---\nname: a\ntype: t\nsupersedes: b\n---\nx\n", "a.md"), {
+    name: "a",
     type: "t",
     meaning: "x",
     references: [],
@@ -205,7 +205,7 @@ test("a rendered Node parses back to the same Node", () => {
   ];
   const text = render("a", "t", "  Meaning\n\nmore.\n\n", refs);
   assert.deepEqual(parse(text, "a.md"), {
-    id: "a",
+    name: "a",
     type: "t",
     meaning: "  Meaning\n\nmore.",
     references: refs,
@@ -220,7 +220,7 @@ test("only *.md regular files directly in the scope are candidates; a missing sc
   fs.mkdirSync(path.join(dir, "sub"));
   fs.writeFileSync(path.join(dir, "sub", "b.md"), "not directly in the scope");
   assert.deepEqual(
-    readNodes(dir).nodes.map((n) => n.id),
+    readNodes(dir).nodes.map((n) => n.name),
     ["a"],
   );
   assert.deepEqual(readNodes(dir).errors, []);
@@ -264,12 +264,12 @@ test("nothing is retrofitted: records of other kinds beside a scope are left exa
   const legacy = path.join(path.dirname(dir), "idea");
   fs.mkdirSync(legacy);
   const idea = path.join(legacy, "an-idea.md");
-  fs.writeFileSync(idea, "---\nid: an-idea\nidea: It could be so.\n---\n\nWhy.\n");
+  fs.writeFileSync(idea, "---\nname: an-idea\nidea: It could be so.\n---\n\nWhy.\n");
   const before = bytes(idea);
   birthNode(dir, "a", "t", "x", [{ relation: "from", target: "an-idea" }]);
   assert.deepEqual(readNodes(dir).errors, []);
   assert.deepEqual(
-    readNodes(dir).nodes.map((n) => n.id),
+    readNodes(dir).nodes.map((n) => n.name),
     ["a"],
   );
   assert.deepEqual(bytes(idea), before);

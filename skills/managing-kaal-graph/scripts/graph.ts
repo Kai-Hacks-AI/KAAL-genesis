@@ -6,23 +6,28 @@ import YAML from "yaml";
 export type Reference = { relation: string; target: string };
 
 /** A Node: a durable, immutable, addressable thing with an identity in the scope (directory) that holds it, and a type naming what it is. */
-export type Node = { id: string; type: string; meaning: string; references: Reference[]; file: string };
+export type Node = { name: string; type: string; meaning: string; references: Reference[]; file: string };
 
 /** Windows reserves these device names as file names, with or without an extension. */
 const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
 
 /** Far inside the common 255-byte file name limit once `.md` is added. */
-export const MAX_ID = 64;
+export const MAX_NAME = 64;
 
 /**
- * A Node's id is its file name in its scope, so it must resolve to the same
- * file on every platform. This is the identity of Nodes held here and no
- * more: a Reference target is an opaque name and owes this format nothing.
+ * A Node's name is its identity in its scope and its file name there, so it
+ * must resolve to the same file on every platform: words of letters and digits
+ * (any script, composed form) with single spaces between, no Windows reserved
+ * device name. Two names that differ only in case are one name, because a file
+ * system may say so. This is the identity of Nodes held here and no more: a
+ * Reference target or a type is an opaque name and owes this format nothing.
  */
-export function idError(id: string): string | undefined {
-  if (id.length > MAX_ID) return `id "${id.slice(0, 16)}..." is longer than ${MAX_ID} characters`;
-  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)) return `id "${id}" must be lowercase kebab-case (a-z, 0-9, single hyphens)`;
-  if (RESERVED.test(id)) return `id "${id}" is reserved on Windows`;
+export function nameError(name: string): string | undefined {
+  if (name.length > MAX_NAME) return `name "${name.slice(0, 16)}..." is longer than ${MAX_NAME} characters`;
+  if (name !== name.normalize("NFC")) return `name "${name}" must be in Unicode normal form C`;
+  if (!/^[\p{L}\p{N}]+( [\p{L}\p{N}]+)*$/u.test(name))
+    return `name "${name}" must be words of letters and digits with single spaces`;
+  if (RESERVED.test(name.toLowerCase())) return `name "${name}" is reserved on Windows`;
   return undefined;
 }
 
@@ -46,9 +51,9 @@ export function typeError(type: unknown): string | undefined {
   return typeof type === "string" && type.trim() ? undefined : "a Node must name its type";
 }
 
-/** The text of a Node file: frontmatter holding its id, its type and the References it states, then its meaning. */
-export function render(id: string, type: string, meaning: string, references: Reference[] = []): string {
-  const data: Record<string, unknown> = { id, type: type.trim() };
+/** The text of a Node file: frontmatter holding its name, its type and the References it states, then its meaning. */
+export function render(name: string, type: string, meaning: string, references: Reference[] = []): string {
+  const data: Record<string, unknown> = { name, type: type.trim() };
   if (references.length)
     data.references = references.map((r) => ({ relation: r.relation.trim(), target: r.target.trim() }));
   return `---\n${YAML.stringify(data).trimEnd()}\n---\n\n${framed(meaning)}\n`;
@@ -65,11 +70,11 @@ export function parse(text: string, file: string): Node | string {
     return `${file}: frontmatter is not valid YAML`;
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return `${file}: frontmatter must be a mapping`;
-  const { id, type, references } = data as { id?: unknown; type?: unknown; references?: unknown };
-  if (typeof id !== "string") return `${file}: id is required`;
-  const error = idError(id);
+  const { name, type, references } = data as { name?: unknown; type?: unknown; references?: unknown };
+  if (typeof name !== "string") return `${file}: name is required`;
+  const error = nameError(name);
   if (error) return `${file}: ${error}`;
-  if (path.basename(file) !== `${id}.md`) return `${file}: file name must be ${id}.md`;
+  if (path.basename(file) !== `${name}.md`) return `${file}: file name must be ${name}.md`;
   if (typeof type !== "string" || typeError(type)) return `${file}: ${typeError(type)}`;
   const meaning = framed(match[2]);
   if (!meaning) return `${file}: a Node must give its meaning`;
@@ -81,13 +86,13 @@ export function parse(text: string, file: string): Node | string {
     const { relation, target } = reference as Reference;
     stated.push({ relation: relation.trim(), target: target.trim() });
   }
-  return { id, type: type.trim(), meaning, references: stated, file };
+  return { name, type: type.trim(), meaning, references: stated, file };
 }
 
 /**
  * Every Node in the scope `dir`, and everything that claims to be one: the
  * `*.md` entries directly in it, each a regular file holding a Node. The scope
- * owns its ids, so an id is unique here and nowhere else is asked. Whether a
+ * owns its names, so a name is unique here and nowhere else is asked. Whether a
  * Reference's target is a Node here is never asked either. A missing scope
  * holds no Nodes.
  */
@@ -108,6 +113,13 @@ export function readNodes(dir: string): { nodes: Node[]; errors: string[] } {
     if (typeof result === "string") errors.push(result);
     else nodes.push(result);
   }
+  const seen = new Map<string, string>();
+  for (const { name } of nodes) {
+    const folded = name.toLowerCase();
+    const first = seen.get(folded);
+    if (first) errors.push(`${dir}: name "${name}" is the same name as "${first}" in another case`);
+    else seen.set(folded, name);
+  }
   return { nodes, errors };
 }
 
@@ -118,6 +130,6 @@ export function readNodes(dir: string): { nodes: Node[]; errors: string[] } {
  */
 export function referrersOf(nodes: Node[], target: string): { referrer: string; relation: string }[] {
   return nodes.flatMap((n) =>
-    n.references.filter((r) => r.target === target).map((r) => ({ referrer: n.id, relation: r.relation })),
+    n.references.filter((r) => r.target === target).map((r) => ({ referrer: n.name, relation: r.relation })),
   );
 }

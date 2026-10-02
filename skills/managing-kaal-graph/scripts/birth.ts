@@ -1,22 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { idError, referenceError, render, type Reference, typeError } from "./graph.js";
+import { nameError, referenceError, render, type Reference, typeError } from "./graph.js";
 
 /**
- * Births the Node `id` in the scope `dir`: `<dir>/<id>.md`, never over an
+ * Births the Node `name` in the scope `dir`: `<dir>/<name>.md`, never over an
  * existing file. A Node states its References when it is born, because they
- * are part of the referrer and a Node never changes. Refuses an unportable id,
+ * are part of the referrer and a Node never changes. Refuses an unportable name,
  * a blank type, a blank meaning, a malformed Reference and a symlinked dir. Returns the file.
  */
 export function birthNode(
   dir: string,
-  id: string,
+  name: string,
   type: string,
   meaning: string,
   references: Reference[] = [],
 ): string {
-  const error = idError(id) ?? typeError(type);
+  const error = nameError(name) ?? typeError(type);
   if (error) throw new Error(error);
   if (!meaning.trim()) throw new Error("a Node must give its meaning");
   for (const reference of references) {
@@ -25,9 +25,9 @@ export function birthNode(
   }
   if (fs.lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${dir}: symlink`);
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${id}.md`);
+  const file = path.join(dir, `${name}.md`);
   // "wx" refuses to overwrite: a Node is never rewritten.
-  fs.writeFileSync(file, render(id, type, meaning, references), { flag: "wx" });
+  fs.writeFileSync(file, render(name, type, meaning, references), { flag: "wx" });
   return file;
 }
 
@@ -45,13 +45,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (args[i] === "--reference" && args[i + 1]?.includes("=")) references.push(parseReference(args[++i]));
     else rest.push(args[i]);
   }
-  const [dir, id, type, meaning, ...extra] = rest;
-  if (!dir || !id || !type || !meaning || extra.length) {
-    console.error("usage: birth.ts <dir> <id> <type> <meaning> [--reference <relation>=<target>]...");
+  const [dir, name, type, meaning, ...extra] = rest;
+  if (!dir || !name || !type || !meaning || extra.length) {
+    console.error("usage: birth.ts <dir> <name> <type> <meaning> [--reference <relation>=<target>]...");
     process.exitCode = 2;
   } else {
     try {
-      console.log(birthNode(dir, id, type, meaning, references));
+      console.log(birthNode(dir, name, type, meaning, references));
     } catch (e) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exitCode = 1;

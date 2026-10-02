@@ -4,61 +4,68 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { birthNode } from "../skills/managing-kaal-graph/scripts/birth.js";
-import { readNodes, referrersOf } from "../skills/managing-kaal-graph/scripts/graph.js";
-import { closureErrors, kaalGraph } from "./graph.js";
+import { readNodes } from "../skills/managing-kaal-graph/scripts/graph.js";
+import { kaalGraph, kernelErrors } from "./graph.js";
 
-// The birth-test: KAAL's graph is exactly Definition, Reference and Node, and describes itself.
+// The birth-test: KAAL's graph is KAAL Kernel, then Reference, then Node, each of type Definition.
 // Why: brain/learning/graph/26/10/02/01/nodes/managing-kaal-graph.md
-const byId = () => new Map(kaalGraph().nodes.map((n) => [n.id, n]));
-
-test("KAAL's graph is valid, closed, and holds exactly the three Nodes born so far", () => {
-  const { nodes, errors } = kaalGraph();
-  assert.deepEqual(errors, []);
-  assert.deepEqual(
-    nodes.map((n) => n.id),
-    ["definition", "node", "reference"],
-  );
-});
-
-test("Definition is the genesis: of type Definition, so there is no typeless root, and it states no Reference", () => {
-  const definition = byId().get("definition")!;
-  assert.equal(definition.type, "definition");
-  assert.deepEqual(definition.references, []);
-  assert.match(definition.meaning, /^A Definition is a Node that defines what something is\./);
-});
-
-test("Reference and Node are ordinary Definition Nodes, one representation with Definition", () => {
-  const { nodes } = kaalGraph();
-  for (const id of ["reference", "node"]) assert.equal(byId().get(id)!.type, "definition");
-  assert.match(
-    byId().get("node")!.meaning,
-    /^A Node is a durable, immutable, addressable thing with an identity in the scope that owns it\.$/,
-  );
-  assert.match(byId().get("reference")!.meaning, /belongs to its referrer/);
-  assert.equal(new Set(nodes.map((n) => path.extname(n.file))).size, 1);
-});
-
-test("Reference uses the Reference mechanism on itself: Reference → Reference, by a relation that is itself a Definition", () => {
-  const reference = byId().get("reference")!;
-  assert.deepEqual(reference.references, [{ relation: "reference", target: "reference" }]);
-  assert.deepEqual(referrersOf(kaalGraph().nodes, "reference"), [{ referrer: "reference", relation: "reference" }]);
-  // Nothing else names Reference, and Definition and Node name nothing: the target knows no referrer.
-  assert.deepEqual(byId().get("definition")!.references, []);
-  assert.deepEqual(byId().get("node")!.references, []);
-});
-
-test("closure is falsifiable: an undefined relation, an undefined type or a typeless root is reported", () => {
+const byName = () => new Map(kaalGraph().nodes.map((n) => [n.name, n]));
+const copy = () => {
   const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "kaal-graph-")), "graph");
   fs.cpSync("graph", dir, { recursive: true });
-  birthNode(dir, "uses", "definition", "Uses an undefined relation.", [{ relation: "defined-using", target: "node" }]);
-  birthNode(dir, "stray", "undefined-type", "Names no Definition.");
+  return dir;
+};
+
+test("KAAL's graph is valid and holds exactly the three Nodes born so far", () => {
+  const { nodes, errors } = kaalGraph();
+  assert.deepEqual(errors, []);
+  assert.deepEqual(nodes.map((n) => n.name).sort(), ["KAAL Kernel", "Node", "Reference"]);
+});
+
+test("KAAL Kernel is the first Node: of type Definition, and it says only what a Definition and its name, type and body are", () => {
+  const kernel = byName().get("KAAL Kernel")!;
+  assert.equal(kernel.type, "Definition");
+  assert.deepEqual(kernel.references, []);
+  assert.match(kernel.meaning, /A Definition is a Markdown file that defines a thing\./);
+  assert.match(kernel.meaning, /`name`.*`type`/s);
+  assert.match(kernel.meaning, /Markdown body/);
+  // Bare minimum: the Kernel pre-designs none of what comes after it or beside it.
+  for (const word of ["Reference", "Node", "supersed", "travers", "resol", "version", "scope", "immutab", "Core"])
+    assert.doesNotMatch(kernel.meaning, new RegExp(word, "i"), word);
+});
+
+test("Reference is born from the Kernel alone: name, type Definition and a body, read like any Definition", () => {
+  const reference = byName().get("Reference")!;
+  assert.equal(reference.type, "Definition");
+  assert.deepEqual(reference.references, []);
+  assert.match(reference.meaning, /^A Reference belongs to its referrer\. It names a relation and a target\./);
+  assert.match(reference.meaning, /requires the target to know nothing about its referrers\.$/);
+  // Nothing beyond the Kernel's contract was needed: its file is the contract's three parts and nothing else.
+  assert.deepEqual(Object.keys(reference).sort(), ["file", "meaning", "name", "references", "type"]);
+  assert.equal(
+    fs.readFileSync(reference.file, "utf8").replace(/\r\n/g, "\n").split("\n---\n")[0],
+    "---\nname: Reference\ntype: Definition",
+  );
+});
+
+test("Node follows as another Definition, and nothing earlier names it or any later Node", () => {
+  const node = byName().get("Node")!;
+  assert.equal(node.type, "Definition");
+  assert.match(
+    node.meaning,
+    /^A Node is a durable, immutable, addressable thing with an identity in the scope that owns it\.$/,
+  );
+  for (const n of [byName().get("KAAL Kernel")!, byName().get("Reference")!])
+    assert.doesNotMatch(n.meaning, /\bNode\b/);
+});
+
+test("the Kernel is falsifiable: no Kernel, a Kernel not of type Definition, or a Node of an undefined type is reported", () => {
+  const dir = copy();
+  birthNode(dir, "Stray", "Mystery", "Of a type the Kernel does not define.");
   const { nodes, errors } = readNodes(dir);
   assert.deepEqual(errors, []);
-  assert.deepEqual(closureErrors(nodes), [
-    'stray: type "undefined-type" names no Definition',
-    'uses: relation "defined-using" names no Definition',
-  ]);
-  assert.match(closureErrors(nodes.filter((n) => n.id !== "definition")).join("\n"), /no Definition Node/);
-  const loose = nodes.map((n) => (n.id === "definition" ? { ...n, type: "node" } : n));
-  assert.match(closureErrors(loose).join("\n"), /definition: must be of type definition/);
+  assert.deepEqual(kernelErrors(nodes), ['Stray: type "Mystery" is not defined by KAAL Kernel']);
+  assert.match(kernelErrors(nodes.filter((n) => n.name !== "KAAL Kernel")).join("\n"), /no KAAL Kernel/);
+  const loose = nodes.map((n) => (n.name === "KAAL Kernel" ? { ...n, type: "Other" } : n));
+  assert.match(kernelErrors(loose).join("\n"), /KAAL Kernel: must be of type Definition/);
 });
