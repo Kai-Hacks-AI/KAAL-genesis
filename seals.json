@@ -14,6 +14,12 @@
     ],
     "seal": "b771b45f3372565bef6bf5a44525b7fcd2eec3821a587aa669cf5f4f7340a6dd"
   },
+  "candidate-identity": {
+    "units": [
+      "change/candidate-identity/26/10/02/01"
+    ],
+    "seal": "b13b0251842520aa2014bc5538679397f75a425865f7f80b73e5216b96d88374"
+  },
   "execution-environments": {
     "units": [
       "change/execution-environments/26/10/01/01",

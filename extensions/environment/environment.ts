@@ -31,5 +31,5 @@ export const environmentConditions = (): Conditions => {
  * `runPlan` with the conditions Testing observes and the condition this Extension supplies. The Run performs
  * the instances those conditions provide and leaves the rest unrun, as Testing always does.
  */
-export const runPlanInEnvironment = (plan: string, root = ".", candidate = root): Run =>
-  runPlanUnder({ ...observeConditions(), ...environmentConditions() }, plan, root, candidate);
+export const runPlanInEnvironment = (plan: string, root = ".", candidate = root, candidateIdentity?: string): Run =>
+  runPlanUnder({ ...observeConditions(), ...environmentConditions() }, plan, root, candidate, candidateIdentity);
