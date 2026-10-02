@@ -17,7 +17,9 @@ export const HOST_AGENTS = "AGENTS.md";
 export const KERNEL_FILE = "KAAL Kernel.md";
 
 /**
- * KAAL Kernel, byte for byte as #175 found it sufficient. It is the material
+ * KAAL Kernel, byte for byte as #175 found it sufficient. Its one authority is
+ * the Definition file `graph/KAAL Kernel.md`, which KAAL's graph also reads as
+ * a Node; Core reads that file and holds no second copy. It is the material
  * that lets an installed KAAL be read from where it stands: the directory
  * carries the meaning of the next Definition with it, so nothing beside it,
  * not even this repository, is needed to read it. Core holds it as text, not
@@ -25,15 +27,7 @@ export const KERNEL_FILE = "KAAL Kernel.md";
  * it. Equal bytes say "this is the Kernel this Core recognizes"; they do not
  * say a different Kernel, older or newer, is not KAAL.
  */
-export const KERNEL = `---
-name: KAAL Kernel
-type: Definition
----
-
-A Definition is a Markdown file that defines a thing. Its YAML frontmatter has a \`name\`, which identifies the Definition among those beside it and is the file's name before \`.md\`, and a \`type\`, which says what kind of thing the file is. A file of type \`Definition\` defines, in its Markdown body, the thing its \`name\` names.
-
-KAAL Kernel is of type \`Definition\`: this body defines Definition itself, which is how every Definition after it is read.
-`;
+export const KERNEL = fs.readFileSync(new URL(`../graph/${KERNEL_FILE}`, import.meta.url), "utf8");
 
 /**
  * The KAAL directory `kaal` names inside `root`, as a posix path relative to
