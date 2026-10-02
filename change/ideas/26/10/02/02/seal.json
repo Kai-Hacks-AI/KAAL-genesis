@@ -1,0 +1,11 @@
+{
+  "unit": "change/ideas/26/10/02/02",
+  "previous": "381ec651fbc292c61f5af6c69230be8c143f24f76a9e1d4b7ec200cf362e92af",
+  "files": [
+    {
+      "path": "idea/rat.md",
+      "sha256": "ee40c64c8281336044f93ef1591764c689bf81f3424aba9d673d2301815f5480"
+    }
+  ],
+  "seal": "9b0f222b5b1957fba931ef21dc0c0a567c492a9214eab365a5c2df0105d6f540"
+}

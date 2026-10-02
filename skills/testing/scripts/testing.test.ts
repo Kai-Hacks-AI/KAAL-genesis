@@ -5,7 +5,18 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { candidateData, planData, rootData } from "./test-data.js";
 import { pathToFileURL } from "node:url";
-import { loaderArgs, nodeOptions, readPlan, readPlanSuites, report, resolveLoaders, runPlan } from "./testing.js";
+import {
+  loaderArgs,
+  nodeOptions,
+  readPlan,
+  readPlanSuites,
+  readSuite,
+  report,
+  resolveLoaders,
+  runPlan,
+} from "./testing.js";
+import fs from "node:fs";
+import os from "node:os";
 
 const RUN = fileURLToPath(new URL("./run.ts", import.meta.url));
 const outcomes = (run: ReturnType<typeof runPlan>) =>
@@ -18,9 +29,10 @@ test("a Plan collects its Suites, and each Suite every Case beneath it, in sorte
     {
       place: "suites/mixed",
       concern: "Cases that prove nothing or fail.",
+      tests: [],
       cases: ["fails.test.ts", "no-test.test.ts", "skips.test.ts"],
     },
-    { place: "suites/marked", concern: "The candidate carries its marker.", cases: ["marked.test.ts"] },
+    { place: "suites/marked", concern: "The candidate carries its marker.", tests: [], cases: ["marked.test.ts"] },
   ]);
 });
 
@@ -99,11 +111,11 @@ test("refuses what is not a Plan: no frontmatter, unreadable, not a mapping, no 
 
 test("a Plan's body is its concern, and frontmatter it does not own is left to the using system", () => {
   assert.deepEqual(readPlan(path.join(rootData("holds"), "plan.md")), {
-    plan: { concern: "# Marked\n\nWhat the marked candidate relies on.", suites: ["suites/marked"] },
+    plan: { concern: "# Marked\n\nWhat the marked candidate relies on.", suites: ["suites/marked"], carriers: [] },
     errors: [],
   });
   assert.deepEqual(readPlan(path.join(rootData("empty"), "plan.md")), {
-    plan: { concern: "Nothing collected yet.", suites: [] },
+    plan: { concern: "Nothing collected yet.", suites: [], carriers: [] },
     errors: [],
   });
 });
@@ -198,4 +210,168 @@ test("run.ts prints the Run and exits 0 only when the Plan holds", () => {
   assert.match(fails.stderr, /^--- suites\/mixed\/fails\.test\.ts\n/);
   assert.equal(run(rootData("broken"), "plan.md").status, 1);
   assert.equal(run(rootData("holds")).status, 2);
+});
+
+const IMPORT = 'import test from "node:test";\n';
+const scratchRoot = (files: Record<string, string>): string => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testing-carriers-"));
+  process.on("exit", () => fs.rmSync(dir, { recursive: true, force: true }));
+  for (const [name, body] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, name), body);
+  }
+  return dir;
+};
+const holds = `${IMPORT}test("holds", () => {});\n`;
+const fails = `${IMPORT}test("fails", () => { throw new Error("no"); });\n`;
+const SUITE = JSON.stringify({ concern: "Scratch." });
+
+test("a Plan collects Carriers directly, beyond any Suite, and a Run executes exactly those", () => {
+  const dir = scratchRoot({
+    "plan.md": "---\nsuites: []\ncarriers:\n  - c/b.test.mjs\n  - a.test.mjs\n---\n\nTwo Carriers.\n",
+    "a.test.mjs": holds,
+    "c/b.test.mjs": holds,
+    "c/stale.test.mjs": fails,
+    "c/suite.json": SUITE,
+  });
+  assert.deepEqual(readPlan(path.join(dir, "plan.md")).plan?.carriers, ["c/b.test.mjs", "a.test.mjs"]);
+  const run = runPlan("plan.md", dir);
+  assert.deepEqual(outcomes(run), ["pass c/b.test.mjs", "pass a.test.mjs"]);
+  assert.equal(run.holds, true, "the Suite beside the collected Carrier is not collected with it");
+});
+
+test("a Case that a Suite and the Plan both collect is executed once; Suites run first", () => {
+  const dir = scratchRoot({
+    "plan.md": "---\nsuites:\n  - s\ncarriers:\n  - z.test.mjs\n  - s/one.test.mjs\n---\n\nBoth.\n",
+    "s/suite.json": SUITE,
+    "s/one.test.mjs": holds,
+    "z.test.mjs": holds,
+  });
+  assert.deepEqual(outcomes(runPlan("plan.md", dir)), ["pass s/one.test.mjs", "pass z.test.mjs"]);
+});
+
+test("a Plan with only Suites is read and run exactly as before: it collects no Carrier", () => {
+  assert.deepEqual(readPlanSuites(rootData("holds"), "plan.md").plan?.carriers, []);
+  assert.deepEqual(outcomes(runPlan("plan.md", rootData("holds"), candidateData("marked"))), [
+    "pass suites/marked/nested/marked.test.ts",
+  ]);
+});
+
+test("refuses carriers that are not a list, not beneath the root, collected twice, missing or not Case files", () => {
+  const dir = scratchRoot({
+    "bad.md":
+      "---\nsuites: []\ncarriers:\n  - ../up\n  - gone.test.mjs\n  - notes.md\n  - d.test.mjs\n  - twice.test.mjs\n  - twice.test.mjs\n  - 7\n---\n\nBad.\n",
+    "notes.md": "x",
+    "d.test.mjs/inside.test.mjs": holds,
+    "twice.test.mjs": holds,
+    "scalar.md": "---\nsuites: []\ncarriers: a.test.mjs\n---\n\nBad.\n",
+  });
+  assert.deepEqual(
+    readPlan(path.join(dir, "scalar.md")).errors.map((e) => e.slice(dir.length + 1)),
+    ["scalar.md: carriers must be a list"],
+  );
+  const { errors } = readPlan(path.join(dir, "bad.md"));
+  assert.deepEqual(
+    errors.map((e) => e.slice(dir.length + 1)),
+    [
+      'bad.md: carrier "../up" must be a relative posix path beneath the root',
+      "bad.md: a carrier must be a non-empty path",
+      'bad.md: carrier "twice.test.mjs" is collected twice',
+    ],
+  );
+  const sloppy = scratchRoot({
+    "plan.md": "---\nsuites: []\ncarriers:\n  - gone.test.mjs\n  - notes.md\n  - d.test.mjs\n---\n\nBad.\n",
+    "notes.md": "x",
+    "d.test.mjs/inside.test.mjs": holds,
+  });
+  assert.deepEqual(readPlanSuites(sloppy, "plan.md").errors, [
+    "gone.test.mjs: not a Case file",
+    "notes.md: not a Case file",
+    "d.test.mjs: not a Case file",
+  ]);
+  assert.throws(() => runPlan("plan.md", sloppy), /refusing to run plan\.md:/);
+});
+
+test("a Suite states what it tests; a suite.json that states none, holding old prose or nothing, is read as it was", () => {
+  const dir = scratchRoot({
+    "plan.md": "---\nsuites:\n  - claims\n---\n\nOne Suite that claims.\n",
+    "claims/suite.json": JSON.stringify({ tests: { requirement: ["a", "b"], defect: ["d"] } }),
+    "claims/one.test.mjs": holds,
+    "claims/nested/two.test.mjs": holds,
+    "both/suite.json": JSON.stringify({ concern: "Old prose.", tests: { requirement: ["a"] } }),
+    "both/one.test.mjs": holds,
+    "historical/suite.json": JSON.stringify({ concern: "Old prose." }),
+    "historical/one.test.mjs": holds,
+    "bare/suite.json": "{}",
+    "bare/one.test.mjs": holds,
+  });
+  assert.deepEqual(readSuite(dir, "claims"), {
+    suite: {
+      place: "claims",
+      tests: [
+        { kind: "requirement", id: "a" },
+        { kind: "requirement", id: "b" },
+        { kind: "defect", id: "d" },
+      ],
+      cases: ["nested/two.test.mjs", "one.test.mjs"],
+    },
+    errors: [],
+  });
+  assert.deepEqual(readSuite(dir, "both").suite, {
+    place: "both",
+    concern: "Old prose.",
+    tests: [{ kind: "requirement", id: "a" }],
+    cases: ["one.test.mjs"],
+  });
+  assert.deepEqual(readSuite(dir, "historical").suite, {
+    place: "historical",
+    concern: "Old prose.",
+    tests: [],
+    cases: ["one.test.mjs"],
+  });
+  assert.deepEqual(readSuite(dir, "bare").suite, { place: "bare", tests: [], cases: ["one.test.mjs"] });
+  // What a Suite tests changes nothing about what a Run collects and executes.
+  assert.deepEqual(outcomes(runPlan("plan.md", dir)), ["pass claims/nested/two.test.mjs", "pass claims/one.test.mjs"]);
+});
+
+test("refuses a Suite's tests that is not an object of kinds, each a non-empty list of distinct plain ids", () => {
+  const suites = {
+    list: ["a"],
+    scalar: "a",
+    none: {},
+    "empty-list": { requirement: [] },
+    "not-a-list": { requirement: "a" },
+    "blank-kind": { " ": ["a"] },
+    "blank-id": { requirement: [" "] },
+    spaced: { requirement: ["a b"] },
+    number: { requirement: [7] },
+    twice: { requirement: ["a", "a"] },
+    extra: { tests: { requirement: ["a"] }, cases: ["one.test.mjs"] },
+  };
+  const dir = scratchRoot(
+    Object.fromEntries(
+      Object.entries(suites).flatMap(([name, value]) => [
+        [`${name}/suite.json`, JSON.stringify(name === "extra" ? value : { tests: value })],
+        [`${name}/one.test.mjs`, holds],
+      ]),
+    ),
+  );
+  const errors = (place: string) => readSuite(dir, place).errors;
+  assert.deepEqual(errors("list"), ["list/suite.json: tests must be an object of kinds, each a list of ids"]);
+  assert.deepEqual(errors("scalar"), ["scalar/suite.json: tests must be an object of kinds, each a list of ids"]);
+  assert.deepEqual(errors("none"), ["none/suite.json: tests must name at least one kind"]);
+  assert.deepEqual(errors("empty-list"), [
+    "empty-list/suite.json: tests requirement must be a list of at least one id",
+  ]);
+  assert.deepEqual(errors("not-a-list"), [
+    "not-a-list/suite.json: tests requirement must be a list of at least one id",
+  ]);
+  assert.deepEqual(errors("blank-kind"), ["blank-kind/suite.json: a kind must be a plain name, never blank"]);
+  assert.deepEqual(errors("blank-id"), [
+    "blank-id/suite.json: tests requirement ids must be strings without whitespace",
+  ]);
+  assert.deepEqual(errors("spaced"), ["spaced/suite.json: tests requirement ids must be strings without whitespace"]);
+  assert.deepEqual(errors("number"), ["number/suite.json: tests requirement ids must be strings without whitespace"]);
+  assert.deepEqual(errors("twice"), ['twice/suite.json: tests requirement "a" twice']);
+  assert.deepEqual(errors("extra"), ['extra/suite.json: unknown "cases"']);
 });

@@ -32,16 +32,19 @@
   },
   "regression-testing": {
     "units": [
-      "regression-testing/26/09/30/01"
+      "regression-testing/26/09/30/01",
+      "regression-testing/26/10/01/01",
+      "regression-testing/26/10/02/01"
     ],
-    "seal": "8f9ea2f367c88c0a086d3c748ea3b239b1bd61615beb12dea0a2a3c311eb3d7a"
+    "seal": "a9790c88529c8569bcf6f68847e5b71c5815c163c79dbac76e295ee0a40f4b18"
   },
   "requirements": {
     "units": [
       "requirements/26/09/30/01",
-      "requirements/26/09/30/02"
+      "requirements/26/09/30/02",
+      "requirements/26/10/02/01"
     ],
-    "seal": "1a3fa2438eb4892635141bd2f17677b6c501ffdf943829f436c3368dca8ca616"
+    "seal": "81201e9551a131f276a22dfc4c7a443e249c242c988ef1c4cea0331dd42a586a"
   },
   "review": {
     "units": [

@@ -7,7 +7,8 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts",
+    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts core/*.test.ts",
+    "kaal": "tsx core/kaal.ts",
     "genesis": "tsx scripts/genesis.ts",
     "brain:create": "tsx skills/using-brain/scripts/create-brain.ts",
     "brain:create-node": "tsx skills/using-brain/scripts/create-node.ts",
@@ -16,11 +17,13 @@
     "change:validate": "tsx skills/managing-change/scripts/validate.ts",
     "change:list": "tsx skills/managing-change/scripts/list.ts",
     "testing:run": "tsx skills/testing/scripts/run.ts",
+    "testing:evidence": "tsx skills/testing/scripts/evidence.ts",
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
     "requirements:collect": "tsx skills/managing-requirements/scripts/collect.ts",
     "requirements:check": "tsx scripts/requirements.ts",
+    "feature:compute": "tsx scripts/feature.ts",
     "test-cases:check": "tsx scripts/test-cases.ts",
     "defects:create": "tsx skills/managing-defects/scripts/create.ts",
     "defects:validate": "tsx skills/managing-defects/scripts/validate.ts",
