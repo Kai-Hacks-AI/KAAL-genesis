@@ -20,6 +20,7 @@ pass change/far/26/09/30/04/test/reviewing/review-round-justified-by-confidence-
 pass change/far/26/09/30/04/test/reviewing/reviewing-ends-every-loop-in-one-of-four-outcomes.test.ts
 pass change/far/26/09/30/04/test/reviewing/reviewing-is-independent-of-what-it-reviews.test.ts
 pass change/far/26/09/30/04/test/reviewing/reviewing-is-instructions-not-a-script.test.ts
+pass change/far/26/10/02/05/test/delivery/delivery-admitted-by-recognized-origin.test.ts
 pass change/git-independence/26/10/01/01/test/no-git.test.ts
 pass change/github-independence/26/10/01/01/test/no-github.test.ts
 pass change/execution-environments/26/10/01/01/test/core-executes.test.ts[environment=linux]
