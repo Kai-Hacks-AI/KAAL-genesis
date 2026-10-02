@@ -21,6 +21,7 @@
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
     "requirements:check": "tsx scripts/requirements.ts",
+    "feature:compute": "tsx scripts/feature.ts",
     "test-cases:check": "tsx scripts/test-cases.ts",
     "defects:create": "tsx skills/managing-defects/scripts/create.ts",
     "defects:validate": "tsx skills/managing-defects/scripts/validate.ts",
