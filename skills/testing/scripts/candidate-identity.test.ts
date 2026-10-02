@@ -166,10 +166,23 @@ function legacyRead(text: string): Outcomes {
   return result;
 }
 
-test("every Run FAR has stored still reads, byte for byte as before: none states an identity, and none is changed", () => {
-  const stored = fs.globSync("change/far/*/*/*/*/runs/*/run.md").sort();
-  assert.ok(stored.length >= 9, "FAR's accepted Runs are there to be read");
-  for (const file of stored) {
+// The nine Runs FAR had stored when an identity was first retained, one per accepted FAR record. They are named,
+// never found: what this protects is that these accepted nodes still read as they were written, and a Run FAR stores
+// later is a new node that may state what it has earned, an identity included.
+const HISTORICAL_RUNS = [
+  "change/far/26/09/25/01/runs/01/run.md",
+  "change/far/26/09/26/01/runs/01/run.md",
+  "change/far/26/09/26/02/runs/01/run.md",
+  "change/far/26/09/26/03/runs/01/run.md",
+  "change/far/26/09/30/01/runs/01/run.md",
+  "change/far/26/09/30/02/runs/01/run.md",
+  "change/far/26/09/30/03/runs/01/run.md",
+  "change/far/26/09/30/04/runs/01/run.md",
+  "change/far/26/09/30/05/runs/01/run.md",
+];
+
+test("every historical Run FAR stored still reads, byte for byte as before: none states an identity, and none is changed", () => {
+  for (const file of HISTORICAL_RUNS) {
     const text = fs.readFileSync(file, "utf8");
     const read = readReport(text);
     assert.deepEqual(read.errors, [], file);
