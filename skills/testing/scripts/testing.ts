@@ -309,6 +309,42 @@ export function readSuite(root: string, place: string): { suite?: Suite; errors:
   };
 }
 
+/**
+ * The Cases of the Suites given whose `tests` names at least one of `targets`,
+ * each a `kind` and `id`, as posix paths from the testing root (the Suite's
+ * place and the Case's path beneath it): a Suite that claims a target is
+ * sufficient evidence for it only through its Cases, so each is what a Run must
+ * execute. Each Case once, whatever number of Suites and targets select it,
+ * with the targets it is selected for, sorted by path and then by kind and id.
+ * It is computed from the Suites given and what they declare, never stored. A
+ * Suite is not superseded: supersession is a Test Case's.
+ */
+export function suiteCasesTesting(
+  suites: readonly Suite[],
+  targets: readonly Tests[],
+): { carrier: string; targets: Tests[] }[] {
+  const key = ({ kind, id }: Tests) => JSON.stringify([kind, id]);
+  const wanted = new Map(targets.map((t) => [key(t), { kind: t.kind, id: t.id }]));
+  const selected = new Map<string, Map<string, Tests>>();
+  for (const suite of suites) {
+    const claimed = suite.tests.map(key).filter((k) => wanted.has(k));
+    if (!claimed.length) continue;
+    for (const file of suite.cases) {
+      const carrier = `${suite.place}/${file}`;
+      const into = selected.get(carrier) ?? new Map<string, Tests>();
+      for (const k of claimed) into.set(k, wanted.get(k)!);
+      selected.set(carrier, into);
+    }
+  }
+  const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  return [...selected.entries()]
+    .sort(([a], [b]) => compare(a, b))
+    .map(([carrier, into]) => ({
+      carrier,
+      targets: [...into.values()].sort((a, b) => compare(a.kind, b.kind) || compare(a.id, b.id)),
+    }));
+}
+
 /** Every Suite the Plan at `plan` (relative to `root`) collects, with every way the Plan, a Suite or a collected Carrier is broken. */
 export function readPlanSuites(root: string, plan: string): { plan?: Plan; suites: Suite[]; errors: string[] } {
   const read = readPlan(path.join(root, plan));

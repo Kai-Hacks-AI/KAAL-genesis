@@ -14,6 +14,7 @@ import {
   report,
   resolveLoaders,
   runPlan,
+  suiteCasesTesting,
 } from "./testing.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -374,4 +375,38 @@ test("refuses a Suite's tests that is not an object of kinds, each a non-empty l
   assert.deepEqual(errors("number"), ["number/suite.json: tests requirement ids must be strings without whitespace"]);
   assert.deepEqual(errors("twice"), ['twice/suite.json: tests requirement "a" twice']);
   assert.deepEqual(errors("extra"), ['extra/suite.json: unknown "cases"']);
+});
+
+test("the Cases of the Suites that test a target are those Suites' Cases, each once with the targets it is selected for", () => {
+  const suite = (place: string, tests: { kind: string; id: string }[], cases: string[]) => ({ place, tests, cases });
+  const suites = [
+    suite(
+      "s/a",
+      [
+        { kind: "requirement", id: "r1" },
+        { kind: "requirement", id: "r2" },
+      ],
+      ["x.test.ts", "y.test.ts"],
+    ),
+    suite("s/b", [{ kind: "requirement", id: "r1" }], ["y.test.ts"]),
+    suite("s/c", [], ["z.test.ts"]),
+    suite("s/d", [{ kind: "defect", id: "r1" }], ["w.test.ts"]),
+  ];
+  assert.deepEqual(suiteCasesTesting(suites, [{ kind: "requirement", id: "r1" }]), [
+    { carrier: "s/a/x.test.ts", targets: [{ kind: "requirement", id: "r1" }] },
+    { carrier: "s/a/y.test.ts", targets: [{ kind: "requirement", id: "r1" }] },
+    { carrier: "s/b/y.test.ts", targets: [{ kind: "requirement", id: "r1" }] },
+  ]);
+  assert.deepEqual(
+    suiteCasesTesting(suites, [
+      { kind: "requirement", id: "r2" },
+      { kind: "requirement", id: "r1" },
+    ]).map((e) => [e.carrier, e.targets.map((t) => t.id)]),
+    [
+      ["s/a/x.test.ts", ["r1", "r2"]],
+      ["s/a/y.test.ts", ["r1", "r2"]],
+      ["s/b/y.test.ts", ["r1"]],
+    ],
+  );
+  assert.deepEqual(suiteCasesTesting(suites, [{ kind: "requirement", id: "none" }]), []);
 });

@@ -13,6 +13,7 @@ import {
   carrierPlaces,
   carriersProtecting,
   currentTestCasesTestingRequirement,
+  kaalSuites,
   kaalTestCases,
   TEST_DIR,
   testCasesTestingDefect,
@@ -435,4 +436,39 @@ test("`test-cases.ts plan <kind> <id>...` prints the Plan file, and refuses a wr
   assert.equal(printed.stdout, plan.plan);
   for (const args of [["plan"], ["plan", "requirement"], ["plan", "nothing", "r1"]])
     assert.equal(run(...args).status, 2, args.join(" "));
+});
+
+test("a Suite that tests a Requirement puts its Cases in the Plan that protects it, each once and for it alone", () => {
+  const { dir } = repo({
+    "one.test.ts": tc("states nothing", undefined),
+    "two.test.ts": tc("also states nothing", undefined) + tc("states it too", '{ requirement: ["r1"] }'),
+    "other.test.ts": tc("tests the other", '{ requirement: ["r2"] }'),
+  });
+  fs.writeFileSync(path.join(dir, PLACE, "suite.json"), JSON.stringify({ tests: { requirement: ["r1"] } }));
+  const suites = kaalSuites(dir);
+  assert.deepEqual(suites.errors, []);
+  const { cases } = kaalTestCases(dir);
+  const plan = testPlanProtecting(cases, "requirement", ["r1"], [], suites.suites);
+  assert.ok(!("errors" in plan));
+  assert.deepEqual(plan.carriers, [`${PLACE}/one.test.ts`, `${PLACE}/other.test.ts`, `${PLACE}/two.test.ts`]);
+  assert.match(plan.plan, /^- r1$/m);
+  assert.deepEqual(carriersProtecting(cases, "requirement", ["r1"], suites.suites), { carriers: plan.carriers });
+  const none = testPlanProtecting(cases, "requirement", ["r2"], [], suites.suites);
+  assert.ok(!("errors" in none));
+  assert.deepEqual(none.carriers, [`${PLACE}/other.test.ts`]);
+  const without = testPlanProtecting(cases, "requirement", ["r1"]);
+  assert.ok(!("errors" in without));
+  assert.deepEqual(without.carriers, [`${PLACE}/two.test.ts`]);
+});
+
+test("a Suite's tests name a kind KAAL tests and an id that exists, like a Test Case's", () => {
+  const { dir } = repo({ "a.test.ts": tc("states nothing", undefined) });
+  fs.writeFileSync(
+    path.join(dir, PLACE, "suite.json"),
+    JSON.stringify({ tests: { requirement: ["nope"], idea: ["r1"] } }),
+  );
+  assert.deepEqual(kaalSuites(dir).errors, [
+    `${PLACE}/suite.json tests requirement "nope", which names no requirement`,
+    `${PLACE}/suite.json tests idea "r1", but a Suite may test only requirement or defect`,
+  ]);
 });
