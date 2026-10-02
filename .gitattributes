@@ -10,6 +10,7 @@ skills/using-seals/test-data/** -text
 skills/managing-change/test-data/** -text
 skills/using-agents/test-data/** -text
 skills/using-skills/test-data/** -text
+skills/experimenting-kaal/test-data/** -text
 skills/testing/test-data/** -text
 test-data/** -text
 # Why: brain/learning/genesis/26/09/25/01/nodes/using-skills.md
@@ -18,3 +19,5 @@ skills/*/SKILL.md -text
 AGENTS.md -text
 # Why: graph/KAAL Kernel.md is the one Kernel; kaal init installs its bytes, so no checkout may rewrite them.
 graph/** -text
+# Why: a retained Run is evidence; no checkout may rewrite its bytes.
+experiments/experimenting-kaal/** -text
