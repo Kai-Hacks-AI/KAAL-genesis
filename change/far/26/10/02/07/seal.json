@@ -1,0 +1,43 @@
+{
+  "unit": "change/far/26/10/02/07",
+  "previous": "cbe15655b56660bfda16cd4fd9aae4c8f273db171d93b92406cdb26471344f20",
+  "files": [
+    {
+      "path": "authorise.md",
+      "sha256": "d28c1a667e7a3d36b78685057cce2631de8944ec2c6aecc32b84444f5513c425"
+    },
+    {
+      "path": "feature.md",
+      "sha256": "322f7080a92cc7e7dd21bbfb52d01198e284effa2aa2380589fd078d5bcf7a8f"
+    },
+    {
+      "path": "regression.md",
+      "sha256": "2100c4e6a1bcf68e759e10b75d11c111c38bed58371731ff9cb6cbd70e34ad2a"
+    },
+    {
+      "path": "requirement/check-named-by-what-it-asserts.md",
+      "sha256": "4edc95c3f2f477266aa96d7294fb40391f9ca0c47a325afda669ab44505e53d9"
+    },
+    {
+      "path": "runs/01/plan.md",
+      "sha256": "ed9cd2fe02951f4387bbe9e6cea5b0ca66ef82379a16fab81de9a4b546e49138"
+    },
+    {
+      "path": "runs/01/run-linux.md",
+      "sha256": "f22e4a80fe747243e0ccdd8fabeec5e164b83a60323f759a73e0d4605ac44bc2"
+    },
+    {
+      "path": "runs/01/run-windows.md",
+      "sha256": "33bff821c2b566bf4db74e4dbc5e52ba62d10c85b6828507f844399bf705a032"
+    },
+    {
+      "path": "test/delivery/check-named-by-what-it-asserts.test.ts",
+      "sha256": "78e72e8ff20c2ca4319d6f452578cfd4f074a75bd3bcdc2e32651a75a8c2db7b"
+    },
+    {
+      "path": "test/delivery/suite.json",
+      "sha256": "1f619c9c544f0e00dc37d591f3af0f34077a86b6e9483313d6caa145364b1f96"
+    }
+  ],
+  "seal": "1264fedd8e792bb6938ae0307506de983c25c8479d01f86ec366e3ba33758d60"
+}
