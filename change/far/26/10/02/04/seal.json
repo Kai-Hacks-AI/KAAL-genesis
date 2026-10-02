@@ -1,0 +1,31 @@
+{
+  "unit": "change/far/26/10/02/04",
+  "previous": "d25df72472a281c6172ffcc65f9af88e17261d39d6d015717ad1b057570e988d",
+  "files": [
+    {
+      "path": "authorise.md",
+      "sha256": "d28c1a667e7a3d36b78685057cce2631de8944ec2c6aecc32b84444f5513c425"
+    },
+    {
+      "path": "feature.md",
+      "sha256": "95290013f6dea19f3258ac6922bc6a7f4e49216fb04ba22b5d80711f029789f4"
+    },
+    {
+      "path": "regression.md",
+      "sha256": "c87bb0ab5db2bcdf736bd5220ad352c20a2415f00e62952d0654002ec4eeb594"
+    },
+    {
+      "path": "runs/01/plan.md",
+      "sha256": "28480b65027af84b3a5cba292226387f8835a5aefa0f2aa0eca6f89bba9ae040"
+    },
+    {
+      "path": "runs/01/run-linux.md",
+      "sha256": "39f1aaaaa905fc7317d63b5716dab53dba8f9a1ce4fee5d9a444d328780b2f8a"
+    },
+    {
+      "path": "runs/01/run-windows.md",
+      "sha256": "65674d7a030dafe65fcc5a93da36ddac08587b45d52b022b8ed19fe65ec2418f"
+    }
+  ],
+  "seal": "c2f234ec8c15768b0a4642fadce3d430ed106b95e028a39d52527fd3c977958b"
+}
