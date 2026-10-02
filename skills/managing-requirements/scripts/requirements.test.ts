@@ -177,3 +177,63 @@ test("an id is refused when its file name could not be portable, by create and v
   );
   assert.match(errors.join("\n"), /longer than 64/);
 });
+
+// A caller of the skill: it supplies directories and reads what comes back. It
+// writes no Requirement file and knows no file name, schema or traversal.
+const collect = (...dirs: string[]) =>
+  spawnSync(
+    process.execPath,
+    ["--import", import.meta.resolve("tsx"), fileURLToPath(new URL("./collect.ts", import.meta.url)), ...dirs],
+    { encoding: "utf8" },
+  );
+
+test("a caller collects the Requirements of a supplied scope through the skill, whatever else is beside them", () => {
+  const dir = scratch();
+  createRequirement(dir, "b", "Second.");
+  createRequirement(dir, "a", "First.");
+  fs.writeFileSync(path.join(dir, "notes.txt"), "not a Requirement");
+  fs.mkdirSync(path.join(dir, "nested"));
+  createRequirement(path.join(dir, "nested"), "deeper", "Local collection never reaches this.");
+  const run = collect(dir);
+  assert.equal(run.status, 0);
+  assert.deepEqual(
+    JSON.parse(run.stdout).map((r: { id: string; meaning: string }) => [r.id, r.meaning]),
+    [
+      ["a", "First."],
+      ["b", "Second."],
+    ],
+  );
+});
+
+test("collection is local: a nested directory is collected only when it is itself supplied", () => {
+  const dir = scratch();
+  createRequirement(dir, "outer", "Outer.");
+  createRequirement(path.join(dir, "inner"), "inner", "Inner.");
+  const ids = (...dirs: string[]) => JSON.parse(collect(...dirs).stdout).map((r: { id: string }) => r.id);
+  assert.deepEqual(ids(dir), ["outer"]);
+  assert.deepEqual(ids(dir, path.join(dir, "inner")), ["outer", "inner"]);
+});
+
+test("collecting a scope that holds no Requirements, or does not exist, yields none", () => {
+  const dir = scratch();
+  fs.mkdirSync(dir, { recursive: true });
+  for (const scope of [dir, path.join(dir, "missing")]) {
+    const run = collect(scope);
+    assert.equal(run.status, 0);
+    assert.deepEqual(JSON.parse(run.stdout), []);
+  }
+});
+
+test("collecting refuses what claims to be a Requirement and is not, and prints nothing else", () => {
+  const dir = scratch();
+  createRequirement(dir, "good", "Fine.");
+  fs.writeFileSync(path.join(dir, "bad.md"), "no frontmatter");
+  const run = collect(dir);
+  assert.equal(run.status, 1);
+  assert.equal(run.stdout, "");
+  assert.match(run.stderr, /bad\.md: missing YAML frontmatter/);
+});
+
+test("collecting names no scope: a usage error", () => {
+  assert.equal(collect().status, 2);
+});

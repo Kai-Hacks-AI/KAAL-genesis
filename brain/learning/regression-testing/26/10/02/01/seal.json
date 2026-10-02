@@ -1,0 +1,11 @@
+{
+  "unit": "regression-testing/26/10/02/01",
+  "previous": "addd62fd2f84e861a3380df653e460c797805d03d7f368a1aa0323ff4da1babd",
+  "files": [
+    {
+      "path": "nodes/testing.md",
+      "sha256": "cb5dcb6ff027dd23e51fb93591aad3ac45dbcd2fed075582f4a9076cd5cc86e7"
+    }
+  ],
+  "seal": "a9790c88529c8569bcf6f68847e5b71c5815c163c79dbac76e295ee0a40f4b18"
+}

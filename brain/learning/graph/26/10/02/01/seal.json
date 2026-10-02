@@ -1,0 +1,11 @@
+{
+  "unit": "graph/26/10/02/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "nodes/managing-kaal-graph.md",
+      "sha256": "8787aa0596ecb011b8c029ccdc07ded3dce0642d326aed3941382d21225ba8d3"
+    }
+  ],
+  "seal": "f54ffa8981bccbd03f041ed2e80acc174bf4b5bb58ffcd20a3becd095ed4c1a6"
+}

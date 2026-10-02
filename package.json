@@ -7,7 +7,8 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts extensions/*/*.test.ts",
+    "test": "tsx --test skills/*/scripts/*.test.ts scripts/*.test.ts extensions/*/*.test.ts core/*.test.ts",
+    "kaal": "tsx core/kaal.ts",
     "genesis": "tsx scripts/genesis.ts",
     "brain:create": "tsx skills/using-brain/scripts/create-brain.ts",
     "brain:create-node": "tsx skills/using-brain/scripts/create-node.ts",
@@ -21,6 +22,7 @@
     "requirements:create": "tsx skills/managing-requirements/scripts/create.ts",
     "requirements:validate": "tsx skills/managing-requirements/scripts/validate.ts",
     "requirements:read": "tsx skills/managing-requirements/scripts/read.ts",
+    "requirements:collect": "tsx skills/managing-requirements/scripts/collect.ts",
     "requirements:check": "tsx scripts/requirements.ts",
     "feature:compute": "tsx scripts/feature.ts",
     "test-cases:check": "tsx scripts/test-cases.ts",
@@ -36,6 +38,10 @@
     "ideas:validate": "tsx skills/managing-ideas/scripts/validate.ts",
     "ideas:read": "tsx skills/managing-ideas/scripts/read.ts",
     "ideas:check": "tsx scripts/ideas.ts",
+    "graph:birth": "tsx skills/managing-kaal-graph/scripts/birth.ts",
+    "graph:validate": "tsx skills/managing-kaal-graph/scripts/validate.ts",
+    "graph:read": "tsx skills/managing-kaal-graph/scripts/read.ts",
+    "graph:check": "tsx scripts/graph.ts",
     "agents:create": "tsx skills/using-agents/scripts/create-agents.ts",
     "skills:check": "tsx skills/using-skills/scripts/check.ts skills",
     "seal": "tsx scripts/seal.ts",

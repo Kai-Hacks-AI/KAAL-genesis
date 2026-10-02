@@ -87,6 +87,12 @@
     ],
     "seal": "3f3a3aef20b14646aaaf058d83bdf78d128cc79a0e9009c1674b2d5a6b08a3db"
   },
+  "skills": {
+    "units": [
+      "change/skills/26/10/02/01"
+    ],
+    "seal": "a992ffa0e0a405801f0a09dcbc8499096b325dc3244267c9ef393fe7ad5361a6"
+  },
   "windows-evidence": {
     "units": [
       "change/windows-evidence/26/10/01/01"

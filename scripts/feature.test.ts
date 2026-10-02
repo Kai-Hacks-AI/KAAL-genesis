@@ -54,3 +54,23 @@ test("every FAR record that holds Requirements has the Feature those Requirement
     assert.equal(fs.readFileSync(path.join(record, "feature.md"), "utf8"), answer.text, record);
   }
 });
+
+test("feature.md written from the Feature reads back as exactly the Requirements born on the Change", () => {
+  const born = change({ b: "b holds.", a: "a holds." });
+  const answer = featureOf(born);
+  assert.ok("text" in answer);
+  fs.writeFileSync(path.join(born, "feature.md"), answer.text);
+  const again = featureOf(born);
+  assert.ok("text" in again);
+  assert.equal(fs.readFileSync(path.join(born, "feature.md"), "utf8"), again.text);
+  assert.deepEqual(ids(fs.readFileSync(path.join(born, "feature.md"), "utf8")), ["a", "b"]);
+});
+
+test("a Requirement born on another Change is not in this Change's Feature", () => {
+  const first = change({ a: "a holds." });
+  const second = change({ b: "b holds." });
+  const answer = featureOf(second);
+  assert.ok("text" in answer);
+  assert.deepEqual(ids(answer.text), ["b"]);
+  assert.ok(fs.existsSync(first));
+});

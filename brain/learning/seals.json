@@ -24,6 +24,12 @@
     ],
     "seal": "ccbdb92d3e9ba8abcd69cb7391e4f2267ad97b324018d43500ad2a9ccb56c6f3"
   },
+  "graph": {
+    "units": [
+      "graph/26/10/02/01"
+    ],
+    "seal": "f54ffa8981bccbd03f041ed2e80acc174bf4b5bb58ffcd20a3becd095ed4c1a6"
+  },
   "ideas": {
     "units": [
       "ideas/26/10/01/01"
@@ -32,21 +38,30 @@
   },
   "regression-testing": {
     "units": [
-      "regression-testing/26/09/30/01"
+      "regression-testing/26/09/30/01",
+      "regression-testing/26/10/01/01",
+      "regression-testing/26/10/02/01"
     ],
-    "seal": "8f9ea2f367c88c0a086d3c748ea3b239b1bd61615beb12dea0a2a3c311eb3d7a"
+    "seal": "a9790c88529c8569bcf6f68847e5b71c5815c163c79dbac76e295ee0a40f4b18"
   },
   "requirements": {
     "units": [
       "requirements/26/09/30/01",
-      "requirements/26/09/30/02"
+      "requirements/26/09/30/02",
+      "requirements/26/10/02/01"
     ],
-    "seal": "1a3fa2438eb4892635141bd2f17677b6c501ffdf943829f436c3368dca8ca616"
+    "seal": "81201e9551a131f276a22dfc4c7a443e249c242c988ef1c4cea0331dd42a586a"
   },
   "review": {
     "units": [
       "review/26/09/30/01"
     ],
     "seal": "2e6c81a38b534b9a8cb0ec7bb6d795e6a5796cf00ea8c7f2bf35b77ecbfa1ac0"
+  },
+  "skills": {
+    "units": [
+      "skills/26/10/02/01"
+    ],
+    "seal": "90d5d02aeae04faf26d8fdcd3387a118828d99b8d201ee09b32e7fc8b587f765"
   }
 }
