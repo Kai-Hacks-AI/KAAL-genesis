@@ -134,3 +134,35 @@ test("the Run its entry point makes of the derived Plan is a report Testing read
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
+
+test("the Run made in an environment keeps the candidate identity its caller states, apart from where it executed", () => {
+  const { cases } = kaalTestCases();
+  const plan = testPlanProtecting(
+    cases,
+    "requirement",
+    ["linux-support", "windows-support"],
+    kaalInstanceRequirements().required,
+  );
+  assert.ok(!("errors" in plan));
+  const dir = fs.mkdtempSync(path.join(".", ".environment-identity-"));
+  try {
+    const file = path.join(dir, "plan.md").split(path.sep).join("/");
+    fs.writeFileSync(file, plan.plan);
+    const direct = runPlanInEnvironment(file, ".", ".", "state-A");
+    assert.equal(direct.candidateIdentity, "state-A");
+    assert.equal(direct.candidate, path.resolve("."), "where it executed is a location, and is not the identity");
+    const run = spawnSync(
+      process.execPath,
+      ["node_modules/tsx/dist/cli.mjs", "extensions/environment/run.ts", file, ".", "--candidate-identity", "state-A"],
+      { encoding: "utf8" },
+    );
+    assert.equal(run.status, 3, run.stderr);
+    assert.equal(readReport(run.stdout).outcomes?.candidateIdentity, "state-A");
+    const bare = spawnSync(process.execPath, ["node_modules/tsx/dist/cli.mjs", "extensions/environment/run.ts", file], {
+      encoding: "utf8",
+    });
+    assert.equal(readReport(bare.stdout).outcomes?.candidateIdentity, undefined, "stated by the caller, never guessed");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});

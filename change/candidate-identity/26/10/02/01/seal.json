@@ -1,0 +1,19 @@
+{
+  "unit": "change/candidate-identity/26/10/02/01",
+  "previous": null,
+  "files": [
+    {
+      "path": "architecture/a-boundary-realizes-the-candidate-identity-a-using-system-states.md",
+      "sha256": "d32778c24f3be57c67f62312d9e3471eee7ababb26c6b480e5a2935948057f58"
+    },
+    {
+      "path": "architecture/candidate-location-and-identity-are-distinct.md",
+      "sha256": "1e4da08bd4145fc7b89292f40a615b66cb5346474947b1a3e205a9b8897d7b8b"
+    },
+    {
+      "path": "architecture/the-using-system-judges-which-candidate-its-evidence-concerns.md",
+      "sha256": "ea75868160e5673afdc431c0a7b6ae7ae9fb48f6f7949433e31d7a9762138da9"
+    }
+  ],
+  "seal": "853ec24a0ec15102f4f1e32b1b195bbf9f1593ae82a61f109f98d7cf11ab915f"
+}

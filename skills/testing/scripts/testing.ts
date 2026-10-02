@@ -55,10 +55,15 @@ export type Unrun = { case: string; parameters: Parameters };
  * unrun, never as observed. The Plan holds, by this Run, only when every
  * instance it requires was performed and passed; a Run that left some unrun is
  * not shown to hold the Plan, though it need not fail it.
+ *
+ * `candidate` is where the Cases executed: the directory they ran in, a location that means something only on
+ * the host that made the Run. `candidateIdentity` is what the caller says that state is, when it says: an opaque
+ * identity Testing keeps with the Run and never interprets, so a location and what was executed are two things.
  */
 export type Run = {
   plan: string;
   candidate: string;
+  candidateIdentity?: string;
   facts: Conditions;
   conditions: string;
   observations: Observation[];
@@ -87,6 +92,13 @@ export const unmet = (parameters: Parameters, conditions: Conditions): string[] 
 
 /** A name or a value of a parameter: non-empty, with no whitespace and none of `,`, `=`, `[` and `]`, so an identity is never ambiguous. */
 export const PARAMETER = /^[^\s,=[\]]+$/;
+
+/**
+ * A candidate identity: non-empty, on one line, without leading or trailing whitespace, so a report that states it
+ * on a line of its own reads back exactly what it was given. Compared only by exact equality, never interpreted,
+ * normalized or resolved: what it names, and whether the candidate is that, is the caller's.
+ */
+export const CANDIDATE_IDENTITY = /^\S(?:[^\r\n]*\S)?$/;
 
 /**
  * The identity of a required instance as one line: its Carrier alone when it is
@@ -405,9 +417,13 @@ export function runCase(file: string, candidate: string): { passed: boolean; out
  * `root`, and performs every instance it requires that this process's observed
  * conditions provide, against `candidate`, by default the same directory.
  * Refuses a broken Plan or Suite before running anything.
+ *
+ * `candidateIdentity`, when given, is what the caller says the candidate is, kept with the Run as it was given.
+ * Testing cannot tell that the candidate is that, any more than it can that the conditions are true: realizing an
+ * identity as a state, and showing that a state is it, are the caller's.
  */
-export function runPlan(plan: string, root = ".", candidate = root): Run {
-  return runPlanUnder(observeConditions(), plan, root, candidate);
+export function runPlan(plan: string, root = ".", candidate = root, candidateIdentity?: string): Run {
+  return runPlanUnder(observeConditions(), plan, root, candidate, candidateIdentity);
 }
 
 /**
@@ -418,9 +434,19 @@ export function runPlan(plan: string, root = ".", candidate = root): Run {
  * made here is evidence of nothing but what it computes. An instance under
  * parameters these conditions do not provide is not performed.
  */
-export function runPlanUnder(conditions: Conditions, plan: string, root = ".", candidate = root): Run {
+export function runPlanUnder(
+  conditions: Conditions,
+  plan: string,
+  root = ".",
+  candidate = root,
+  candidateIdentity?: string,
+): Run {
   const read = readPlanSuites(root, plan);
   if (read.errors.length) throw new Error(`refusing to run ${plan}:\n${read.errors.join("\n")}`);
+  if (candidateIdentity !== undefined && !CANDIDATE_IDENTITY.test(candidateIdentity))
+    throw new Error(
+      `refusing to run ${plan}:\na candidate identity must be non-empty, on one line, without leading or trailing whitespace`,
+    );
   const observations: Observation[] = [];
   const unrun: Unrun[] = [];
   for (const instance of planInstances(read.plan!, read.suites)) {
@@ -435,11 +461,36 @@ export function runPlanUnder(conditions: Conditions, plan: string, root = ".", c
   return {
     plan,
     candidate: path.resolve(candidate),
+    ...(candidateIdentity !== undefined && { candidateIdentity }),
     facts: conditions,
     conditions: describeConditions(conditions),
     observations,
     unrun,
     holds: !unrun.length && observations.every((o) => o.passed),
+  };
+}
+
+/**
+ * The arguments of a `run.ts`: `<plan> [candidate] [--candidate-identity <identity>]`, the identity being what the
+ * caller says the candidate is. Anything else is a usage error. The identity is kept as given and checked only
+ * when a Run is made, which refuses one that is not an identity.
+ */
+export function runArguments(
+  argv: string[],
+): { plan: string; candidate?: string; candidateIdentity?: string } | undefined {
+  const positional: string[] = [];
+  let candidateIdentity: string | undefined;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--candidate-identity") {
+      if (candidateIdentity !== undefined || i + 1 >= argv.length) return undefined;
+      candidateIdentity = argv[++i];
+    } else positional.push(argv[i]);
+  }
+  if (positional.length < 1 || positional.length > 2) return undefined;
+  return {
+    plan: positional[0],
+    ...(positional[1] !== undefined && { candidate: positional[1] }),
+    ...(candidateIdentity !== undefined && { candidateIdentity }),
   };
 }
 
@@ -454,11 +505,16 @@ export function runPlanUnder(conditions: Conditions, plan: string, root = ".", c
 export const verdict = (run: Run): "holds" | "does not hold" | "incomplete" =>
   run.observations.some((o) => !o.passed) ? "does not hold" : run.unrun.length ? "incomplete" : "holds";
 
-/** A Run as lines: the plan, the candidate, the conditions, one line per instance it performed, one per instance it left unrun, then what it showed. */
+/**
+ * A Run as lines: the plan, the candidate, the candidate identity only when one was stated, the conditions, one
+ * line per instance it performed, one per instance it left unrun, then what it showed. A Run that states no
+ * identity is reported exactly as it always was.
+ */
 export function report(run: Run): string {
   return [
     `plan ${run.plan}`,
     `candidate ${run.candidate}`,
+    ...(run.candidateIdentity !== undefined ? [`candidate-identity ${run.candidateIdentity}`] : []),
     `conditions ${run.conditions}`,
     ...run.observations.map((o) => `${o.passed ? "pass" : "fail"} ${o.case}`),
     ...run.unrun.map((u) => `unrun ${u.case}`),
@@ -466,12 +522,23 @@ export function report(run: Run): string {
   ].join("\n");
 }
 
-/** What each instance a Plan requires came to in one Run: those that passed, those that failed, and those left unrun. */
-export type Outcomes = { plan: string; passed: string[]; failed: string[]; unrun: string[] };
+/**
+ * What each instance a Plan requires came to in one Run: those that passed, those that failed, and those left
+ * unrun, and the candidate identity the Run stated, when it stated one. The identity is kept, never judged: the
+ * outcomes of a Run that stated none have no such property at all, as they never did.
+ */
+export type Outcomes = {
+  plan: string;
+  candidateIdentity?: string;
+  passed: string[];
+  failed: string[];
+  unrun: string[];
+};
 
 /** The outcomes of a Run. */
 export const outcomes = (run: Run): Outcomes => ({
   plan: run.plan,
+  ...(run.candidateIdentity !== undefined && { candidateIdentity: run.candidateIdentity }),
   passed: run.observations.filter((o) => o.passed).map((o) => o.case),
   failed: run.observations.filter((o) => !o.passed).map((o) => o.case),
   unrun: run.unrun.map((u) => u.case),
@@ -485,7 +552,17 @@ export function readReport(text: string): { outcomes?: Outcomes; errors: string[
   const result: Outcomes = { plan, passed: [], failed: [], unrun: [] };
   const seen = new Set<string>();
   const errors: string[] = [];
+  let stated = false;
   for (const line of lines.slice(1)) {
+    const identity = /^candidate-identity (.*)$/.exec(line)?.[1];
+    if (identity !== undefined) {
+      if (stated) errors.push("a candidate identity is stated twice");
+      else if (!CANDIDATE_IDENTITY.test(identity))
+        errors.push("a candidate identity must be non-empty, on one line, without leading or trailing whitespace");
+      else result.candidateIdentity = identity;
+      stated = true;
+      continue;
+    }
     const match = /^(pass|fail|unrun) (.+)$/.exec(line);
     if (!match) continue;
     const [, kind, at] = match;
@@ -512,9 +589,11 @@ export type Evidence = { evidenced: boolean; passed: string[]; failed: string[];
 /**
  * The evidence of `runs`, each the outcomes of one Run, in one pass over them:
  * refused when there is none, or when they do not require the same instances,
- * since they are then not Runs of one Plan. Testing cannot tell that the Runs executed
+ * since they are then not Runs of one Plan. Testing does not judge that the Runs executed
  * the same candidate, or under the conditions they state: that is the using
- * system's to ensure, as it is for one Run.
+ * system's to ensure, as it is for one Run. A Run keeps the candidate identity its
+ * caller stated, so the using system can see what each stated, but the one it requires
+ * is known only to it, and Runs that agree with each other need not agree with that.
  */
 export function planEvidence(runs: Outcomes[]): { evidence?: Evidence; errors: string[] } {
   if (!runs.length) return { errors: ["no Run to show anything of the Plan"] };
