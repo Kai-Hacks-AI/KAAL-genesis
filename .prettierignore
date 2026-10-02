@@ -17,3 +17,5 @@ package-lock.json
 skills/*/SKILL.md
 # Why: scripts/genesis.test.ts
 AGENTS.md
+# Why: the candidate under observation is kept byte for byte as it was born and registered.
+experiments/first-bootstrap/
