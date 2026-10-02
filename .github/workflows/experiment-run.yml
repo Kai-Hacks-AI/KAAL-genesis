@@ -1,0 +1,109 @@
+# THROWAWAY EXPERIMENT, never to be merged. Question: can GitHub obtain a Run of an arbitrary Plan against an
+# arbitrary candidate on every environment the Plan requires, with the environments read from the Plan?
+name: experiment-run
+
+on:
+  push:
+    branches: [claude/far-9-resume-kaal-tz5461]
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: Plan file in the root checkout
+        default: experiment/plan.md
+      candidate:
+        description: Full commit SHA of the candidate
+        default: 00a8be7e7b3c002ffcbbc7fb651abc8a349aa584
+
+permissions:
+  contents: read
+
+jobs:
+  environments:
+    name: environments
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+      candidate: ${{ steps.read.outputs.candidate }}
+      plan: ${{ steps.read.outputs.plan }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - id: read
+        shell: bash
+        env:
+          PLAN: ${{ inputs.plan || 'experiment/plan.md' }}
+          CANDIDATE: ${{ inputs.candidate || '00a8be7e7b3c002ffcbbc7fb651abc8a349aa584' }}
+        run: |
+          echo "$CANDIDATE" | grep -Eq '^[0-9a-f]{40}$' || { echo "candidate must be a full SHA"; exit 1; }
+          read=$(npx tsx experiment/environments.ts "$PLAN")
+          # The provider's part: which runner is each environment. An environment with no runner fails here, never silently.
+          matrix=$(echo "$read" | jq -c '{include: [.environments[] | {environment: ., os: ({linux:"ubuntu-latest", windows:"windows-latest"}[.] // error("no runner for " + .))}]}')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "candidate=$CANDIDATE" >> "$GITHUB_OUTPUT"
+          echo "plan=$PLAN" >> "$GITHUB_OUTPUT"
+          echo "$matrix"
+
+  run:
+    name: run-${{ matrix.environment }}
+    needs: environments
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.environments.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: git config --global core.autocrlf true
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.environments.outputs.candidate }}
+          path: candidate
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm ci
+        working-directory: candidate
+      - name: Make this host's Run of the Plan against the candidate
+        shell: bash
+        run: |
+          code=0
+          npm run --silent environment:run -- "${{ needs.environments.outputs.plan }}" candidate > "run-${{ matrix.environment }}.txt" || code=$?
+          cat "run-${{ matrix.environment }}.txt"
+          git -C candidate rev-parse HEAD > "candidate-${{ matrix.environment }}.txt"
+          # Incomplete (3) is by design when the Plan requires another environment too; anything else but 0 fails the job.
+          if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then exit "$code"; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: run-${{ matrix.environment }}
+          path: |
+            run-${{ matrix.environment }}.txt
+            candidate-${{ matrix.environment }}.txt
+          if-no-files-found: error
+
+  evidence:
+    name: evidence
+    needs: [environments, run]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: run-*
+      - shell: bash
+        env:
+          CANDIDATE: ${{ needs.environments.outputs.candidate }}
+        run: |
+          # Testing cannot tell whether the Runs judged one candidate; the provider can, so it checks.
+          for f in run-*/candidate-*.txt; do test "$(tr -d '[:space:]' < "$f")" = "$CANDIDATE" || { echo "$f judged another candidate"; exit 1; }; done
+          for f in run-*/run-*.txt; do echo "== $f"; grep -E '^(candidate|conditions) |unrun|environment=|^(holds|incomplete|does not hold)$' "$f"; done
+          echo "== each alone"
+          for f in run-*/run-*.txt; do npm run --silent testing:evidence -- "$f" | tail -1 || true; done
+          echo "== together"
+          npm run --silent testing:evidence -- run-*/run-*.txt | tail -3
