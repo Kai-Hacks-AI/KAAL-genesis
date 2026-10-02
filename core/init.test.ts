@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { init, initialized, KERNEL_FILE } from "./init.js";
-import { capabilities, register, registered, REGISTRATIONS } from "./registrations.js";
+import { available, capabilities, register, registered, REGISTRATIONS } from "./registrations.js";
 import { section } from "./section.js";
 
 const CORE = fileURLToPath(new URL("./", import.meta.url));
@@ -205,7 +205,9 @@ test("init installs no Skill or Extension anywhere, nor creates directories for 
     Object.keys(tree(root)).filter((p) => /skill|extension|agent|graph|brain/i.test(p)),
     ["AGENTS.md"],
   );
-  assert.deepEqual(capabilities(path.join(root, ".kaal")), { available: [], registered: [] });
+  const state = capabilities(path.join(root, ".kaal"));
+  assert.deepEqual(state.registered, []);
+  assert.ok(state.available.length > 0 && state.available.every((c) => !c.registered));
 });
 
 test("init refuses a directory that does not exist, creating nothing", () => {
@@ -459,4 +461,74 @@ test("kaal init <directory> [--kaal <dir>] works from the command line, without 
   assert.throws(() => run("init"), /usage/i);
   assert.throws(() => run("nonsense", root), /usage/i);
   assert.throws(() => run("init", root, "--bogus", "x"), /usage/i);
+});
+
+// The catalogue: a small file Core owns, read and never inferred.
+const SKILLS = fileURLToPath(new URL("../skills/", import.meta.url));
+
+test("Core reads its catalogue file: kind and name only, nothing scanned", () => {
+  const entries = available();
+  assert.ok(entries.length > 0);
+  for (const entry of entries) assert.deepEqual(Object.keys(entry), ["kind", "name"]);
+  const file = path.join(temp(), "catalogue.md");
+  fs.writeFileSync(file, "# Any\n\nprose is ignored\n\n- skill one\n- extension two\n");
+  assert.deepEqual(available(file), [
+    { kind: "skill", name: "one" },
+    { kind: "extension", name: "two" },
+  ]);
+});
+
+test("the catalogue refuses an entry it cannot read and an entry listed twice", () => {
+  const file = path.join(temp(), "catalogue.md");
+  for (const [text, error] of [
+    ["- plugin one\n", /not a catalogue entry/],
+    ["- skill\n", /not a catalogue entry/],
+    ["- skill one extra\n", /not a catalogue entry/],
+    ["- skill one\n- skill one\n", /listed twice/],
+  ] as const) {
+    fs.writeFileSync(file, text);
+    assert.throws(() => available(file), error, text);
+  }
+});
+
+test("what Core reports as available is what the catalogue lists, whatever else stands in the project", () => {
+  const root = temp();
+  init(root);
+  fs.mkdirSync(path.join(root, "skills", "not-listed"), { recursive: true });
+  const kaalDir = path.join(root, ".kaal");
+  const names = capabilities(kaalDir).available.map((c) => `${c.kind} ${c.name}`);
+  assert.deepEqual(
+    names,
+    available().map((c) => `${c.kind} ${c.name}`),
+  );
+  assert.ok(!names.includes("skill not-listed"));
+  // Registering one marks that one registered; the rest stay available and unregistered.
+  fs.mkdirSync(path.join(root, ".agents", "skills", "testing"), { recursive: true });
+  register(root, ".kaal", { kind: "skill", name: "testing", location: ".agents/skills/testing" });
+  const after = capabilities(kaalDir);
+  assert.deepEqual(
+    after.available.filter((c) => c.registered).map((c) => c.name),
+    ["testing"],
+  );
+  assert.equal(after.available.length, names.length);
+});
+
+test("this repository is the distribution today: the catalogue lists exactly its Skills, no Extension", () => {
+  const skills = fs
+    .readdirSync(SKILLS, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+  const listed = available();
+  assert.deepEqual(
+    listed
+      .filter((c) => c.kind === "skill")
+      .map((c) => c.name)
+      .sort(),
+    skills,
+  );
+  assert.deepEqual(
+    listed.filter((c) => c.kind === "extension"),
+    [],
+  );
 });

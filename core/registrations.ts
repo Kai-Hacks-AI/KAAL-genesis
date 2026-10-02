@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Where, inside the KAAL directory, Core keeps what this installation has registered. */
 export const REGISTRATIONS = "core/registrations.md";
@@ -13,12 +14,28 @@ export type Capability = { kind: Kind; name: string };
 /** A capability this KAAL has registered, and where it is installed, relative to the host root. */
 export type Registration = Capability & { location: string };
 
+/** The catalogue file: Core's own list of what this KAAL distribution makes available. */
+const CATALOGUE = fileURLToPath(new URL("./catalogue.md", import.meta.url));
+
 /**
- * What this KAAL distribution makes available to install. Availability is not
- * registration, and neither is installation: knowing a capability here puts
- * nothing on disk. The distribution owns this list; none is claimed yet.
+ * What this KAAL distribution makes available to install, read from Core's
+ * catalogue file: nothing is scanned or inferred, and a capability carries
+ * only its kind and name. Availability is not registration, and neither is
+ * installation: reading the catalogue puts nothing on disk. A line that
+ * claims to be an entry but is not one, or one that repeats an entry, is an
+ * error rather than a guess.
  */
-export const AVAILABLE: readonly Capability[] = [];
+export function available(file = CATALOGUE): Capability[] {
+  const entries: Capability[] = [];
+  for (const line of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    if (!line.startsWith("- ")) continue;
+    const m = /^- (skill|extension) ([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(line);
+    if (!m) throw new Error(`${file}: not a catalogue entry: ${line}`);
+    if (entries.some((e) => e.kind === m[1] && e.name === m[2])) throw new Error(`${file}: listed twice: ${line}`);
+    entries.push({ kind: m[1] as Kind, name: m[2] });
+  }
+  return entries;
+}
 
 /** The registrations file as born: it holds no registration, only what it is. */
 export const REGISTRATIONS_HEADER = `# KAAL registrations
@@ -84,11 +101,11 @@ export function register(root: string, kaal: string, capability: Registration): 
  */
 export function capabilities(
   kaalDir: string,
-  available: readonly Capability[] = AVAILABLE,
+  list: readonly Capability[] = available(),
 ): { available: (Capability & { registered: boolean })[]; registered: Registration[] } {
   const have = registered(kaalDir);
   return {
-    available: available.map((a) => ({ ...a, registered: have.some((r) => r.kind === a.kind && r.name === a.name) })),
+    available: list.map((a) => ({ ...a, registered: have.some((r) => r.kind === a.kind && r.name === a.name) })),
     registered: have,
   };
 }
